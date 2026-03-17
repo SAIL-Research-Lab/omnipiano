@@ -1,0 +1,15 @@
+# 忽略根目录下的所有文件和文件夹
+/*
+
+# 排除需要追踪的文件夹
+!/robopianist/
+!/safe_robopianist/
+
+# 排除 .gitignore 文件自身
+!.gitignore
+
+# 忽略 robopianist 下的特定文件
+/robopianist/action_control_explanation.md
+/robopianist/logging_instructions.md
+/robopianist/robopianist_structure.md
+/robopianist/tutorial_comment_and_learn.ipynb

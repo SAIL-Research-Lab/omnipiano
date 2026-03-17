@@ -1,0 +1,8 @@
+__pycache__/
+third_party/
+soundfonts/
+*.egg-info/
+.eggs/
+build/
+dist/
+pig_single_finger/

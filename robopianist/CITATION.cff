@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+authors:
+  - family-names: Zakka
+    given-names: Kevin
+  - family-names: Philipp
+    given-names: Wu
+  - family-names: Smith
+    given-names: Laura
+  - family-names: Gileadi
+    given-names: Nimrod
+  - family-names: Howell
+    given-names: Taylor
+  - family-names: Peng
+    given-names: Xue Bin
+  - family-names: Singh
+    given-names: Sumeet
+  - family-names: Tassa
+    given-names: Yuval
+  - family-names: Florence
+    given-names: Pete
+  - family-names: Zeng
+    given-names: Andy
+  - family-names: Abbeel
+    given-names: Pieter
+date-released: "2023-04-01"
+message: "If you use this software, please cite it as below."
+title: "RoboPianist: Dexterous Piano Playing with Deep Reinforcement Learning"
+url: "https://github.com/google-research/robopianist"
