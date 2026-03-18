@@ -6,6 +6,7 @@ collects episodes that finished during the current PPO iteration
 `train_iteration_summary.csv`.
 """
 
+
 import csv
 import math
 import os
@@ -185,11 +186,11 @@ class TrainIterationSummaryCallback(BaseCallback):
 
             episode_dict = info.get("episode", {})
             if not episode_dict:
-                warnings.warn(
-                    "Done episode found without info['episode']; "
-                    "iteration summary relies on Monitor/VecMonitor.",
-                    RuntimeWarning,
-                    stacklevel=2,
+                raise ValueError(
+                    "Done episode found without info['episode']. "
+                    "The TrainIterationSummaryCallback strictly relies on Stable Baselines 3's "
+                    "Monitor or VecMonitor wrapper to provide 'r' (return) and 'l' (length) "
+                    "in info['episode']. Please ensure your environment is wrapped with Monitor."
                 )
             completed_episode = {
                 # Monitor/VecMonitor keys.

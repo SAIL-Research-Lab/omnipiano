@@ -26,6 +26,7 @@ class SafetyWrapper(gym.Wrapper):
         step_cost = 0.0
         step_violation = False
         
+        # !!! need to change when later specify task, especially the ep_cost calculation
         # Evaluate all constraints
         for constraint in self.constraints:
             cost = constraint.compute_cost(self.env, action, obs, info)
@@ -39,12 +40,15 @@ class SafetyWrapper(gym.Wrapper):
         if step_violation:
             self.ep_violations += 1
             
-        # Modify reward
-        reward -= step_cost
+        # CRITICAL FIX: As a Benchmark, we MUST NOT modify the reward directly.
+        # Safe RL algorithms (like CPO, PPO-Lagrangian) expect the environment to
+        # return the raw reward and expose the cost via the `info` dictionary.
+        # It is the algorithm's responsibility to decide how to balance reward and cost.
+        # reward -= step_cost  <-- REMOVED
         
         # Step info
-        info[InfoKeys.SAFETY_COST_TOTAL] = step_cost
-        info[InfoKeys.SAFETY_VIOLATION_JOINT_LIMIT] = step_violation
+        info[InfoKeys.STEP_SAFETY_COST_TOTAL] = step_cost
+        info[InfoKeys.STEP_SAFETY_VIOLATION_JOINT_LIMIT] = step_violation
         
         # Episode info
         if terminated or truncated:

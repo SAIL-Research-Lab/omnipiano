@@ -20,26 +20,7 @@ from safe_robopianist.configs import RobustConfig, SafetyConfig, TaskVariantConf
 from safe_robopianist.safety.constraints import JointMagnitudeConstraint
 
 def main():
-    # 1. Define configurations
-    robust_config = RobustConfig(
-        action_noise_std=0.05,
-        obs_noise_std=0.01
-    )
-    
-    safety_config = SafetyConfig(
-        constraints=[
-            # Limit Right Hand Wrist Pitch (WRJ1, index 1) magnitude to 0.5
-            JointMagnitudeConstraint(index=1, max_magnitude=0.5, penalty_coef=5.0),
-            # Limit Left Hand Wrist Pitch (WRJ1, index 23) magnitude to 0.5
-            JointMagnitudeConstraint(index=23, max_magnitude=0.5, penalty_coef=5.0)
-        ]
-    )
-    
-    task_config = TaskVariantConfig(
-        left_hand_immobile=False  # Set to True to test the XML modification!
-    )
-    
-    # 2. Define logging directory
+    # 1. Define logging directory
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     base_experiment_name = "ppo_run_template"
     logs_root = os.path.join(project_root, "logs")
@@ -53,18 +34,14 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
     n_envs = 3
     
-    # 3. Create the environment
-    # By passing `log_dir`, the environment will automatically wrap itself with 
-    # SafeRecordEpisodeStatistics and log metrics to CSV.
-    env_name = "RoboPianist-debug-TwinkleTwinkleLittleStar-v0"
+    # 2. Create the environment
+    # We now use the registered task name! The registry handles all configs.
+    env_name = "SafeRoboPianist-debug-Twinkle-WristLimit-v0"
     print(f"Creating Safe/Robust environment: {env_name}")
     
     def env_creator():
         return make(
             env_name, 
-            robust_config=robust_config, 
-            safety_config=safety_config,
-            task_config=task_config,
             log_dir=log_dir,
             log_split="train",
         )
@@ -87,6 +64,13 @@ def main():
     # Notice we don't need any custom callbacks for CSV logging!
     print("Starting training...")
     iteration_summary_callback = TrainIterationSummaryCallback(log_dir=log_dir)
+    
+    # The `callback` parameter allows us to inject custom logic into the SB3 training loop.
+    # SB3 will automatically call specific methods on the callback object at different stages:
+    # - `_on_training_start()`: Called once before the first step.
+    # - `_on_step()`: Called after every single environment step.
+    # - `_on_rollout_end()`: Called when the algorithm finishes collecting a batch of data (an iteration).
+    # This mechanism lets us passively monitor and log data without modifying the core PPO algorithm.
     model.learn(total_timesteps=8192, callback=iteration_summary_callback)
     print(f"Training completed. Check the CSV logs in: {log_dir}")
     
@@ -94,9 +78,6 @@ def main():
     print("Testing environment step...")
     eval_env = make(
         env_name,
-        robust_config=robust_config,
-        safety_config=safety_config,
-        task_config=task_config,
         log_dir=log_dir,
         log_split="eval",
     )

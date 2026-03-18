@@ -5,6 +5,7 @@ import time
 import uuid
 from safe_robopianist.metrics.info_keys import EpisodeInfoKeys
 
+
 class SafeRecordEpisodeStatistics(gym.Wrapper):
     """
     A Gymnasium wrapper that automatically logs episode statistics (returns, lengths, 

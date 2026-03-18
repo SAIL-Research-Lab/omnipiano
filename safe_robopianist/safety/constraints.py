@@ -2,6 +2,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
+
 class BaseConstraint(ABC):
     """Base class for all safety constraints."""
     
@@ -36,4 +37,4 @@ class JointMagnitudeConstraint(BaseConstraint):
         return 0.0
         
     def get_info_key(self) -> str:
-        return f"safety/cost_joint_{self.index}_mag"
+        return f"step_safety/cost_joint_{self.index}_mag"

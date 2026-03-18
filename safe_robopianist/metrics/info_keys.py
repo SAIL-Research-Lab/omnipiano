@@ -4,15 +4,16 @@ This module defines the standard keys used in the `info` dictionary
 to ensure consistency across wrappers and logging callbacks.
 
 Naming convention:
-- safety/* : Safety related metrics (costs, violations)
-- robust/* : Robustness related metrics (noise magnitudes)
-- task/*   : Task specific metrics (musical performance, reward terms)
+- step_safety/* : Safety related metrics for a single step (costs, violations)
+- robust/*      : Robustness related metrics (noise magnitudes)
+- task/*        : Task specific metrics (musical performance, reward terms)
 """
+
 
 class InfoKeys:
     # Safety
-    SAFETY_COST_TOTAL = "safety/cost_total"
-    SAFETY_VIOLATION_JOINT_LIMIT = "safety/violation_joint_limit"
+    STEP_SAFETY_COST_TOTAL = "step_safety/cost_total"
+    STEP_SAFETY_VIOLATION_JOINT_LIMIT = "step_safety/violation_joint_limit"
     
     # Robustness
     ROBUST_NOISE_ACTION_L2 = "robust/noise_action_l2"

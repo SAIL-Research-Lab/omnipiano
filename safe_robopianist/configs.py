@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from safe_robopianist.safety.constraints import BaseConstraint
 
+
 @dataclass
 class SafetyConfig:
     """Configuration for safety constraints."""

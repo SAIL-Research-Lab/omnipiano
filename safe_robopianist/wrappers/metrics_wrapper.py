@@ -2,6 +2,7 @@ import gymnasium as gym
 from robopianist.wrappers.evaluation import MidiEvaluationWrapper
 from safe_robopianist.metrics.info_keys import InfoKeys, EpisodeInfoKeys
 
+
 class MetricsWrapper(gym.Wrapper):
     """Extracts and standardizes task metrics (musical performance, reward terms)."""
     
@@ -28,6 +29,8 @@ class MetricsWrapper(gym.Wrapper):
                     # Map to standardized keys
                     key = getattr(InfoKeys, f"TASK_REWARD_{term_name.upper()}", f"task/reward_{term_name}")
                     info[key] = term_val
+                    print(f"key: {key}")
+                    print(f"term_val: {term_val}")
                     self.ep_reward_terms[term_name] = self.ep_reward_terms.get(term_name, 0.0) + term_val
         except Exception:
             pass # TODO: Add strict mode
