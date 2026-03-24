@@ -77,11 +77,11 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
             ep_sus_prec = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_PRECISION, "")
             ep_sus_rec = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_RECALL, "")
             
-            energy_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_REWARD_ENERGY, "")
-            fingering_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_REWARD_FINGERING, "")
-            forearm_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_REWARD_FOREARM, "")
-            key_press_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_REWARD_KEY_PRESS, "")
-            sustain_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_REWARD_SUSTAIN, "")
+            energy_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_ENERGY_REWARD, "")
+            fingering_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_FINGERING_REWARD, "")
+            forearm_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_FOREARM_REWARD, "")
+            key_press_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_KEY_PRESS_REWARD, "")
+            sustain_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_REWARD, "")
             
             # Write to CSV
             with open(self.csv_path, mode='a', newline='') as file:

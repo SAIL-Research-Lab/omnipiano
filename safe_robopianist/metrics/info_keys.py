@@ -28,11 +28,11 @@ class InfoKeys:
     TASK_SUSTAIN_RECALL = "task/sustain_recall"
     
     # Task (Reward Terms)
-    TASK_REWARD_ENERGY = "task/reward_energy"
-    TASK_REWARD_FINGERING = "task/reward_fingering"
-    TASK_REWARD_FOREARM = "task/reward_forearm"
-    TASK_REWARD_KEY_PRESS = "task/reward_key_press"
-    TASK_REWARD_SUSTAIN = "task/reward_sustain"
+    TASK_ENERGY_REWARD = "task/energy_reward"
+    TASK_FINGERING_REWARD = "task/fingering_reward"
+    TASK_FOREARM_REWARD = "task/forearm_reward"
+    TASK_KEY_PRESS_REWARD = "task/key_press_reward"
+    TASK_SUSTAIN_REWARD = "task/sustain_reward"
 
 class EpisodeInfoKeys:
     """Keys for episode-level aggregated metrics (injected at done)."""
@@ -49,8 +49,8 @@ class EpisodeInfoKeys:
     EPISODE_TASK_SUSTAIN_RECALL = "episode_task/sustain_recall"
     
     # Task (Reward Terms)
-    EPISODE_TASK_REWARD_ENERGY = "episode_task/reward_energy"
-    EPISODE_TASK_REWARD_FINGERING = "episode_task/reward_fingering"
-    EPISODE_TASK_REWARD_FOREARM = "episode_task/reward_forearm"
-    EPISODE_TASK_REWARD_KEY_PRESS = "episode_task/reward_key_press"
-    EPISODE_TASK_REWARD_SUSTAIN = "episode_task/reward_sustain"
+    EPISODE_TASK_ENERGY_REWARD = "episode_task/energy_reward"
+    EPISODE_TASK_FINGERING_REWARD = "episode_task/fingering_reward"
+    EPISODE_TASK_FOREARM_REWARD = "episode_task/forearm_reward"
+    EPISODE_TASK_KEY_PRESS_REWARD = "episode_task/key_press_reward"
+    EPISODE_TASK_SUSTAIN_REWARD = "episode_task/sustain_reward"

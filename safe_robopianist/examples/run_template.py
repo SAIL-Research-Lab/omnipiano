@@ -7,8 +7,17 @@ is completely algorithm-agnostic and handled by the environment wrapper.
 import os
 import sys
 
+os.environ["MUJOCO_GL"] = "egl"
+#force Headless Rendering
+
 # Add the parent directory to sys.path to allow imports from safe_robopianist
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+# Also add the grand-parent directory so 'safe_robopianist' is recognized as a package
+grandparent_dir = os.path.dirname(project_root)
+sys.path.append(grandparent_dir)
+# Add the robopianist directory to sys.path to fix the import error
+sys.path.append(os.path.join(grandparent_dir, "robopianist"))
 
 from envs.safe_piano_env import make
 from iteration_summary_callback import TrainIterationSummaryCallback
@@ -36,7 +45,8 @@ def main():
     
     # 2. Create the environment
     # We now use the registered task name! The registry handles all configs.
-    env_name = "SafeRoboPianist-debug-Twinkle-WristLimit-v0"
+    # env_name = "SafeRoboPianist-debug-Twinkle-WristLimit-v0"
+    env_name = "SafeRoboPianist-Twinkle-RightHandWristLimit-v0"
     print(f"Creating Safe/Robust environment: {env_name}")
     
     def env_creator():
@@ -71,16 +81,26 @@ def main():
     # - `_on_step()`: Called after every single environment step.
     # - `_on_rollout_end()`: Called when the algorithm finishes collecting a batch of data (an iteration).
     # This mechanism lets us passively monitor and log data without modifying the core PPO algorithm.
-    model.learn(total_timesteps=8192, callback=iteration_summary_callback)
+    model.learn(total_timesteps=30720, callback=iteration_summary_callback)
     print(f"Training completed. Check the CSV logs in: {log_dir}")
     
-    # 6. Test the trained model
-    print("Testing environment step...")
+    # Save the trained model
+    model_path = os.path.join(log_dir, "final_model")
+    model.save(model_path)
+    print(f"Model saved to: {model_path}.zip")
+    
+    # 6. Test the trained model and record video
+    print("Testing environment step and recording video...")
+    video_dir = os.path.join(log_dir, "videos")
+    os.makedirs(video_dir, exist_ok=True)
+    
     eval_env = make(
         env_name,
         log_dir=log_dir,
         log_split="eval",
+        record_dir=video_dir,  # This will trigger PianoSoundVideoWrapper for audio+video
     )
+
     for ep_idx in range(3):
         obs, info = eval_env.reset()
         done = False
@@ -95,8 +115,11 @@ def main():
             f"Eval Episode {ep_idx + 1} | Reward: {total_reward:.3f} "
             f"| Safety Cost: {info.get(EpisodeInfoKeys.EPISODE_SAFETY_COST_TOTAL, 0.0):.3f}"
         )
+        
+    eval_env.close()
 
     print(f"Training and evaluation logs are saved in: {log_dir}")
+    print(f"Evaluation videos are saved in: {video_dir}")
 
 if __name__ == "__main__":
     main()

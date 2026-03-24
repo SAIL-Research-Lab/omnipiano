@@ -35,6 +35,14 @@ REGISTERED_TASKS = {
             right_hand_immobile=False
         )
     ),
+    "SafeRoboPianist-Twinkle-RightHandWristLimit-v0": TaskSpec(
+        base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
+        safety_config=SafetyConfig(
+            constraints=[
+                JointMagnitudeConstraint(index=1, max_magnitude=0.8, penalty_coef=5.0)
+            ]
+        )
+    ),
     
     # Add more tasks here as we implement them!
 }

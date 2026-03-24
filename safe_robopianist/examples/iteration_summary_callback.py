@@ -91,11 +91,11 @@ class TrainIterationSummaryCallback(BaseCallback):
             "ep_precision_mean",
             "ep_recall_mean",
             "ep_sustain_f1_mean",
-            "episode_reward_energy_reward_mean",
-            "episode_reward_fingering_reward_mean",
-            "episode_reward_forearm_reward_mean",
-            "episode_reward_key_press_reward_mean",
-            "episode_reward_sustain_reward_mean",
+            "episode_energy_reward_mean",
+            "episode_fingering_reward_mean",
+            "episode_forearm_reward_mean",
+            "episode_key_press_reward_mean",
+            "episode_sustain_reward_mean",
         ]
 
     def _on_training_start(self) -> None:
@@ -123,23 +123,23 @@ class TrainIterationSummaryCallback(BaseCallback):
         recalls = [_parse_finite_float(r.get("ep_recall", "")) for r in rows]
         sustain_f1s = [_parse_finite_float(r.get("ep_sustain_f1", "")) for r in rows]
         energy_rewards = [
-            _parse_finite_float(r.get("episode_reward_energy_reward", ""))
+            _parse_finite_float(r.get("episode_energy_reward", ""))
             for r in rows
         ]
         fingering_rewards = [
-            _parse_finite_float(r.get("episode_reward_fingering_reward", ""))
+            _parse_finite_float(r.get("episode_fingering_reward", ""))
             for r in rows
         ]
         forearm_rewards = [
-            _parse_finite_float(r.get("episode_reward_forearm_reward", ""))
+            _parse_finite_float(r.get("episode_forearm_reward", ""))
             for r in rows
         ]
         key_press_rewards = [
-            _parse_finite_float(r.get("episode_reward_key_press_reward", ""))
+            _parse_finite_float(r.get("episode_key_press_reward", ""))
             for r in rows
         ]
         sustain_rewards = [
-            _parse_finite_float(r.get("episode_reward_sustain_reward", ""))
+            _parse_finite_float(r.get("episode_sustain_reward", ""))
             for r in rows
         ]
         has_episode = len(rows) > 0
@@ -203,20 +203,20 @@ class TrainIterationSummaryCallback(BaseCallback):
                 "ep_precision": info.get(EpisodeInfoKeys.EPISODE_TASK_KEY_PRECISION, ""),
                 "ep_recall": info.get(EpisodeInfoKeys.EPISODE_TASK_KEY_RECALL, ""),
                 "ep_sustain_f1": info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_F1, ""),
-                "episode_reward_energy_reward": info.get(
-                    EpisodeInfoKeys.EPISODE_TASK_REWARD_ENERGY, ""
+                "episode_energy_reward": info.get(
+                    EpisodeInfoKeys.EPISODE_TASK_ENERGY_REWARD, ""
                 ),
-                "episode_reward_fingering_reward": info.get(
-                    EpisodeInfoKeys.EPISODE_TASK_REWARD_FINGERING, ""
+                "episode_fingering_reward": info.get(
+                    EpisodeInfoKeys.EPISODE_TASK_FINGERING_REWARD, ""
                 ),
-                "episode_reward_forearm_reward": info.get(
-                    EpisodeInfoKeys.EPISODE_TASK_REWARD_FOREARM, ""
+                "episode_forearm_reward": info.get(
+                    EpisodeInfoKeys.EPISODE_TASK_FOREARM_REWARD, ""
                 ),
-                "episode_reward_key_press_reward": info.get(
-                    EpisodeInfoKeys.EPISODE_TASK_REWARD_KEY_PRESS, ""
+                "episode_key_press_reward": info.get(
+                    EpisodeInfoKeys.EPISODE_TASK_KEY_PRESS_REWARD, ""
                 ),
-                "episode_reward_sustain_reward": info.get(
-                    EpisodeInfoKeys.EPISODE_TASK_REWARD_SUSTAIN, ""
+                "episode_sustain_reward": info.get(
+                    EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_REWARD, ""
                 ),
             }
             self.completed_episodes_in_iteration.append(completed_episode)

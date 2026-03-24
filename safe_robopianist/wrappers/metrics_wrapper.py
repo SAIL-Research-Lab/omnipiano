@@ -4,7 +4,11 @@ from safe_robopianist.metrics.info_keys import InfoKeys, EpisodeInfoKeys
 
 
 class MetricsWrapper(gym.Wrapper):
-    """Extracts and standardizes task metrics (musical performance, reward terms)."""
+    """
+    Extracts and standardizes task metrics (musical performance, reward terms).
+    This wrapper is fundamentally required for ALL tasks in the benchmark to ensure
+    consistent logging of base performance metrics, regardless of safety/robustness configs.
+    """
     
     def __init__(self, env):
         super().__init__(env)
@@ -27,10 +31,8 @@ class MetricsWrapper(gym.Wrapper):
                 reward_terms = dm_env._environment.task.reward_fn.reward_terms
                 for term_name, term_val in reward_terms.items():
                     # Map to standardized keys
-                    key = getattr(InfoKeys, f"TASK_REWARD_{term_name.upper()}", f"task/reward_{term_name}")
+                    key = getattr(InfoKeys, f"TASK_{term_name.upper()}", f"task/{term_name}")
                     info[key] = term_val
-                    print(f"key: {key}")
-                    print(f"term_val: {term_val}")
                     self.ep_reward_terms[term_name] = self.ep_reward_terms.get(term_name, 0.0) + term_val
         except Exception:
             pass # TODO: Add strict mode
@@ -39,7 +41,7 @@ class MetricsWrapper(gym.Wrapper):
         if terminated or truncated:
             # Reward terms
             for term_name, term_val in self.ep_reward_terms.items():
-                key = getattr(EpisodeInfoKeys, f"EPISODE_TASK_REWARD_{term_name.upper()}", f"episode_task/reward_{term_name}")
+                key = getattr(EpisodeInfoKeys, f"EPISODE_TASK_{term_name.upper()}", f"episode_task/{term_name}")
                 info[key] = term_val
                 
             # Musical metrics

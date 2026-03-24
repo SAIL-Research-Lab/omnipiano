@@ -23,7 +23,13 @@ class BaseConstraint(ABC):
         pass
 
 class JointMagnitudeConstraint(BaseConstraint):
-    """Penalizes joint actions that exceed a maximum magnitude."""
+    """
+    Penalizes joint actions that exceed a maximum magnitude.
+    
+    Note: In SafeRoboPianist, actions are typically normalized to the range [-1.0, 1.0] 
+    by the `RescaleAction` wrapper before reaching this constraint. 
+    Therefore, `max_magnitude` should typically be a value between 0.0 and 1.0.
+    """
     
     def __init__(self, index: int, max_magnitude: float, penalty_coef: float):
         super().__init__(penalty_coef)
