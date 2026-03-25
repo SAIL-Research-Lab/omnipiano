@@ -1,4 +1,4 @@
-"""Configuration dataclasses for SafeRoboPianist.
+"""Configuration dataclasses for OmniPiano.
 
 Centralize all user-facing configuration schemas in one place.
 Keep environment construction code (make, wrappers, registry) clean by passing
@@ -7,7 +7,7 @@ typed config objects instead of many scattered keyword arguments.
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-from safe_robopianist.safety.constraints import BaseConstraint
+from OmniPiano.safety.constraints import BaseConstraint
 
 
 @dataclass

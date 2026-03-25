@@ -1,4 +1,4 @@
-"""Environment registration and factory for SafeRoboPianist.
+"""Environment registration and factory for OmniPiano.
 
 This module implements the register() + make() pattern (following Robust-Gymnasium).
 - register(): Declares a benchmark task by storing its TaskSpec in the registry.
@@ -13,11 +13,11 @@ from shimmy.dm_control_compatibility import DmControlCompatibilityV0
 from robopianist import suite
 from robopianist.wrappers.evaluation import MidiEvaluationWrapper
 
-from safe_robopianist.wrappers.robust_wrapper import RobustWrapper
-from safe_robopianist.wrappers.safety_wrapper import SafetyWrapper
-from safe_robopianist.wrappers.metrics_wrapper import MetricsWrapper
-from safe_robopianist.configs import RobustConfig, SafetyConfig, TaskVariantConfig
-from safe_robopianist.tasks.safe_piano_task import SafePianoTask
+from OmniPiano.wrappers.robust_wrapper import RobustWrapper
+from OmniPiano.wrappers.safety_wrapper import SafetyWrapper
+from OmniPiano.wrappers.metrics_wrapper import MetricsWrapper
+from OmniPiano.configs import RobustConfig, SafetyConfig, TaskVariantConfig
+from OmniPiano.tasks.omni_piano_task import OmniPianoTask
 
 
 @dataclass
@@ -36,7 +36,7 @@ def register(id: str, **kwargs):
     """Register a benchmark task by name.
 
     Args:
-        id: Unique task identifier, e.g. "SafeRoboPianist-Twinkle-RightHandWristLimit-v0".
+        id: Unique task identifier, e.g. "OmniPiano-Twinkle-RightHandWristLimit-v0".
         **kwargs: Fields of TaskSpec (base_env_name, safety_config, robust_config, task_config).
     """
     _registry[id] = TaskSpec(**kwargs)
@@ -87,7 +87,7 @@ def make(
 
     dm_env = suite.load_with_task(
         environment_name=base_env_name,
-        task_cls=SafePianoTask,
+        task_cls=OmniPianoTask,
         midi_file=midi_file_path,
         seed=seed,
         task_kwargs=task_kwargs
@@ -146,7 +146,7 @@ def make(
 
     # 7. Add episode CSV logger only for eval split.
     if log_dir is not None and log_split == "eval":
-        from safe_robopianist.utils.logger_wrapper import SafeRecordEpisodeStatistics
+        from OmniPiano.utils.logger_wrapper import SafeRecordEpisodeStatistics
         env = SafeRecordEpisodeStatistics(
             env,
             log_dir=log_dir,

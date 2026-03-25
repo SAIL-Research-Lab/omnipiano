@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
-from safe_robopianist.configs import RobustConfig
-from safe_robopianist.utils.info_keys import InfoKeys
+from OmniPiano.configs import RobustConfig
+from OmniPiano.utils.info_keys import InfoKeys
 
 class RobustWrapper(gym.Wrapper):
     """Injects robustness perturbations into the environment."""

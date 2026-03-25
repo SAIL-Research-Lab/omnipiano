@@ -106,7 +106,7 @@ def load_with_task(
 ) -> composer.Environment:
     """Loads a RoboPianist environment with a custom Task class.
     
-    This is useful for benchmarks (like SafeRoboPianist) that need to intercept
+    This is useful for benchmarks (like OmniPiano) that need to intercept
     the environment compilation process to dynamically modify the XML tree.
     """
     if midi_file is not None:

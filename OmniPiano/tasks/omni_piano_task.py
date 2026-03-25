@@ -1,9 +1,9 @@
 from robopianist.suite.tasks import piano_with_shadow_hands
 from dm_control import mjcf
-from safe_robopianist.configs import TaskVariantConfig
+from OmniPiano.configs import TaskVariantConfig
 
 
-class SafePianoTask(piano_with_shadow_hands.PianoWithShadowHands):
+class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
     """
     A custom Task that intercepts the environment compilation process.
     This allows us to dynamically modify the XML (mjcf_model) in memory

@@ -1,6 +1,6 @@
 import gymnasium as gym
 from robopianist.wrappers.evaluation import MidiEvaluationWrapper
-from safe_robopianist.utils.info_keys import InfoKeys, EpisodeInfoKeys
+from OmniPiano.utils.info_keys import InfoKeys, EpisodeInfoKeys
 
 
 class MetricsWrapper(gym.Wrapper):

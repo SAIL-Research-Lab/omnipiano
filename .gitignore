@@ -2,7 +2,7 @@
 /*
 
 # 排除需要追踪的文件夹
-!/safe_robopianist/
+!/OmniPiano/
 !/examples/
 !/setup.py
 

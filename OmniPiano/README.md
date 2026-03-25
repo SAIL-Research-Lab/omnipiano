@@ -1,6 +1,6 @@
-# SafeRoboPianist Framework Architecture Guide
+# OmniPiano Framework Architecture Guide
 
-`SafeRoboPianist` is a modular, extensible Reinforcement Learning benchmark framework built on top of DeepMind's `robopianist`. It is designed to provide an evaluation platform for **Safety** and **Robustness** in high-dimensional continuous control tasks.
+`OmniPiano` is a modular, extensible Reinforcement Learning benchmark framework built on top of DeepMind's `robopianist`. It is designed to provide an evaluation platform for **Safety** and **Robustness** in high-dimensional continuous control tasks.
 
 The framework employs a "sandwich" architecture design:
 1. **Top Layer (Registry & Examples)**: Provides a unified, extremely simple interface for users to instantiate pre-defined benchmark tasks via a Task Registry.
@@ -12,7 +12,7 @@ The framework employs a "sandwich" architecture design:
 ## Directory Structure and File Descriptions
 
 ```text
-safe_robopianist/
+OmniPiano/
 ├── configs.py
 ├── envs/
 │   ├── __init__.py
@@ -43,14 +43,14 @@ safe_robopianist/
   * **Content**: Contains `SafetyConfig` (list of safety constraints), `RobustConfig` (noise parameters), `TaskVariantConfig` (underlying physics variant switches), and `LoggingConfig`.
 * **`tasks/registry.py`**
   * **Role**: The official repository of benchmark tasks.
-  * **Content**: Defines `REGISTERED_TASKS`, a dictionary mapping task names (e.g., `"SafeRoboPianist-debug-Twinkle-WristLimit-v0"`) to their specific `TaskSpec` (which bundles the base environment name and all necessary configs). This allows users to load complex tasks with a single string.
+  * **Content**: Defines `REGISTERED_TASKS`, a dictionary mapping task names (e.g., `"OmniPiano-debug-Twinkle-WristLimit-v0"`) to their specific `TaskSpec` (which bundles the base environment name and all necessary configs). This allows users to load complex tasks with a single string.
 
 ### 2. Environment Assembly Factory (`envs/`)
 * **`envs/safe_piano_env.py`**
   * **Role**: The entry point factory for environment creation (the `make` function).
   * **Responsibilities**:
     1. Looks up the requested `env_name` in the Registry to fetch predefined configs, falling back to defaults if not found.
-    2. Calls the underlying `load_with_task` to instantiate the custom `SafePianoTask`.
+    2. Calls the underlying `load_with_task` to instantiate the custom `OmniPianoTask`.
     3. Handles compatibility conversion from `dm_env` to `gymnasium` (via Shimmy).
     4. Nests the various Wrappers in a strict order (`Metrics` -> `Safety` -> `Robust`).
 

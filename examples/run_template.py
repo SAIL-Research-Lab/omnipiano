@@ -1,5 +1,5 @@
 """
-Template for running SafeRoboPianist with any RL algorithm.
+Template for running OmniPiano with any RL algorithm.
 
 This example uses Stable Baselines 3 (PPO) as a demonstration, but the logging
 is completely algorithm-agnostic and handled by the environment wrapper.
@@ -8,9 +8,9 @@ import os
 
 os.environ["MUJOCO_GL"] = "egl"
 
-from safe_robopianist import make
-from safe_robopianist.utils.iteration_summary_callback import TrainIterationSummaryCallback
-from safe_robopianist.utils.info_keys import EpisodeInfoKeys
+from OmniPiano import make
+from OmniPiano.utils.iteration_summary_callback import TrainIterationSummaryCallback
+from OmniPiano.utils.info_keys import EpisodeInfoKeys
 from stable_baselines3 import PPO
 from stable_baselines3.common.utils import get_latest_run_id
 from stable_baselines3.common.env_util import make_vec_env
@@ -31,7 +31,7 @@ def main():
     n_envs = 3
 
     # 2. Create the environment using the registered task name
-    env_name = "SafeRoboPianist-Twinkle-RightHandWristLimit-v0"
+    env_name = "OmniPiano-Twinkle-RightHandWristLimit-v0"
     print(f"Creating Safe/Robust environment: {env_name}")
 
     def env_creator():

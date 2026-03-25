@@ -1,4 +1,4 @@
-"""SafeRoboPianist: A Safety and Robustness Benchmark for Robot Piano Playing."""
+"""OmniPiano: A Safety and Robustness Benchmark for Robot Piano Playing."""
 
 import os as _os
 import sys as _sys
@@ -9,7 +9,7 @@ _envs_dir = _os.path.join(_os.path.dirname(__file__), "envs")
 if _envs_dir not in _sys.path:
     _sys.path.insert(0, _envs_dir)
 
-from safe_robopianist.envs.registration import make, register  # noqa: E402
+from OmniPiano.envs.registration import make, register  # noqa: E402
 
 # Importing envs triggers all register() calls in envs/__init__.py
-from safe_robopianist import envs  # noqa: E402, F401
+from OmniPiano import envs  # noqa: E402, F401

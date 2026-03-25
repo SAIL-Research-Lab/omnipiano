@@ -1,18 +1,18 @@
-"""SafeRoboPianist environment registration.
+"""OmniPiano environment registration.
 
 All benchmark tasks are registered here via register() calls.
 Importing this module triggers registration (side-effect on import).
 """
 
-from safe_robopianist.envs.registration import register
-from safe_robopianist.configs import SafetyConfig, RobustConfig, TaskVariantConfig
-from safe_robopianist.safety.constraints import JointMagnitudeConstraint
+from OmniPiano.envs.registration import register
+from OmniPiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig
+from OmniPiano.safety.constraints import JointMagnitudeConstraint
 
 # ---------------------------------------------------------------------------
 # Debug / Example Tasks
 # ---------------------------------------------------------------------------
 register(
-    id="SafeRoboPianist-debug-Twinkle-WristLimit-v0",
+    id="OmniPiano-debug-Twinkle-WristLimit-v0",
     base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
     safety_config=SafetyConfig(
         constraints=[
@@ -25,7 +25,7 @@ register(
 )
 
 register(
-    id="SafeRoboPianist-Twinkle-RightHandWristLimit-v0",
+    id="OmniPiano-Twinkle-RightHandWristLimit-v0",
     base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
     safety_config=SafetyConfig(
         constraints=[
