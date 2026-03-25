@@ -1,0 +1,35 @@
+"""SafeRoboPianist environment registration.
+
+All benchmark tasks are registered here via register() calls.
+Importing this module triggers registration (side-effect on import).
+"""
+
+from safe_robopianist.envs.registration import register
+from safe_robopianist.configs import SafetyConfig, RobustConfig, TaskVariantConfig
+from safe_robopianist.safety.constraints import JointMagnitudeConstraint
+
+# ---------------------------------------------------------------------------
+# Debug / Example Tasks
+# ---------------------------------------------------------------------------
+register(
+    id="SafeRoboPianist-debug-Twinkle-WristLimit-v0",
+    base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
+    safety_config=SafetyConfig(
+        constraints=[
+            JointMagnitudeConstraint(index=1, max_magnitude=0.5, penalty_coef=5.0),
+            JointMagnitudeConstraint(index=23, max_magnitude=0.5, penalty_coef=5.0),
+        ]
+    ),
+    robust_config=RobustConfig(action_noise_std=0.05, obs_noise_std=0.01),
+    task_config=TaskVariantConfig(left_hand_immobile=False, right_hand_immobile=False),
+)
+
+register(
+    id="SafeRoboPianist-Twinkle-RightHandWristLimit-v0",
+    base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
+    safety_config=SafetyConfig(
+        constraints=[
+            JointMagnitudeConstraint(index=1, max_magnitude=0.8, penalty_coef=5.0),
+        ]
+    ),
+)

@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from safe_robopianist.configs import SafetyConfig
-from safe_robopianist.metrics.info_keys import InfoKeys, EpisodeInfoKeys
+from safe_robopianist.utils.info_keys import InfoKeys, EpisodeInfoKeys
 
 class SafetyWrapper(gym.Wrapper):
     """Calculates safety costs and violations using modular constraints."""

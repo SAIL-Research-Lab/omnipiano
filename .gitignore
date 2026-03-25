@@ -2,8 +2,12 @@
 /*
 
 # 排除需要追踪的文件夹
-!/robopianist/
 !/safe_robopianist/
+!/examples/
+!/setup.py
+
+# 忽略 examples 下的日志
+/examples/logs/
 
 # 排除 .gitignore 文件自身
 !.gitignore
