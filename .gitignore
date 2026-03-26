@@ -4,6 +4,7 @@
 # 排除需要追踪的文件夹
 !/OmniPiano/
 !/examples/
+!/demos/
 !/setup.py
 
 # 忽略 examples 下的日志
