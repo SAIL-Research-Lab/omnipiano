@@ -19,35 +19,37 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         # 2. Dynamically modify the XML tree based on the config
         self._apply_task_variants()
         
+    # Move frozen hands far below the piano so they don't interfere.
+    _FROZEN_HAND_POSITION = (0.4, 0.0, -0.5)
+
     def _apply_task_variants(self):
-        root_mjcf = self.root_entity.mjcf_model
-        
-        # Example: Make the left hand immobile by removing its actuators
         if self.task_config.left_hand_immobile:
-            # Find all actuators in the XML tree
-            all_actuators = root_mjcf.find_all('actuator')
-            for actuator in all_actuators:
-                # If the actuator belongs to the left hand, remove it
-                if "left_" in actuator.name:
-                    actuator.remove()
-            
-            # Optionally, we can also make the left hand joints fixed
-            # so it doesn't flop around due to gravity
-            all_joints = root_mjcf.find_all('joint')
-            for joint in all_joints:
-                if "left_" in joint.name:
-                    joint.type = "fixed"
-                    
-        # Example: Make the right hand immobile
+            self._freeze_hand(self.left_hand)
         if self.task_config.right_hand_immobile:
-            all_actuators = root_mjcf.find_all('actuator')
-            for actuator in all_actuators:
-                if "right_" in actuator.name:
-                    actuator.remove()
-            all_joints = root_mjcf.find_all('joint')
-            for joint in all_joints:
-                if "right_" in joint.name:
-                    joint.type = "fixed"
+            self._freeze_hand(self.right_hand)
+
+    def _freeze_hand(self, hand):
+        """Lock all joints/actuators and relocate the hand below the piano.
+
+        We cannot remove actuators or joints because MJCF sensors (actuatorvel,
+        actuatorfrc) and tendons hold live references to them. Removing any
+        element would leave dangling references and crash XML compilation.
+        Instead we clamp both joint ranges and actuator control ranges to near-zero,
+        then move the hand's root body far below the stage so it cannot physically
+        interfere with the active hand or the piano keys.
+        """
+        # MuJoCo requires range[0] < range[1], so use a tiny epsilon interval
+        # instead of [0, 0] to approximate a fully locked joint/actuator.
+        _EPS = 1e-7
+        for joint in list(hand.joints):
+            # `joint.range` is only enforced when `joint.limited` is enabled.
+            joint.limited = True
+            joint.range = [-_EPS, _EPS]
+        for actuator in list(hand.actuators):
+            # Clamp controller outputs to near zero so policy commands cannot move this hand.
+            actuator.ctrlrange = [-_EPS, _EPS]
+        # Relocate the entire hand away from the keyboard to eliminate residual contacts.
+        hand.root_body.pos = self._FROZEN_HAND_POSITION
 
     # We can also override before_step to implement Dynamics Randomization
     def before_step(self, physics, action, random_state):

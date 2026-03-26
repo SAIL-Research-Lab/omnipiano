@@ -6,7 +6,7 @@ Importing this module triggers registration (side-effect on import).
 
 from OmniPiano.envs.registration import register
 from OmniPiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig
-from OmniPiano.safety.constraints import JointMagnitudeConstraint
+from OmniPiano.safety.constraints import JointMagnitudeConstraint, HandCollisionConstraint
 
 # ---------------------------------------------------------------------------
 # Debug / Example Tasks
@@ -24,6 +24,9 @@ register(
     task_config=TaskVariantConfig(left_hand_immobile=False, right_hand_immobile=False),
 )
 
+# ---------------------------------------------------------------------------
+# Right-Hand-WristPitch-Limit Tasks
+# ---------------------------------------------------------------------------
 register(
     id="OmniPiano-Twinkle-RightHandWristLimit-v0",
     base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
@@ -33,3 +36,26 @@ register(
         ]
     ),
 )
+
+# ---------------------------------------------------------------------------
+# Right-Hand-Only Tasks
+# ---------------------------------------------------------------------------
+register(
+    id="OmniPiano-Twinkle-RightHandOnly-v0",
+    base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
+    task_config=TaskVariantConfig(left_hand_immobile=True),
+)
+
+# ---------------------------------------------------------------------------
+# Collision-Safe Tasks
+# ---------------------------------------------------------------------------
+register(
+    id="OmniPiano-Twinkle-CollisionSafe-v0",
+    base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
+    safety_config=SafetyConfig(
+        constraints=[
+            HandCollisionConstraint(penalty_coef=1.0),
+        ]
+    ),
+)
+

@@ -31,7 +31,9 @@ def main():
     n_envs = 3
 
     # 2. Create the environment using the registered task name
-    env_name = "OmniPiano-Twinkle-RightHandWristLimit-v0"
+    # env_name = "OmniPiano-Twinkle-RightHandWristLimit-v0"
+    # env_name = "OmniPiano-Twinkle-RightHandOnly-v0"
+    env_name = "OmniPiano-Twinkle-CollisionSafe-v0"
     print(f"Creating Safe/Robust environment: {env_name}")
 
     def env_creator():
@@ -57,7 +59,8 @@ def main():
     # 4. Train
     print("Starting training...")
     iteration_summary_callback = TrainIterationSummaryCallback(log_dir=log_dir)
-    model.learn(total_timesteps=30720, callback=iteration_summary_callback)
+    # model.learn(total_timesteps=30720, callback=iteration_summary_callback)
+    model.learn(total_timesteps=15360, callback=iteration_summary_callback)
     print(f"Training completed. Check the CSV logs in: {log_dir}")
 
     model_path = os.path.join(log_dir, "final_model")
@@ -76,7 +79,7 @@ def main():
         record_dir=video_dir,
     )
 
-    for ep_idx in range(3):
+    for ep_idx in range(1):
         obs, info = eval_env.reset()
         done = False
         total_reward = 0.0
