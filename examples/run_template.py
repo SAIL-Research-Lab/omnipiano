@@ -33,7 +33,8 @@ def main():
     # 2. Create the environment using the registered task name
     # env_name = "OmniPiano-Twinkle-RightHandWristLimit-v0"
     # env_name = "OmniPiano-Twinkle-RightHandOnly-v0"
-    env_name = "OmniPiano-Twinkle-CollisionSafe-v0"
+    # env_name = "OmniPiano-Twinkle-CollisionSafe-v0"
+    env_name = "OmniPiano-Twinkle-PowerConstrained-v0"
     print(f"Creating Safe/Robust environment: {env_name}")
 
     def env_creator():

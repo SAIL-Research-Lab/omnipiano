@@ -80,3 +80,26 @@ class HandCollisionConstraint(BaseConstraint):
 
     def get_info_key(self) -> str:
         return "step_safety/cost_hand_collision"
+
+
+class TotalActuatorPowerConstraint(BaseConstraint):
+    """Uses raw total actuator power as dense safety cost.
+
+    Power definition follows RoboPianist's existing energy term:
+    `power = abs(force) * abs(velocity)` for each actuator, then summed over both hands.
+    """
+
+    def __init__(self, penalty_coef: float = 1.0):
+        super().__init__(penalty_coef)
+
+    def compute_cost(self, env, action: np.ndarray, obs: Dict[str, Any], info: Dict[str, Any]) -> float:
+        del action, obs, info  # Unused.
+        physics, task = self._get_dm_internals(env)
+
+        right_power = task.right_hand.observables.actuators_power(physics).copy()
+        left_power = task.left_hand.observables.actuators_power(physics).copy()
+        total_power = float(np.sum(right_power) + np.sum(left_power))
+        return self.penalty_coef * total_power
+
+    def get_info_key(self) -> str:
+        return "step_safety/cost_total_actuator_power"
