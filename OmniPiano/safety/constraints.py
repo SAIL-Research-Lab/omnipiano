@@ -1,6 +1,7 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Any, Dict
+from OmniPiano.utils.env_unwrap import get_composer_env_from_gym
 
 
 class BaseConstraint(ABC):
@@ -24,36 +25,9 @@ class BaseConstraint(ABC):
 
     @staticmethod
     def _get_dm_internals(env):
-        """Traverse wrappers to reach the underlying composer environment.
-
-        Unwrap order:
-        1) Gymnasium wrappers via `.env`
-        2) Shimmy bridge via `._env`
-        3) dm_env wrappers via public `.environment`
-        """
-        # `env` arrives as a Gymnasium wrapper layer (e.g., MetricsWrapper).
-        env_ptr = env
-        # Unwrap Gym wrappers first (`.env` chain).
-        while hasattr(env_ptr, "env"):
-            env_ptr = env_ptr.env
-
-        # At this point we expect shimmy's DmControlCompatibilityV0 wrapper.
-        if not hasattr(env_ptr, "_env"):
-            raise AttributeError("Expected shimmy wrapper with a '_env' attribute.")
-        dm_env = env_ptr._env
-
-        # Prefer the public `environment` property exposed by dm_env wrappers.
-        while hasattr(dm_env, "environment"):
-            next_env = dm_env.environment
-            if next_env is dm_env:
-                break
-            dm_env = next_env
-
-        if not hasattr(dm_env, "physics") or not hasattr(dm_env, "task"):
-            raise AttributeError(
-                "Failed to unwrap to a composer environment exposing physics/task."
-            )
-        return dm_env.physics, dm_env.task
+        """Return (physics, task) from underlying composer environment."""
+        composer_env = get_composer_env_from_gym(env)
+        return composer_env.physics, composer_env.task
 
 
 class JointMagnitudeConstraint(BaseConstraint):

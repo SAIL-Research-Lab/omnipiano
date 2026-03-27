@@ -79,7 +79,7 @@ def main():
         record_dir=video_dir,
     )
 
-    for ep_idx in range(1):
+    for ep_idx in range(2):
         obs, info = eval_env.reset()
         done = False
         total_reward = 0.0

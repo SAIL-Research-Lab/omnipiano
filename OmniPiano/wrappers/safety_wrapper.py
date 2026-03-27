@@ -48,7 +48,7 @@ class SafetyWrapper(gym.Wrapper):
         
         # Step info
         info[InfoKeys.STEP_SAFETY_COST_TOTAL] = step_cost
-        info[InfoKeys.STEP_SAFETY_VIOLATION_JOINT_LIMIT] = step_violation
+        info[InfoKeys.STEP_SAFETY_VIOLATION_ANY] = step_violation
         
         # Episode info
         if terminated or truncated:

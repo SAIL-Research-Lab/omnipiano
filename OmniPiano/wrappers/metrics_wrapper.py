@@ -1,6 +1,11 @@
 import gymnasium as gym
 from robopianist.wrappers.evaluation import MidiEvaluationWrapper
 from OmniPiano.utils.info_keys import InfoKeys, EpisodeInfoKeys
+from OmniPiano.utils.env_unwrap import (
+    get_composer_env_from_gym,
+    get_dm_env_from_gym,
+    find_dm_env_wrapper,
+)
 
 
 class MetricsWrapper(gym.Wrapper):
@@ -17,25 +22,35 @@ class MetricsWrapper(gym.Wrapper):
     def reset(self, **kwargs):
         self.ep_reward_terms = {}
         return self.env.reset(**kwargs)
-        
+
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
         
         # 1. Extract Reward Terms
-        try:
-            env_ptr = self.env
-            while hasattr(env_ptr, 'env'):
-                env_ptr = env_ptr.env
-            dm_env = env_ptr._env
-            if hasattr(dm_env._environment.task, 'reward_fn'):
-                reward_terms = dm_env._environment.task.reward_fn.reward_terms
-                for term_name, term_val in reward_terms.items():
-                    # Map to standardized keys
-                    key = getattr(InfoKeys, f"TASK_{term_name.upper()}", f"task/{term_name}")
-                    info[key] = term_val
-                    self.ep_reward_terms[term_name] = self.ep_reward_terms.get(term_name, 0.0) + term_val
-        except Exception:
-            pass # TODO: Add strict mode
+        # Pipeline reminder (with source files):
+        # 1) Unwrap to composer env: `get_composer_env_from_gym(...)`
+        #    - file: OmniPiano/utils/env_unwrap.py
+        # 2) dm_control step calls `task.get_reward(...)`
+        #    - file: dm_control/composer/environment.py (in site-packages)
+        # 3) Task forwards reward call to `self._reward_fn.compute(physics)`
+        #    - file: OmniPiano/envs/robopianist/suite/tasks/piano_with_shadow_hands.py
+        # 4) Composite reward computes each term and updates `reward_terms`
+        #    - file: OmniPiano/envs/robopianist/suite/composite_reward.py
+        #
+        # This wrapper runs right after env.step(...) returns, so we read
+        # `composer_env.task.reward_fn.reward_terms` to capture per-step sub-reward values
+        # (energy, key_press, sustain, fingering, etc.) and then aggregate them per episode.
+        composer_env = get_composer_env_from_gym(self.env)
+        if not hasattr(composer_env.task, "reward_fn"):
+            raise AttributeError(
+                "MetricsWrapper expects task.reward_fn for reward term extraction."
+            )
+        reward_terms = composer_env.task.reward_fn.reward_terms
+        for term_name, term_val in reward_terms.items():
+            # Map to standardized keys
+            key = getattr(InfoKeys, f"TASK_{term_name.upper()}", f"task/{term_name}")
+            info[key] = term_val
+            self.ep_reward_terms[term_name] = self.ep_reward_terms.get(term_name, 0.0) + term_val
             
         # 2. Episode Metrics
         if terminated or truncated:
@@ -45,21 +60,18 @@ class MetricsWrapper(gym.Wrapper):
                 info[key] = term_val
                 
             # Musical metrics
-            try:
-                env_ptr = self.env
-                while hasattr(env_ptr, 'env'):
-                    env_ptr = env_ptr.env
-                dm_env = env_ptr._env
-                
-                if isinstance(dm_env, MidiEvaluationWrapper):
-                    metrics = dm_env.get_musical_metrics()
-                    info[EpisodeInfoKeys.EPISODE_TASK_F1] = metrics['f1']
-                    info[EpisodeInfoKeys.EPISODE_TASK_KEY_PRECISION] = metrics['precision']
-                    info[EpisodeInfoKeys.EPISODE_TASK_KEY_RECALL] = metrics['recall']
-                    info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_F1] = metrics['sustain_f1']
-                    info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_PRECISION] = metrics['sustain_precision']
-                    info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_RECALL] = metrics['sustain_recall']
-            except Exception:
-                pass # TODO: Add strict mode
+            dm_env = get_dm_env_from_gym(self.env)
+            midi_eval_wrapper = find_dm_env_wrapper(dm_env, MidiEvaluationWrapper)
+            if midi_eval_wrapper is None:
+                raise RuntimeError(
+                    "MetricsWrapper expects MidiEvaluationWrapper in dm_env chain."
+                )
+            metrics = midi_eval_wrapper.get_musical_metrics()
+            info[EpisodeInfoKeys.EPISODE_TASK_F1] = metrics['f1']
+            info[EpisodeInfoKeys.EPISODE_TASK_KEY_PRECISION] = metrics['precision']
+            info[EpisodeInfoKeys.EPISODE_TASK_KEY_RECALL] = metrics['recall']
+            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_F1] = metrics['sustain_f1']
+            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_PRECISION] = metrics['sustain_precision']
+            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_RECALL] = metrics['sustain_recall']
                 
         return obs, reward, terminated, truncated, info
