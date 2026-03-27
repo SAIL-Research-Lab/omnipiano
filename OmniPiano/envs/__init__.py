@@ -88,3 +88,14 @@ register(
     ),
 )
 
+# ---------------------------------------------------------------------------
+# Observation-Robustness Tasks
+# ---------------------------------------------------------------------------
+register(
+    id="OmniPiano-Twinkle-ObservationRobust-v0",
+    base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
+    robust_config=RobustConfig(
+        action_noise_std=0.0,
+        obs_noise_std=0.01,
+    ),
+)
