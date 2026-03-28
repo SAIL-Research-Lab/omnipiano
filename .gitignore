@@ -6,6 +6,7 @@
 !/examples/
 !/demos/
 !/setup.py
+!/README.md
 
 # 忽略 examples 下的日志
 /examples/logs/
