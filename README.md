@@ -1,14 +1,11 @@
 # OmniPiano Framework Architecture Guide
 
-`OmniPiano` is a safety and robustness benchmark built on top of a vendored copy
-of `robopianist`. The benchmark keeps three concerns decoupled:
+`OmniPiano` is a safety and robustness benchmark built on top of DeepMind's `robopianist`.
 
-1. Task reward comes from the underlying RoboPianist task.
-2. Safety cost is computed separately and exposed through `info`.
-3. Robustness perturbations are injected by wrappers without changing task logic.
-
-This separation is intentional: as a benchmark, `OmniPiano` should return reward
-and cost, not hard-code how an algorithm trades them off.
+The framework employs a "sandwich" architecture design:
+1. **Top Layer (Registry & Examples)**: Provides a unified, extremely simple interface for users to instantiate pre-defined benchmark tasks via a Task Registry.
+2. **Middle Layer (Gymnasium Wrappers)**: Handles signal-level noise injection, safety cost calculation, and metric extraction through decoupled wrappers.
+3. **Bottom Layer (Task & mjcf)**: Intercepts the underlying physics compilation process to enable dynamic modification of the MuJoCo XML tree.
 
 ## Selected Demos
 
