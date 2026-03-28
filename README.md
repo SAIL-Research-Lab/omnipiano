@@ -87,115 +87,72 @@ The end-to-end environment construction pipeline is:
 
 ## Module Responsibilities
 
-### `OmniPiano/__init__.py`
+### 1. Package Entry Point
+* **`OmniPiano/__init__.py`**
+  * **Role**: The public package entry point.
+  * **Responsibilities**: Ensures the vendored `robopianist` under `OmniPiano/envs/` is found first on `sys.path`, re-exports `make` and `register`, and triggers task registration through the import of `OmniPiano.envs`.
 
-- Public package entry point.
-- Ensures the vendored `robopianist` under `OmniPiano/envs/` is found first on
-  `sys.path`.
-- Re-exports `make` and `register`.
+### 2. Core Configuration & Registry
+* **`OmniPiano/configs/__init__.py`**
+  * **Role**: Defines the benchmark configuration dataclasses.
+  * **Content**:
+    1. `SafetyConfig`: list of instantiated safety constraints.
+    2. `RobustConfig`: perturbation parameters such as `action_noise_std` and `obs_noise_std`.
+    3. `TaskVariantConfig`: low-level task switches such as `left_hand_immobile` / `right_hand_immobile`.
+    4. `LoggingConfig`: shared logging configuration such as log directory and split.
+    5. `EvalProtocolConfig`: shared evaluation protocol settings such as seeds and number of evaluation episodes.
+* **`OmniPiano/envs/__init__.py`**
+  * **Role**: The official repository of benchmark task declarations.
+  * **Content**: Registers all benchmark tasks through `register(...)`. Each task maps a human-readable benchmark ID to its `TaskSpec`, which bundles the base environment name plus the default safety, robustness, and task-variant configurations. Current tasks include right-hand wrist limit, right-hand only, collision-safe, power-constrained, action-robust, and observation-robust.
 
-### `OmniPiano/configs/__init__.py`
+### 3. Environment Assembly Factory (`envs/`)
+* **`OmniPiano/envs/registration.py`**
+  * **Role**: The entry point factory for environment creation.
+  * **Responsibilities**:
+    1. Implements the `register()` + `make()` pattern.
+    2. Resolves a registered task name into its `TaskSpec` and default configs, while still allowing caller-provided overrides.
+    3. Calls the underlying `load_with_task(...)` to instantiate `OmniPianoTask` on top of the vendored RoboPianist task.
+    4. Adds dm_env-level wrappers such as `MidiEvaluationWrapper` and optional `PianoSoundVideoWrapper`.
+    5. Converts the dm_env into a Gymnasium environment via Shimmy.
+    6. Applies the benchmark wrapper stack in a fixed order: `MetricsWrapper` -> `SafetyWrapper` -> `RobustWrapper`.
+    7. Optionally adds eval-time CSV episode logging when `log_split == "eval"`.
 
-- Defines the benchmark configuration dataclasses.
-- `SafetyConfig`: list of instantiated safety constraints.
-- `RobustConfig`: perturbation parameters such as `action_noise_std` and
-  `obs_noise_std`.
-- `TaskVariantConfig`: low-level task switches such as
-  `left_hand_immobile` / `right_hand_immobile`.
-- `LoggingConfig` and `EvalProtocolConfig`: shared logging/evaluation settings.
+### 4. Low-Level Physics Interceptor (`tasks/`)
+* **`OmniPiano/tasks/omni_piano_task.py`**
+  * **Role**: The low-level task customization layer that reaches into the MuJoCo/MJCF build process.
+  * **Responsibilities**: Subclasses `robopianist.suite.tasks.piano_with_shadow_hands.PianoWithShadowHands`, intercepts task construction after the default MJCF tree is built, and applies structural task variants such as freezing one hand by clamping joint ranges, clamping actuator control ranges, and relocating the frozen hand away from the piano. This is the correct layer for physical task modifications because it changes the underlying MJCF/composer task itself rather than only post-processing observations or actions.
 
-### `OmniPiano/envs/registration.py`
+### 5. Safety Constraint Definitions (`safety/`)
+* **`OmniPiano/safety/constraints.py`**
+  * **Role**: The mathematical logic library defining what is "unsafe".
+  * **Responsibilities**: Defines the modular safety constraint interface (`BaseConstraint`) and concrete implementations such as joint magnitude limits, hand collision cost, and total actuator power cost. Each constraint computes its per-step cost independently from reward, writes its own metric key into `info`, and can be extended without modifying the core environment factory or wrapper pipeline.
 
-- Implements the `register()` + `make()` pattern.
-- `register(...)` stores a `TaskSpec` in the benchmark registry.
-- `make(...)` is the single environment factory used by examples and training
-  code.
-- This file is the assembly point that connects registry defaults, the
-  underlying RoboPianist task, dm_env wrappers, Gymnasium conversion, and
-  benchmark wrappers.
+### 6. Modular Wrappers (`wrappers/`)
+These wrappers follow the standard Gymnasium API and handle the data flow between the agent and the underlying physics environment.
 
-### `OmniPiano/envs/__init__.py`
+* **`OmniPiano/wrappers/metrics_wrapper.py`**
+  * **Role**: Responsible for extracting task-side metrics.
+  * **Responsibilities**: Reads raw reward terms from the underlying composer task, reads musical metrics from `MidiEvaluationWrapper`, standardizes exported keys through `OmniPiano/utils/info_keys.py`, and aggregates episode-level task metrics. This wrapper is applied to all tasks to keep benchmark logging consistent across safety-only, robustness-only, and mixed tasks.
+* **`OmniPiano/wrappers/safety_wrapper.py`**
+  * **Role**: Responsible for executing safety constraints and exposing costs.
+  * **Responsibilities**: Iterates through all configured safety constraints, aggregates per-step and per-episode safety cost, writes safety signals into `info`, and intentionally does **not** modify the environment reward. This preserves the benchmark principle that reward-cost trade-offs should be handled by the RL algorithm rather than hard-coded inside the environment.
+* **`OmniPiano/wrappers/robust_wrapper.py`**
+  * **Role**: Responsible for signal-level robustness perturbation.
+  * **Responsibilities**: Injects action noise before forwarding actions to the wrapped environment, injects observation noise after receiving observations, and logs perturbation magnitude for analysis. This keeps robustness perturbations decoupled from both the base task definition and the safety-cost computation logic.
 
-- Contains the actual benchmark task declarations.
-- Importing this module triggers the `register(...)` calls.
-- Current tasks include:
-  - Right-hand wrist limit
-  - Right-hand only
-  - Collision-safe
-  - Power-constrained
-  - Action-robust
-  - Observation-robust
-
-### `OmniPiano/tasks/omni_piano_task.py`
-
-- Defines `OmniPianoTask`, which subclasses
-  `robopianist.suite.tasks.piano_with_shadow_hands.PianoWithShadowHands`.
-- Intercepts task construction after the default MJCF tree is built.
-- Applies task variants such as freezing one hand by:
-  - clamping joint ranges,
-  - clamping actuator control ranges,
-  - relocating the frozen hand away from the piano.
-- This is where structural task variants belong, because they modify the
-  underlying physical task rather than just post-process signals.
-
-### `OmniPiano/safety/constraints.py`
-
-- Defines the modular safety constraint interface (`BaseConstraint`) and concrete
-  implementations.
-- Example constraints currently implemented:
-  - joint magnitude limits,
-  - hand collision cost,
-  - total actuator power cost.
-- Constraints compute per-step cost independently from reward and write their own
-  metric keys into `info`.
-
-### `OmniPiano/wrappers/metrics_wrapper.py`
-
-- Extracts task-side metrics after each environment step.
-- Reads raw reward terms from the underlying composer task.
-- Reads musical metrics from `MidiEvaluationWrapper`.
-- Standardizes all exported keys through `OmniPiano/utils/info_keys.py`.
-- This wrapper is applied to all tasks because benchmark logging should stay
-  consistent across safety-only, robustness-only, and mixed tasks.
-
-### `OmniPiano/wrappers/safety_wrapper.py`
-
-- Computes benchmark safety cost from the configured constraints.
-- Aggregates per-step cost and episode cost.
-- Writes safety signals into `info`.
-- Does **not** modify the environment reward.
-
-### `OmniPiano/wrappers/robust_wrapper.py`
-
-- Injects perturbations at the Gymnasium layer.
-- Action noise is added before forwarding the action to the wrapped environment.
-- Observation noise is added after receiving the observation from the wrapped
-  environment.
-- Logs perturbation magnitude for analysis.
-
-### `OmniPiano/utils/info_keys.py`
-
-- Defines the canonical `info` keys used across wrappers, callbacks, and loggers.
-- Separates step-level keys from episode-level keys.
-- Ensures all logging code depends on one naming source of truth.
-
-### `OmniPiano/utils/env_unwrap.py`
-
-- Centralizes wrapper unwrapping logic.
-- Used when benchmark wrappers need to recover the underlying dm_env/composer
-  environment safely from a Gymnasium wrapper stack.
-
-### `OmniPiano/utils/logger_wrapper.py`
-
-- Provides the eval-time episode CSV logger.
-- Records episode metrics without coupling logging logic to a specific RL
-  algorithm.
-
-### `OmniPiano/utils/iteration_summary_callback.py`
-
-- Stable-Baselines3 callback used by the example training script.
-- Aggregates completed training episodes per iteration and writes
-  `train_iteration_summary.csv`.
+### 7. Metrics & Logging Utilities (`utils/`)
+* **`OmniPiano/utils/info_keys.py`**
+  * **Role**: The unified data dictionary for the framework.
+  * **Responsibilities**: Defines the canonical step-level and episode-level `info` keys used across wrappers, callbacks, and loggers. This avoids hard-coded string duplication and keeps metric naming consistent across training, evaluation, CSV export, and future algorithm integrations.
+* **`OmniPiano/utils/env_unwrap.py`**
+  * **Role**: The shared unwrapping utility layer.
+  * **Responsibilities**: Centralizes wrapper-unwrapping logic so benchmark wrappers can safely recover the underlying dm_env/composer environment from a Gymnasium wrapper stack. This makes the metrics and safety code less fragile when the wrapper chain changes.
+* **`OmniPiano/utils/logger_wrapper.py`**
+  * **Role**: The evaluation-phase episode logger.
+  * **Responsibilities**: Records episode metrics to CSV without coupling logging to a specific RL algorithm. This is mainly used for evaluation-time episode logging.
+* **`OmniPiano/utils/iteration_summary_callback.py`**
+  * **Role**: The training-phase iteration logger used by the example script.
+  * **Responsibilities**: Aggregates completed training episodes per iteration and writes `train_iteration_summary.csv`. This is mainly used for training-time summary logging in the Stable-Baselines3 example pipeline.
 
 ## Example Entry Point
 
