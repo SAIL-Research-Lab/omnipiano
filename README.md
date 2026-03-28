@@ -13,8 +13,8 @@ and cost, not hard-code how an algorithm trades them off.
 ## Selected Demos
 
 <p align="center">
-  <video src="../demos/Right_Hand_Only/00001.mp4" controls muted width="420"></video>
-  <video src="../demos/Collision_Safe/00001.mp4" controls muted width="420"></video>
+  <img src="demos/Right_Hand_Only/preview.gif" alt="OmniPiano-Twinkle-RightHandOnly-v0 demo" width="420"/>
+  <img src="demos/Collision_Safe/preview.gif" alt="OmniPiano-Twinkle-CollisionSafe-v0 demo" width="420"/>
 </p>
 <p align="center">
   <strong>Left:</strong> <code>OmniPiano-Twinkle-RightHandOnly-v0</code>
@@ -22,7 +22,7 @@ and cost, not hard-code how an algorithm trades them off.
   <strong>Right:</strong> <code>OmniPiano-Twinkle-CollisionSafe-v0</code>
 </p>
 <p align="center">
-  These demos are stored locally in the repository <code>demos/</code> folder.
+  Animated previews are loaded from the repository <code>demos/</code> folder.
 </p>
 
 ## Current Package Layout
