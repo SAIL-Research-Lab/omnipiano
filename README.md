@@ -13,13 +13,16 @@ and cost, not hard-code how an algorithm trades them off.
 ## Selected Demos
 
 <p align="center">
-  <img src="demos/Right_Hand_Only/preview.gif" alt="OmniPiano-Twinkle-RightHandOnly-v0 demo" width="420"/>
-  <img src="demos/Collision_Safe/preview.gif" alt="OmniPiano-Twinkle-CollisionSafe-v0 demo" width="420"/>
+  <strong><code>OmniPiano-Twinkle-RightHandOnly-v0</code></strong>
 </p>
 <p align="center">
-  <strong>Left:</strong> <code>OmniPiano-Twinkle-RightHandOnly-v0</code>
-  &nbsp;&nbsp;&nbsp;
-  <strong>Right:</strong> <code>OmniPiano-Twinkle-CollisionSafe-v0</code>
+  <img src="demos/Right_Hand_Only/preview.gif" alt="OmniPiano-Twinkle-RightHandOnly-v0 demo" width="520"/>
+</p>
+<p align="center">
+  <strong><code>OmniPiano-Twinkle-CollisionSafe-v0</code></strong>
+</p>
+<p align="center">
+  <img src="demos/Collision_Safe/preview.gif" alt="OmniPiano-Twinkle-CollisionSafe-v0 demo" width="520"/>
 </p>
 <p align="center">
   Animated previews are loaded from the repository <code>demos/</code> folder.
