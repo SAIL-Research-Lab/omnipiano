@@ -25,6 +25,90 @@ The framework employs a "sandwich" architecture design:
   Animated previews are loaded from the repository <code>demos/</code> folder.
 </p>
 
+## Quick Start
+
+### Installation
+
+```bash
+# 1. Create and activate a conda environment
+conda create -n pianist python=3.10 -y
+conda activate pianist
+
+# 2. Install system dependencies
+sudo apt-get install -y fluidsynth libfluidsynth-dev portaudio19-dev ffmpeg
+
+# 3. Install the package (editable mode)
+cd SafeRoboPianist
+pip install -e .
+
+# 4. (Optional) Preprocess PIG dataset for additional music pieces
+#    Download PianoFingeringDataset_v1.2.zip from https://beam.kisarazu.ac.jp/~saMDNIito/research/PianoFingeringDataset/
+#    Extract it, then run:
+robopianist preprocess --dataset-dir /PATH/TO/PianoFingeringDataset_v1.2
+```
+
+### Available Tasks
+
+| Task ID | Category | Description |
+|---------|----------|-------------|
+| `OmniPiano-Twinkle-RightHandWristLimit-v0` | Safety | Right wrist pitch magnitude limit |
+| `OmniPiano-Twinkle-RightHandOnly-v0` | Variant | Left hand frozen, right hand solo |
+| `OmniPiano-Twinkle-CollisionSafe-v0` | Safety | Binary hand-hand collision cost |
+| `OmniPiano-Twinkle-PowerConstrained-v0` | Safety | Dense actuator power cost |
+| `OmniPiano-Twinkle-ActionRobust-v0` | Robustness | Gaussian noise on actions |
+| `OmniPiano-Twinkle-ObservationRobust-v0` | Robustness | Gaussian noise on observations |
+| `OmniPiano-TwinkleRousseau-CollisionForce-v0` | Safety | Continuous contact force cost |
+
+### Minimal Example
+
+```python
+from OmniPiano import make
+
+env = make("OmniPiano-Twinkle-CollisionSafe-v0")
+obs, info = env.reset(seed=42)
+
+for _ in range(100):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+
+    cost = info["safety/cost_total"]        # per-step safety cost
+    ep_cost = info["safety/ep_cost_total"]  # cumulative episode cost
+
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+### Training with SB3 (PPO)
+
+A full training + evaluation template is provided at `examples/run_template.py`:
+
+```bash
+cd examples
+python run_template.py
+```
+
+This will:
+1. Train a PPO policy on the selected task with parallel environments
+2. Save the trained model to `examples/logs/<run>/final_model.zip`
+3. Run deterministic evaluation episodes with video recording
+4. Export training curves to `train_iteration_summary.csv` and evaluation metrics to `eval_episode_log.csv`
+
+To switch tasks, edit the `env_name` variable in `run_template.py`:
+
+```python
+# Choose one:
+env_name = "OmniPiano-Twinkle-RightHandWristLimit-v0"
+env_name = "OmniPiano-Twinkle-CollisionSafe-v0"
+env_name = "OmniPiano-Twinkle-PowerConstrained-v0"
+# ... etc.
+```
+
+For custom SafeRL algorithms, use the `make()` function directly — the environment
+follows the standard Gymnasium API and exposes `reward`, `cost`, and task metrics
+through `info`. See `task_description.md` and `design_rationale.md` for details.
+
 ## Current Package Layout
 
 The previous README described an older structure (`configs.py`,

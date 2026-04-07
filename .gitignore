@@ -11,6 +11,9 @@
 # 忽略 examples 下的日志
 /examples/logs/
 
+# PIG 数据集预处理产物（用户需自行运行 robopianist preprocess 生成）
+OmniPiano/envs/robopianist/music/data/pig_single_finger/
+
 # 排除 .gitignore 文件自身
 !.gitignore
 
