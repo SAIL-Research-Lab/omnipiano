@@ -14,22 +14,6 @@ from OmniPiano.safety.constraints import (
 )
 
 # ---------------------------------------------------------------------------
-# Debug / Example Tasks
-# ---------------------------------------------------------------------------
-register(
-    id="OmniPiano-debug-Twinkle-WristLimit-v0",
-    base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
-    safety_config=SafetyConfig(
-        constraints=[
-            JointMagnitudeConstraint(index=1, max_magnitude=0.5, penalty_coef=5.0),
-            JointMagnitudeConstraint(index=23, max_magnitude=0.5, penalty_coef=5.0),
-        ]
-    ),
-    robust_config=RobustConfig(action_noise_std=0.05, obs_noise_std=0.01),
-    task_config=TaskVariantConfig(left_hand_immobile=False, right_hand_immobile=False),
-)
-
-# ---------------------------------------------------------------------------
 # Right-Hand-WristPitch-Limit Tasks
 # ---------------------------------------------------------------------------
 register(

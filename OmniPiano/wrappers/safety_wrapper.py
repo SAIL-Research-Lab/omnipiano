@@ -26,8 +26,9 @@ class SafetyWrapper(gym.Wrapper):
         step_cost = 0.0
         step_violation = False
         
-        # !!! need to change when later specify task, especially the ep_cost calculation
-        # Evaluate all constraints
+        # Evaluate all constraints — each constraint returns a cost already scaled by
+        # its own penalty_coef. The total cost is the sum of all weighted constraint costs.
+        # Per-constraint costs are also logged individually via constraint.get_info_key().
         for constraint in self.constraints:
             cost = constraint.compute_cost(self.env, action, obs, info)
             if cost > 0:
