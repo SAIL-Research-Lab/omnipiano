@@ -10,6 +10,7 @@
 
 # 忽略 examples 下的日志
 /examples/logs/
+/home/accelerator/SafeRoboPianist/examples/trial.py
 
 # PIG 数据集预处理产物（用户需自行运行 robopianist preprocess 生成）
 OmniPiano/envs/robopianist/music/data/pig_single_finger/

@@ -10,12 +10,6 @@ class RobustWrapper(gym.Wrapper):
         super().__init__(env)
         self.config = config
 
-    def reset(self, **kwargs):
-        seed = kwargs.get("seed", None)
-        if seed is not None:
-            self._np_random, _ = gym.utils.seeding.np_random(seed)
-        return self.env.reset(**kwargs)
-        
     def step(self, action):
         # 1. Inject Action Noise
         action_noise_l2 = 0.0

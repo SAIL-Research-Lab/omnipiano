@@ -1,1 +1,0 @@
-# RoboPianist Command Line Interface

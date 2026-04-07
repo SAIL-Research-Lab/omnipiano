@@ -1,4 +1,0 @@
-[submodule "third_party/mujoco_menagerie"]
-	path = third_party/mujoco_menagerie
-	url = https://github.com/deepmind/mujoco_menagerie.git
-	branch = main

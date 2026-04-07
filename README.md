@@ -111,8 +111,8 @@ for _ in range(100):
     action = env.action_space.sample()
     obs, reward, terminated, truncated, info = env.step(action)
 
-    cost = info["safety/cost_total"]        # per-step safety cost
-    ep_cost = info["safety/ep_cost_total"]  # cumulative episode cost
+    cost = info["step_safety/cost_total"]              # per-step safety cost
+    # info["episode_safety/cost_total"] is available when terminated or truncated
 
     if terminated or truncated:
         obs, info = env.reset()
