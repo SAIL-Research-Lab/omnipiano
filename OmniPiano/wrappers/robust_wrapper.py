@@ -9,12 +9,18 @@ class RobustWrapper(gym.Wrapper):
     def __init__(self, env, config: RobustConfig):
         super().__init__(env)
         self.config = config
+
+    def reset(self, **kwargs):
+        seed = kwargs.get("seed", None)
+        if seed is not None:
+            self._np_random, _ = gym.utils.seeding.np_random(seed)
+        return self.env.reset(**kwargs)
         
     def step(self, action):
         # 1. Inject Action Noise
         action_noise_l2 = 0.0
         if self.config.action_noise_std > 0:
-            noise = np.random.normal(0, self.config.action_noise_std, size=action.shape)
+            noise = self.np_random.normal(0, self.config.action_noise_std, size=action.shape)
             # Calculate the L2 norm (magnitude) of the noise vector to quantify the perturbation severity for logging
             action_noise_l2 = np.linalg.norm(noise)
             action = np.clip(action + noise, self.action_space.low, self.action_space.high)
@@ -29,7 +35,7 @@ class RobustWrapper(gym.Wrapper):
                 # This prevents errors when trying to add continuous noise to discrete/boolean 
                 # observations (like goal states, step counters, or categorical flags).
                 if isinstance(obs[key], np.ndarray) and obs[key].dtype in [np.float32, np.float64]:
-                    noise = np.random.normal(0, self.config.obs_noise_std, size=obs[key].shape)
+                    noise = self.np_random.normal(0, self.config.obs_noise_std, size=obs[key].shape)
                     obs_noise_l2 += np.linalg.norm(noise)
                     obs[key] = obs[key] + noise
                     

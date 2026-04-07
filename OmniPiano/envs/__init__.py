@@ -9,6 +9,7 @@ from OmniPiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig
 from OmniPiano.safety.constraints import (
     JointMagnitudeConstraint,
     HandCollisionConstraint,
+    HandCollisionForceConstraint,
     TotalActuatorPowerConstraint,
 )
 
@@ -85,6 +86,23 @@ register(
     robust_config=RobustConfig(
         action_noise_std=0.01,
         obs_noise_std=0.0,
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# Uses TwinkleRousseau (dual-hand piece, RH: C5-A5, LH: C3-F4, min gap
+# 7 semitones).  Cost is the sum of normal contact forces (continuous),
+# not binary collision detection.
+# TODO: switch to NocturneRousseau or a PIG piece with actual hand overlap
+# once formal repertoire data is available.
+# ---------------------------------------------------------------------------
+register(
+    id="OmniPiano-TwinkleRousseau-CollisionForce-v0",
+    base_env_name="RoboPianist-debug-TwinkleTwinkleRousseau-v0",
+    safety_config=SafetyConfig(
+        constraints=[
+            HandCollisionForceConstraint(penalty_coef=1.0),
+        ]
     ),
 )
 

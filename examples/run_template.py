@@ -29,6 +29,7 @@ def main():
     tensorboard_dir = os.path.join(log_dir, "tensorboard")
     os.makedirs(log_dir, exist_ok=True)
     n_envs = 3
+    seed = 42
 
     # 2. Create the environment using the registered task name
     # env_name = "OmniPiano-Twinkle-RightHandWristLimit-v0"
@@ -44,7 +45,9 @@ def main():
             log_split="train",
         )
 
-    vec_env = make_vec_env(env_creator, n_envs=n_envs)
+    # seed ensures reproducibility: make_vec_env assigns seed+i to each env,
+    # so parallel envs generate independent noise sequences via reset(seed=...).
+    vec_env = make_vec_env(env_creator, n_envs=n_envs, seed=seed)
 
     # 3. Initialize RL Algorithm
     print("Initializing RL Algorithm...")
@@ -81,7 +84,7 @@ def main():
     )
 
     for ep_idx in range(2):
-        obs, info = eval_env.reset()
+        obs, info = eval_env.reset(seed=seed + n_envs + ep_idx)
         done = False
         total_reward = 0.0
         while not done:

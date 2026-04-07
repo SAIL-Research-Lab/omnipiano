@@ -47,17 +47,28 @@ class MetricsWrapper(gym.Wrapper):
             )
         reward_terms = composer_env.task.reward_fn.reward_terms
         for term_name, term_val in reward_terms.items():
-            # Map to standardized keys
-            key = getattr(InfoKeys, f"TASK_{term_name.upper()}", f"task/{term_name}")
-            info[key] = term_val
+            attr_name = f"TASK_{term_name.upper()}"
+            if not hasattr(InfoKeys, attr_name):
+                raise AttributeError(
+                    f"InfoKeys has no attribute '{attr_name}'. "
+                    f"Add it to info_keys.py or check if the reward term "
+                    f"name '{term_name}' has changed in RoboPianist."
+                )
+            info[getattr(InfoKeys, attr_name)] = term_val
             self.ep_reward_terms[term_name] = self.ep_reward_terms.get(term_name, 0.0) + term_val
             
         # 2. Episode Metrics
         if terminated or truncated:
             # Reward terms
             for term_name, term_val in self.ep_reward_terms.items():
-                key = getattr(EpisodeInfoKeys, f"EPISODE_TASK_{term_name.upper()}", f"episode_task/{term_name}")
-                info[key] = term_val
+                attr_name = f"EPISODE_TASK_{term_name.upper()}"
+                if not hasattr(EpisodeInfoKeys, attr_name):
+                    raise AttributeError(
+                        f"EpisodeInfoKeys has no attribute '{attr_name}'. "
+                        f"Add it to info_keys.py or check if the reward term "
+                        f"name '{term_name}' has changed in RoboPianist."
+                    )
+                info[getattr(EpisodeInfoKeys, attr_name)] = term_val
                 
             # Musical metrics
             dm_env = get_dm_env_from_gym(self.env)
