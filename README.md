@@ -29,22 +29,66 @@ The framework employs a "sandwich" architecture design:
 
 ### Installation
 
+OmniPiano is supported on Linux and can be installed with Python >= 3.10.
+We recommend using [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or
+[Miniforge](https://github.com/conda-forge/miniforge) to manage your Python
+environment.
+
+> **Note**: Unlike the original RoboPianist, OmniPiano bundles the Shadow Hand
+> model files and the default soundfont (`TimGM6mb.sf2`) directly in the
+> repository. You do **not** need to run `git submodule` or `install_deps.sh`.
+
+**Step 1 — Install system dependencies**
+
 ```bash
-# 1. Create and activate a conda environment
+# Linux (Ubuntu / Debian)
+sudo apt-get update
+sudo apt-get install -y build-essential fluidsynth libfluidsynth-dev portaudio19-dev ffmpeg
+
+# macOS
+brew install portaudio fluid-synth ffmpeg
+```
+
+**Step 2 — Create a conda environment**
+
+```bash
 conda create -n pianist python=3.10 -y
 conda activate pianist
+```
 
-# 2. Install system dependencies
-sudo apt-get install -y fluidsynth libfluidsynth-dev portaudio19-dev ffmpeg
+**Step 3 — Clone and install**
 
-# 3. Install the package (editable mode)
+```bash
+git clone https://github.com/<your-org>/omnipiano.git
 cd omnipiano
 pip install -e .
+```
 
-# 4. (Optional) Preprocess PIG dataset for additional music pieces
-#    Download PianoFingeringDataset_v1.2.zip from https://beam.kisarazu.ac.jp/~saMDNIito/research/PianoFingeringDataset/
-#    Extract it, then run:
+**Step 4 — Verify installation**
+
+```bash
+python -c "from OmniPiano import make; env = make('OmniPiano-Twinkle-CollisionSafe-v0'); print('OK')"
+```
+
+**Step 5 (Optional) — Preprocess the PIG dataset**
+
+The built-in tasks use short debug pieces (e.g., Twinkle Twinkle Little Star).
+To unlock 150 additional pieces from the
+[PIG dataset](https://beam.kisarazu.ac.jp/~saito/research/PianoFingeringDataset/),
+download `PianoFingeringDataset_v1.2.zip`, extract it, then run:
+
+```bash
 robopianist preprocess --dataset-dir /PATH/TO/PianoFingeringDataset_v1.2
+robopianist --check-pig-exists   # should print "PIG dataset is ready to use!"
+```
+
+**Step 6 (Optional) — Download a higher-quality soundfont**
+
+The default soundfont (`TimGM6mb.sf2`) is bundled for basic audio synthesis.
+For higher-quality piano sound in recorded videos:
+
+```bash
+robopianist soundfont --download
 ```
 
 ### Available Tasks
