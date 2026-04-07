@@ -41,12 +41,8 @@ environment.
 **Step 1 — Install system dependencies**
 
 ```bash
-# Linux (Ubuntu / Debian)
 sudo apt-get update
 sudo apt-get install -y build-essential fluidsynth libfluidsynth-dev portaudio19-dev ffmpeg
-
-# macOS
-brew install portaudio fluid-synth ffmpeg
 ```
 
 **Step 2 — Create a conda environment**
@@ -59,7 +55,7 @@ conda activate pianist
 **Step 3 — Clone and install**
 
 ```bash
-git clone https://github.com/<your-org>/omnipiano.git
+git clone https://github.com/SafeRL-Lab/omnipiano.git
 cd omnipiano
 pip install -e .
 ```
