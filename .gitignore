@@ -17,9 +17,4 @@ OmniPiano/envs/robopianist/music/data/pig_single_finger/
 # 排除 .gitignore 文件自身
 !.gitignore
 
-# 忽略 robopianist 下的特定文件
-/robopianist/action_control_explanation.md
-/robopianist/logging_instructions.md
-/robopianist/robopianist_structure.md
-/robopianist/tutorial_comment_and_learn.ipynb
 

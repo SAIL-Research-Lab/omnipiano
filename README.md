@@ -38,7 +38,7 @@ conda activate pianist
 sudo apt-get install -y fluidsynth libfluidsynth-dev portaudio19-dev ffmpeg
 
 # 3. Install the package (editable mode)
-cd SafeRoboPianist
+cd omnipiano
 pip install -e .
 
 # 4. (Optional) Preprocess PIG dataset for additional music pieces
