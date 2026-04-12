@@ -60,22 +60,26 @@ cd omnipiano
 pip install -e .
 ```
 
-**Step 4 — Verify installation**
+**Step 4 — Preprocess the PIG dataset (required)**
 
-```bash
-python -c "from OmniPiano import make; env = make('OmniPiano-Twinkle-CollisionSafe-v0'); print('OK')"
-```
-
-**Step 5 (Optional) — Preprocess the PIG dataset**
-
-The built-in tasks use short debug pieces (e.g., Twinkle Twinkle Little Star).
-To unlock 150 additional pieces from the
-[PIG dataset](https://beam.kisarazu.ac.jp/~saito/research/PianoFingeringDataset/),
-download `PianoFingeringDataset_v1.2.zip`, extract it, then run:
+All benchmark tasks use pieces from the
+[PIG dataset](https://beam.kisarazu.ac.jp/~saito/research/PianoFingeringDataset/).
+Download `PianoFingeringDataset_v1.2.zip` from the PIG website (free registration
+required), extract it, then run:
 
 ```bash
 robopianist preprocess --dataset-dir /PATH/TO/PianoFingeringDataset_v1.2
 robopianist --check-pig-exists   # should print "PIG dataset is ready to use!"
+```
+
+**Step 5 — Verify installation**
+
+```bash
+# Quick sanity check using a built-in debug piece (no PIG needed)
+python -c "from OmniPiano.envs.robopianist import suite; env = suite.load('RoboPianist-debug-TwinkleTwinkleLittleStar-v0'); print('OK')"
+
+# Verify a benchmark task (requires PIG)
+python -c "from OmniPiano import make; env = make('OmniPiano-ClairDeLune-CollisionSafe-v0'); print('OK')"
 ```
 
 **Step 6 (Optional) — Download a higher-quality soundfont**
@@ -89,22 +93,25 @@ robopianist soundfont --download
 
 ### Available Tasks
 
-| Task ID | Category | Description |
-|---------|----------|-------------|
-| `OmniPiano-Twinkle-RightHandWristLimit-v0` | Safety | Right wrist pitch magnitude limit |
-| `OmniPiano-Twinkle-RightHandOnly-v0` | Variant | Left hand frozen, right hand solo |
-| `OmniPiano-Twinkle-CollisionSafe-v0` | Safety | Binary hand-hand collision cost |
-| `OmniPiano-Twinkle-PowerConstrained-v0` | Safety | Dense actuator power cost |
-| `OmniPiano-Twinkle-ActionRobust-v0` | Robustness | Gaussian noise on actions |
-| `OmniPiano-Twinkle-ObservationRobust-v0` | Robustness | Gaussian noise on observations |
-| `OmniPiano-TwinkleRousseau-CollisionForce-v0` | Safety | Continuous contact force cost |
+| Task ID | Category | Piece | Description |
+|---------|----------|-------|-------------|
+| `OmniPiano-ForElise-WristLimit-v0` | Safety | Für Elise | Right wrist pitch magnitude limit |
+| `OmniPiano-NocturneOp9No2-RightHandOnly-v0` | Variant | Nocturne Op.9 No.2 | Left hand frozen, right hand solo |
+| `OmniPiano-ClairDeLune-CollisionSafe-v0` | Safety | Clair de Lune | Binary hand-hand collision cost |
+| `OmniPiano-MapleLeafRag-CollisionSafe-v0` | Safety | Maple Leaf Rag | Binary collision, high overlap |
+| `OmniPiano-PolonaiseOp53-PowerConstrained-v0` | Safety | Polonaise Op.53 | Dense actuator power cost |
+| `OmniPiano-FantaisieImpromptu-PowerConstrained-v0` | Safety | Fantaisie-Impromptu | Dense power, fast tempo |
+| `OmniPiano-FantaisieImpromptu-ActionRobust-v0` | Robustness | Fantaisie-Impromptu | Gaussian noise on actions |
+| `OmniPiano-MapleLeafRag-CollisionForce-v0` | Safety | Maple Leaf Rag | Continuous contact force cost |
+| `OmniPiano-EtudeOp10No12-CollisionForce-v0` | Safety | Revolutionary Etude | Continuous force, max overlap |
+| `OmniPiano-ClairDeLune-ObservationRobust-v0` | Robustness | Clair de Lune | Gaussian noise on observations |
 
 ### Minimal Example
 
 ```python
 from OmniPiano import make
 
-env = make("OmniPiano-Twinkle-CollisionSafe-v0")
+env = make("OmniPiano-ClairDeLune-CollisionSafe-v0")
 obs, info = env.reset(seed=42)
 
 for _ in range(100):
@@ -112,7 +119,6 @@ for _ in range(100):
     obs, reward, terminated, truncated, info = env.step(action)
 
     cost = info["step_safety/cost_total"]              # per-step safety cost
-    # info["episode_safety/cost_total"] is available when terminated or truncated
 
     if terminated or truncated:
         obs, info = env.reset()
@@ -139,9 +145,9 @@ To switch tasks, edit the `env_name` variable in `run_template.py`:
 
 ```python
 # Choose one:
-env_name = "OmniPiano-Twinkle-RightHandWristLimit-v0"
-env_name = "OmniPiano-Twinkle-CollisionSafe-v0"
-env_name = "OmniPiano-Twinkle-PowerConstrained-v0"
+env_name = "OmniPiano-ForElise-WristLimit-v0"
+env_name = "OmniPiano-ClairDeLune-CollisionSafe-v0"
+env_name = "OmniPiano-PolonaiseOp53-PowerConstrained-v0"
 # ... etc.
 ```
 
