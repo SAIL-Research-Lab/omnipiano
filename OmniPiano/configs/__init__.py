@@ -32,10 +32,14 @@ class RobustConfig:
 
 @dataclass
 class TaskVariantConfig:
-    """Configuration for task variants (e.g., single hand)."""
+    """Configuration for task variants (e.g., single hand, injury simulation).
+
+    Fields that map directly to PianoWithShadowHands constructor kwargs
+    (like disable_fingering_reward) are forwarded at task construction time.
+    """
     left_hand_immobile: bool = False
     right_hand_immobile: bool = False
-    # TODO: Add more XML/physics modifications here
+    disable_fingering_reward: bool = False
 
 @dataclass
 class LoggingConfig:

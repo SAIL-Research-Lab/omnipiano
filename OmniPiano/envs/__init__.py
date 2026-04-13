@@ -18,6 +18,7 @@ from OmniPiano.safety.constraints import (
     HandCollisionConstraint,
     HandCollisionForceConstraint,
     TotalActuatorPowerConstraint,
+    InjuredJointPowerConstraint,
 )
 
 # ===========================================================================
@@ -190,5 +191,90 @@ register(
     robust_config=RobustConfig(
         action_noise_std=0.0,
         obs_noise_std=0.01,
+    ),
+)
+
+# ===========================================================================
+# Task Type 8: Joint Injury (per-joint actuator power cost)
+#
+# Simulates a pianist's joint injury: the injured joints can still move, but
+# their actuator power (|force| * |velocity|) is penalized as cost.
+#
+# Three injury scopes target different levels of the kinematic chain,
+# testing fundamentally different compensation strategies:
+#
+# 8a. Wrist Injury — orientation hub (mid-chain)
+#     Injured: WRJ1 + WRJ2 (2 DoF).  Realistic: carpal tunnel / tendinitis.
+#     MIDI fingering retained: the agent must use the CORRECT fingers but
+#     compensate with forearm translation instead of wrist rotation.
+#     Tests: kinematic redundancy resolution (local rotation → global shift).
+# ---------------------------------------------------------------------------
+# ForElise: RH A3-E7 (4+ octaves, 399 steps).  The extreme right-hand range
+# demands constant wrist adjustment.  Same piece as WristLimit (Task 1) to
+# enable direct comparison: WristLimit caps action magnitude, WristInjury
+# caps physical power — two orthogonal constraints on the same joint.
+# ===========================================================================
+register(
+    id="OmniPiano-ForElise-WristInjury-v0",
+    base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+    safety_config=SafetyConfig(
+        constraints=[
+            InjuredJointPowerConstraint(
+                hand="right", joint_names=("WRJ1", "WRJ2"), penalty_coef=1.0,
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# 8b. Thumb Injury — end effector (distal)
+#     Injured: THJ1-THJ5 (5 DoF).  Realistic: De Quervain's tendinitis.
+#     OT fingering enabled (disable_fingering_reward=True): the agent is free
+#     to reassign keystrokes from the injured thumb to other fingers.
+#     Tests: discrete task reallocation in high-dimensional action space.
+# ---------------------------------------------------------------------------
+# NocturneOp9No2: RH E4-D6, LH G#1-A#4 (769 steps).  The melodic line
+# relies on the thumb as a stable low-note anchor; injury forces a complete
+# rethinking of fingering strategy.
+# ===========================================================================
+register(
+    id="OmniPiano-NocturneOp9No2-ThumbInjury-v0",
+    base_env_name="RoboPianist-repertoire-150-NocturneOp9No2-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            InjuredJointPowerConstraint(
+                hand="right",
+                joint_names=("THJ1", "THJ2", "THJ3", "THJ4", "THJ5"),
+                penalty_coef=1.0,
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# 8c. Forearm Injury — global positioning (proximal)
+#     Injured: forearm_tx + forearm_ty (2 DoF).  Realistic: elbow/forearm
+#     muscle strain limiting arm translation across the keyboard.
+#     MIDI fingering retained: the agent must reach distant keys using the
+#     correct fingers, compensating with extreme wrist rotation and finger
+#     stretching instead of arm translation.
+#     Tests: extreme posture control under mobility loss.
+# ---------------------------------------------------------------------------
+# FantaisieImpromptu: RH C#4-B6 (3+ octaves, 800 steps).  Presto arpeggios
+# across a wide range require constant forearm repositioning — the injury
+# constraint directly conflicts with the piece's physical demands.
+# ===========================================================================
+register(
+    id="OmniPiano-FantaisieImpromptu-ForearmInjury-v0",
+    base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
+    safety_config=SafetyConfig(
+        constraints=[
+            InjuredJointPowerConstraint(
+                hand="right",
+                joint_names=("forearm_tx", "forearm_ty"),
+                penalty_coef=1.0,
+            ),
+        ]
     ),
 )

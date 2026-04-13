@@ -30,6 +30,7 @@ class InfoKeys:
     # Task (Reward Terms)
     TASK_ENERGY_REWARD = "task/energy_reward"
     TASK_FINGERING_REWARD = "task/fingering_reward"
+    TASK_OT_FINGERING_REWARD = "task/ot_fingering_reward"
     TASK_FOREARM_REWARD = "task/forearm_reward"
     TASK_KEY_PRESS_REWARD = "task/key_press_reward"
     TASK_SUSTAIN_REWARD = "task/sustain_reward"
@@ -51,6 +52,7 @@ class EpisodeInfoKeys:
     # Task (Reward Terms)
     EPISODE_TASK_ENERGY_REWARD = "episode_task/energy_reward"
     EPISODE_TASK_FINGERING_REWARD = "episode_task/fingering_reward"
+    EPISODE_TASK_OT_FINGERING_REWARD = "episode_task/ot_fingering_reward"
     EPISODE_TASK_FOREARM_REWARD = "episode_task/forearm_reward"
     EPISODE_TASK_KEY_PRESS_REWARD = "episode_task/key_press_reward"
     EPISODE_TASK_SUSTAIN_REWARD = "episode_task/sustain_reward"

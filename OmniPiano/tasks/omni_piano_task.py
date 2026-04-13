@@ -11,8 +11,11 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
     """
     def __init__(self, task_config: TaskVariantConfig, **kwargs):
         self.task_config = task_config
-        
-        # 1. Call the parent constructor. 
+
+        if task_config.disable_fingering_reward:
+            kwargs["disable_fingering_reward"] = True
+
+        # 1. Call the parent constructor.
         # This builds the default XML tree (mjcf_model) in memory.
         super().__init__(**kwargs)
         

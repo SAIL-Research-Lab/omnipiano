@@ -1,7 +1,7 @@
 import mujoco
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 from OmniPiano.utils.env_unwrap import get_composer_env_from_gym
 
 _COLLISION_MARGIN: float = 1e-8
@@ -199,3 +199,99 @@ class TotalActuatorPowerConstraint(BaseConstraint):
 
     def get_info_key(self) -> str:
         return "step_safety/cost_total_actuator_power"
+
+
+class InjuredJointPowerConstraint(BaseConstraint):
+    """Penalizes actuator power on specified joints to simulate injury.
+
+    Computes ``sum(|force_i| * |velocity_i|)`` only for the injured actuators,
+    reusing the same ``actuatorfrc`` / ``actuatorvel`` sensors that
+    ``TotalActuatorPowerConstraint`` reads from.
+
+    Args:
+        hand: Which hand the injured joints belong to ("right" or "left").
+        joint_names: Actuator suffix names (e.g. ``("WRJ1", "WRJ2")``).
+            Forearm actuators use bare names (e.g. ``("forearm_tx",)``).
+        penalty_coef: Multiplier applied to the summed power.
+    """
+
+    def __init__(
+        self,
+        hand: str,
+        joint_names: Tuple[str, ...],
+        penalty_coef: float = 1.0,
+    ):
+        super().__init__(penalty_coef)
+        if hand not in ("right", "left"):
+            raise ValueError(f"hand must be 'right' or 'left', got '{hand}'")
+        self.hand = hand
+        self.joint_names = joint_names
+        self._sensor_indices: list = None
+
+    def _build_sensor_indices(self, hand_entity):
+        """Find actuator indices matching the requested joint names.
+
+        Two naming conventions exist in the Shadow Hand model:
+        - Finger/wrist actuators: ``{prefix}_A_{joint_name}`` (e.g. ``rh_A_WRJ1``)
+        - Forearm actuators: bare ``{joint_name}`` (e.g. ``forearm_tx``)
+        Matching uses ``endswith`` for prefixed names and exact match for bare names.
+        """
+        indices = []
+        for i, act in enumerate(hand_entity.actuators):
+            for jn in self.joint_names:
+                if act.name.endswith(f"_A_{jn}") or act.name == jn:
+                    indices.append(i)
+                    break
+        if len(indices) != len(self.joint_names):
+            matched = [hand_entity.actuators[i].name for i in indices]
+            raise RuntimeError(
+                f"InjuredJointPowerConstraint: expected {len(self.joint_names)} "
+                f"actuators for {self.joint_names}, but matched {len(indices)}: "
+                f"{matched}. Available: {[a.name for a in hand_entity.actuators]}"
+            )
+        self._sensor_indices = indices
+
+    def compute_cost(
+        self, env, action: np.ndarray, obs: Dict[str, Any], info: Dict[str, Any]
+    ) -> float:
+        del action, obs, info
+        physics, task = self._get_dm_internals(env)
+        hand_entity = task.right_hand if self.hand == "right" else task.left_hand
+
+        if self._sensor_indices is None:
+            self._build_sensor_indices(hand_entity)
+
+        force = physics.bind(hand_entity.actuator_force_sensors).sensordata
+        velocity = physics.bind(hand_entity.actuator_velocity_sensors).sensordata
+
+        #check code during development
+        assert len(force) == len(hand_entity.actuator_force_sensors), (
+            f"Force sensor length mismatch: {len(force)} values vs "
+            f"{len(hand_entity.actuator_force_sensors)} sensor elements"
+        )
+        assert len(velocity) == len(hand_entity.actuator_velocity_sensors), (
+            f"Velocity sensor length mismatch: {len(velocity)} values vs "
+            f"{len(hand_entity.actuator_velocity_sensors)} sensor elements"
+        )
+        assert len(force) == len(velocity) == len(hand_entity.actuators), (
+            f"Actuator/sensor length mismatch: force={len(force)}, "
+            f"velocity={len(velocity)}, actuators={len(hand_entity.actuators)}"
+        )
+        assert len(self._sensor_indices) == len(self.joint_names), (
+            f"Injured actuator count mismatch: {len(self._sensor_indices)} indices "
+            f"for {len(self.joint_names)} joint names {self.joint_names}"
+        )
+        assert all(0 <= i < len(force) for i in self._sensor_indices), (
+            f"Sensor indices out of range: {self._sensor_indices} for "
+            f"force/velocity length {len(force)}"
+        )
+
+        injured_power = sum(
+            abs(float(force[i])) * abs(float(velocity[i]))
+            for i in self._sensor_indices
+        )
+        return self.penalty_coef * injured_power
+
+    def get_info_key(self) -> str:
+        joints_tag = "_".join(self.joint_names).lower()
+        return f"step_safety/cost_injured_{self.hand}_{joints_tag}_power"
