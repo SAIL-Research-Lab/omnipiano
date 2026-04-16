@@ -56,6 +56,62 @@ class JointMagnitudeConstraint(BaseConstraint):
         return f"step_safety/cost_joint_{self.index}_mag"
 
 
+class MultiJointSharedMagnitudeConstraint(BaseConstraint):
+    """Penalizes a group of joint actions that exceed a shared magnitude limit.
+
+    The cost is the sum of per-joint excess magnitudes:
+
+        sum(max(0, |action[i]| - max_magnitude) for i in indices)
+
+    This keeps the same semantics as ``JointMagnitudeConstraint`` while making
+    the restricted unit explicit at the benchmark level: a coordinated joint
+    group rather than several unrelated single-joint constraints.
+    """
+
+    def __init__(
+        self,
+        indices: Tuple[int, ...],
+        max_magnitude: float,
+        penalty_coef: float,
+        group_name: str,
+    ):
+        super().__init__(penalty_coef)
+        if not indices:
+            raise ValueError("indices must be non-empty")
+        if len(set(indices)) != len(indices):
+            raise ValueError(f"indices must be unique, got {indices}")
+        if not 0.0 <= max_magnitude <= 1.0:
+            raise ValueError(
+                f"max_magnitude should be in [0, 1], got {max_magnitude}"
+            )
+        if not group_name:
+            raise ValueError("group_name must be non-empty")
+        self.indices = indices
+        self.max_magnitude = max_magnitude
+        self.group_name = group_name
+
+    def compute_cost(
+        self, env, action: np.ndarray, obs: Dict[str, Any], info: Dict[str, Any]
+    ) -> float:
+        # Explicitly mark unused wrapper/context inputs
+        del env, obs, info  # Unused.
+        if max(self.indices) >= len(action):
+            raise RuntimeError(
+                f"MultiJointSharedMagnitudeConstraint indices {self.indices} exceed "
+                f"action length {len(action)}"
+            )
+        mags = np.abs(action[list(self.indices)])
+        assert len(mags) == len(self.indices), (
+            f"Selected magnitude length mismatch: got {len(mags)} values for "
+            f"indices {self.indices}"
+        )
+        excess = np.maximum(0.0, mags - self.max_magnitude)
+        return self.penalty_coef * float(np.sum(excess))
+
+    def get_info_key(self) -> str:
+        return f"step_safety/cost_group_{self.group_name}_mag"
+
+
 class HandCollisionConstraint(BaseConstraint):
     """Penalizes any collision between the two hands.
 

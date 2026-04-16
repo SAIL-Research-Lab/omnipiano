@@ -15,6 +15,7 @@ from OmniPiano.envs.registration import register
 from OmniPiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig
 from OmniPiano.safety.constraints import (
     JointMagnitudeConstraint,
+    MultiJointSharedMagnitudeConstraint,
     HandCollisionConstraint,
     HandCollisionForceConstraint,
     TotalActuatorPowerConstraint,
@@ -274,6 +275,105 @@ register(
                 hand="right",
                 joint_names=("forearm_tx", "forearm_ty"),
                 penalty_coef=1.0,
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# Task Type 9: Multi-Joint OT Magnitude Limits
+#
+# All tasks in this family enable OT fingering (disable_fingering_reward=True)
+# so the agent is free to reassign keys across fingers when the constrained
+# joint group becomes too expensive to use.  The safety cost is the summed
+# excess magnitude over a shared threshold across a named joint group.
+#
+# Shared threshold for family comparability:
+#     max_magnitude = 0.4, penalty_coef = 1.0
+# ===========================================================================
+
+# ===========================================================================
+# 9a. Bilateral Middle Finger Limit OT
+#
+# Constrained group: both hands' middle-finger chains
+#     RH: indices 10,11,12 = MFJ4, MFJ3, MFJ0
+#     LH: indices 32,33,34 = MFJ4, MFJ3, MFJ0
+#
+# OT fingering lets the agent move work away from the middle fingers toward
+# index/ring/thumb instead of merely shrinking the same original finger plan.
+# ---------------------------------------------------------------------------
+# ClairDeLune: slower, expressive two-hand texture makes it easier to observe
+# fine-grained finger reassignment rather than outright failure from speed.
+# ===========================================================================
+register(
+    id="OmniPiano-ClairDeLune-BimanualMiddleFingerLimitOT-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            MultiJointSharedMagnitudeConstraint(
+                indices=(10, 11, 12, 32, 33, 34),
+                max_magnitude=0.4,
+                penalty_coef=1.0,
+                group_name="bimanual_middle_finger",
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# 9b. Bilateral Wrist + Middle Finger Limit OT
+#
+# Constrained group:
+#     RH wrist 0,1 + RH middle 10,11,12
+#     LH wrist 22,23 + LH middle 32,33,34
+#
+# This is a stronger variant: the agent cannot rely on the natural
+# wrist+middle-finger combination and must re-plan both finger assignment and
+# local posture under OT fingering.
+# ---------------------------------------------------------------------------
+# MapleLeafRag: dense, interleaved two-hand passages magnify the cost of
+# staying with the original comfortable wrist/middle-finger strategy.
+# ===========================================================================
+register(
+    id="OmniPiano-MapleLeafRag-BimanualWristMiddleLimitOT-v0",
+    base_env_name="RoboPianist-repertoire-150-MapleLeafRag-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            MultiJointSharedMagnitudeConstraint(
+                indices=(0, 1, 10, 11, 12, 22, 23, 32, 33, 34),
+                max_magnitude=0.4,
+                penalty_coef=1.0,
+                group_name="bimanual_wrist_middle",
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# 9c. Left Wrist + Middle Finger Limit OT
+#
+# Constrained group: LH wrist 22,23 + LH middle 32,33,34
+#
+# This asymmetric version tests whether the policy shifts more complex work
+# to the healthier right hand when only the left-hand wrist+middle chain is
+# restricted.  OT fingering exposes that cross-hand redistribution option.
+# ---------------------------------------------------------------------------
+# NocturneOp9No2: naturally asymmetric melody/accompaniment structure makes
+# left-hand impairment and right-hand compensation easy to interpret.
+# ===========================================================================
+register(
+    id="OmniPiano-NocturneOp9No2-LeftWristMiddleLimitOT-v0",
+    base_env_name="RoboPianist-repertoire-150-NocturneOp9No2-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            MultiJointSharedMagnitudeConstraint(
+                indices=(22, 23, 32, 33, 34),
+                max_magnitude=0.4,
+                penalty_coef=1.0,
+                group_name="left_wrist_middle",
             ),
         ]
     ),
