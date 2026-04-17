@@ -16,6 +16,7 @@ from OmniPiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig
 from OmniPiano.safety.constraints import (
     JointMagnitudeConstraint,
     MultiJointSharedMagnitudeConstraint,
+    MultiJointSummedMagnitudeConstraint,
     HandCollisionConstraint,
     HandCollisionForceConstraint,
     TotalActuatorPowerConstraint,
@@ -198,6 +199,10 @@ register(
 # ===========================================================================
 # Task Type 8: Joint Injury (per-joint actuator power cost)
 #
+# Definition:
+#     Penalize the physical usage of a specific joint or joint chain via
+#     actuator power |force| * |velocity|.  
+#
 # Simulates a pianist's joint injury: the injured joints can still move, but
 # their actuator power (|force| * |velocity|) is penalized as cost.
 #
@@ -374,6 +379,117 @@ register(
                 max_magnitude=0.4,
                 penalty_coef=1.0,
                 group_name="left_wrist_middle",
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# Task Type 10: Summed-Magnitude OT Budgets
+#
+# Definition:
+#     Penalize a coordinated joint chain only when the summed normalized
+#     command magnitude across the whole group exceeds a shared total budget.
+#     This is a chain-level budget benchmark rather than a per-joint ceiling.
+#
+# This family limits the TOTAL normalized action magnitude of a coordinated
+# joint chain, rather than capping each joint independently.  OT fingering is
+# enabled for all tasks so the policy can redistribute notes away from the
+# constrained chain instead of only shrinking the same original finger plan.
+#
+# Budget design:
+#     max_summed_magnitude = x * len(indices)
+#     penalty_coef = 1.0
+#
+# This keeps the average allowed magnitude per joint at x while still
+# allowing within-group trade-offs.
+# ===========================================================================
+
+# ===========================================================================
+# 10a. Bimanual Thumb Budget OT
+#
+# Constrained group:
+#     RH thumb 2,3,4,5,6
+#     LH thumb 24,25,26,27,28
+#
+# Thumb-under and thumb-led anchor motions are central to piano technique, so
+# limiting only the thumbs is the cleanest summed-budget test of finger
+# reassignment under OT fingering.
+# ---------------------------------------------------------------------------
+# NocturneOp9No2: melody + accompaniment structure gives the policy room to
+# redistribute work away from the thumbs while preserving musical continuity.
+# ===========================================================================
+register(
+    id="OmniPiano-NocturneOp9No2-BimanualThumbBudgetOT-v0",
+    base_env_name="RoboPianist-repertoire-150-NocturneOp9No2-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            MultiJointSummedMagnitudeConstraint(
+                indices=(2, 3, 4, 5, 6, 24, 25, 26, 27, 28),
+                max_summed_magnitude=4.0,
+                penalty_coef=1.0,
+                group_name="bimanual_thumb_budget",
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# 10b. Bimanual Wrist + Thumb Budget OT
+#
+# Constrained group:
+#     RH wrist 0,1 + RH thumb 2,3,4,5,6
+#     LH wrist 22,23 + LH thumb 24,25,26,27,28
+#
+# Wrist and thumb form a realistic piano motion chain: wrist adjustment and
+# thumb-under technique frequently work together in scales, arpeggios, and
+# passagework.  A summed budget models limited total authority over that chain.
+# ---------------------------------------------------------------------------
+# FantaisieImpromptu: rapid arpeggios and thumb-led repositioning make this a
+# high-pressure test of OT reassignment plus local posture replanning.
+# ===========================================================================
+register(
+    id="OmniPiano-FantaisieImpromptu-BimanualWristThumbBudgetOT-v0",
+    base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            MultiJointSummedMagnitudeConstraint(
+                indices=(0, 1, 2, 3, 4, 5, 6, 22, 23, 24, 25, 26, 27, 28),
+                max_summed_magnitude=5.6,
+                penalty_coef=1.0,
+                group_name="bimanual_wrist_thumb_budget",
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# 10c. Bimanual Thumb + Little Finger Budget OT
+#
+# Constrained group:
+#     RH thumb 2,3,4,5,6 + RH little 16,17,18,19
+#     LH thumb 24,25,26,27,28 + LH little 38,39,40,41
+#
+# Thumb and little finger define span-heavy octave/chord technique.  Limiting
+# their total budget tests whether the policy can avoid over-relying on the
+# classic thumb-fifth-finger span strategy and instead reassign notes inward.
+# ---------------------------------------------------------------------------
+# PolonaiseOp53: octave/chord-heavy writing makes thumb-little coordination a
+# core mechanical demand, so this budget directly conflicts with the piece.
+# ===========================================================================
+register(
+    id="OmniPiano-PolonaiseOp53-BimanualThumbLittleBudgetOT-v0",
+    base_env_name="RoboPianist-repertoire-150-PolonaiseOp53-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            MultiJointSummedMagnitudeConstraint(
+                indices=(2, 3, 4, 5, 6, 16, 17, 18, 19, 24, 25, 26, 27, 28, 38, 39, 40, 41),
+                max_summed_magnitude=7.2,
+                penalty_coef=1.0,
+                group_name="bimanual_thumb_little_budget",
             ),
         ]
     ),

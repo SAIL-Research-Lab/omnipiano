@@ -105,6 +105,15 @@ robopianist soundfont --download
 | `OmniPiano-MapleLeafRag-CollisionForce-v0` | Safety | Maple Leaf Rag | Continuous contact force cost |
 | `OmniPiano-EtudeOp10No12-CollisionForce-v0` | Safety | Revolutionary Etude | Continuous force, max overlap |
 | `OmniPiano-ClairDeLune-ObservationRobust-v0` | Robustness | Clair de Lune | Gaussian noise on observations |
+| `OmniPiano-ForElise-WristInjury-v0` | Safety | Für Elise | Right wrist power cost (injury-style) |
+| `OmniPiano-NocturneOp9No2-ThumbInjury-v0` | Safety | Nocturne Op.9 No.2 | Right thumb power cost with OT fingering |
+| `OmniPiano-FantaisieImpromptu-ForearmInjury-v0` | Safety | Fantaisie-Impromptu | Right forearm power cost |
+| `OmniPiano-ClairDeLune-BimanualMiddleFingerLimitOT-v0` | Safety | Clair de Lune | OT fingering with shared per-joint ceiling on both middle fingers |
+| `OmniPiano-MapleLeafRag-BimanualWristMiddleLimitOT-v0` | Safety | Maple Leaf Rag | OT fingering with shared per-joint ceiling on wrists + middle fingers |
+| `OmniPiano-NocturneOp9No2-LeftWristMiddleLimitOT-v0` | Safety | Nocturne Op.9 No.2 | OT fingering with left-hand asymmetric shared ceiling |
+| `OmniPiano-NocturneOp9No2-BimanualThumbBudgetOT-v0` | Safety | Nocturne Op.9 No.2 | OT fingering with summed thumb-chain budget |
+| `OmniPiano-FantaisieImpromptu-BimanualWristThumbBudgetOT-v0` | Safety | Fantaisie-Impromptu | OT fingering with summed wrist+thumb budget |
+| `OmniPiano-PolonaiseOp53-BimanualThumbLittleBudgetOT-v0` | Safety | Polonaise Op.53 | OT fingering with summed thumb+little-finger budget |
 
 ### Minimal Example
 
@@ -233,7 +242,7 @@ The end-to-end environment construction pipeline is:
     5. `EvalProtocolConfig`: shared evaluation protocol settings such as seeds and number of evaluation episodes.
 * **`OmniPiano/envs/__init__.py`**
   * **Role**: The official repository of benchmark task declarations.
-  * **Content**: Registers all benchmark tasks through `register(...)`. Each task maps a human-readable benchmark ID to its `TaskSpec`, which bundles the base environment name plus the default safety, robustness, and task-variant configurations. Current tasks include right-hand wrist limit, right-hand only, collision-safe, power-constrained, action-robust, and observation-robust.
+  * **Content**: Registers all benchmark tasks through `register(...)`. Each task maps a human-readable benchmark ID to its `TaskSpec`, which bundles the base environment name plus the default safety, robustness, and task-variant configurations. Current tasks span wrist-limit, right-hand-only, binary collision, continuous collision force, dense power cost, action/observation robustness, injury-style power constraints, OT fingering with shared per-joint ceilings, and OT fingering with summed chain budgets.
 
 ### 3. Environment Assembly Factory (`envs/`)
 * **`OmniPiano/envs/registration.py`**
