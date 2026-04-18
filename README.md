@@ -105,9 +105,9 @@ robopianist soundfont --download
 | `OmniPiano-MapleLeafRag-CollisionForce-v0` | Safety | Maple Leaf Rag | Continuous contact force cost |
 | `OmniPiano-EtudeOp10No12-CollisionForce-v0` | Safety | Revolutionary Etude | Continuous force, max overlap |
 | `OmniPiano-ClairDeLune-ObservationRobust-v0` | Robustness | Clair de Lune | Gaussian noise on observations |
-| `OmniPiano-ForElise-WristInjury-v0` | Safety | Für Elise | Right wrist power cost (injury-style) |
+| `OmniPiano-ForElise-WristInjury-v0` | Safety | Für Elise | Right wrist power cost with OT fingering |
 | `OmniPiano-NocturneOp9No2-ThumbInjury-v0` | Safety | Nocturne Op.9 No.2 | Right thumb power cost with OT fingering |
-| `OmniPiano-FantaisieImpromptu-ForearmInjury-v0` | Safety | Fantaisie-Impromptu | Right forearm power cost |
+| `OmniPiano-FantaisieImpromptu-ForearmInjury-v0` | Safety | Fantaisie-Impromptu | Right forearm power cost with OT fingering |
 | `OmniPiano-ClairDeLune-BimanualMiddleFingerLimitOT-v0` | Safety | Clair de Lune | OT fingering with shared per-joint ceiling on both middle fingers |
 | `OmniPiano-MapleLeafRag-BimanualWristMiddleLimitOT-v0` | Safety | Maple Leaf Rag | OT fingering with shared per-joint ceiling on wrists + middle fingers |
 | `OmniPiano-NocturneOp9No2-LeftWristMiddleLimitOT-v0` | Safety | Nocturne Op.9 No.2 | OT fingering with left-hand asymmetric shared ceiling |

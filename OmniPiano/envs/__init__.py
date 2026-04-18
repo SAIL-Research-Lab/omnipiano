@@ -211,8 +211,10 @@ register(
 #
 # 8a. Wrist Injury — orientation hub (mid-chain)
 #     Injured: WRJ1 + WRJ2 (2 DoF).  Realistic: carpal tunnel / tendinitis.
-#     MIDI fingering retained: the agent must use the CORRECT fingers but
-#     compensate with forearm translation instead of wrist rotation.
+#     OT fingering enabled (disable_fingering_reward=True): all three injury
+#     tasks share the same fingering convention so the injury cost is the
+#     only constraint shaping finger choice; the agent compensates with
+#     forearm translation instead of wrist rotation.
 #     Tests: kinematic redundancy resolution (local rotation → global shift).
 # ---------------------------------------------------------------------------
 # ForElise: RH A3-E7 (4+ octaves, 399 steps).  The extreme right-hand range
@@ -223,6 +225,7 @@ register(
 register(
     id="OmniPiano-ForElise-WristInjury-v0",
     base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             InjuredJointPowerConstraint(
@@ -262,9 +265,10 @@ register(
 # 8c. Forearm Injury — global positioning (proximal)
 #     Injured: forearm_tx + forearm_ty (2 DoF).  Realistic: elbow/forearm
 #     muscle strain limiting arm translation across the keyboard.
-#     MIDI fingering retained: the agent must reach distant keys using the
-#     correct fingers, compensating with extreme wrist rotation and finger
-#     stretching instead of arm translation.
+#     OT fingering enabled (disable_fingering_reward=True): consistent with
+#     8a and 8b — the agent reaches distant keys by compensating with wrist
+#     rotation and finger stretching, and is free to reassign keys when the
+#     MIDI-specified fingering becomes unreachable under mobility loss.
 #     Tests: extreme posture control under mobility loss.
 # ---------------------------------------------------------------------------
 # FantaisieImpromptu: RH C#4-B6 (3+ octaves, 800 steps).  Presto arpeggios
@@ -274,6 +278,7 @@ register(
 register(
     id="OmniPiano-FantaisieImpromptu-ForearmInjury-v0",
     base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             InjuredJointPowerConstraint(
