@@ -340,30 +340,37 @@ class InjuredJointPowerConstraint(BaseConstraint):
             raise ValueError(f"hand must be 'right' or 'left', got '{hand}'")
         self.hand = hand
         self.joint_names = joint_names
-        self._sensor_indices: list = None
+        self._actuator_indices: list = None
 
-    def _build_sensor_indices(self, hand_entity):
+    def _build_actuator_indices(self, hand_entity):
         """Find actuator indices matching the requested joint names.
 
         Two naming conventions exist in the Shadow Hand model:
-        - Finger/wrist actuators: ``{prefix}_A_{joint_name}`` (e.g. ``rh_A_WRJ1``)
+        - Finger/wrist actuators: ``{prefix}A_{joint_name}`` (e.g. ``rh_A_WRJ1``)
         - Forearm actuators: bare ``{joint_name}`` (e.g. ``forearm_tx``)
-        Matching uses ``endswith`` for prefixed names and exact match for bare names.
+        Each ``jn`` must match exactly one actuator under one of the two
+        conventions; ambiguous suffix matches are rejected.
         """
+        prefix = "rh_" if self.hand == "right" else "lh_"
+        name_to_idx = {act.name: i for i, act in enumerate(hand_entity.actuators)}
         indices = []
-        for i, act in enumerate(hand_entity.actuators):
-            for jn in self.joint_names:
-                if act.name.endswith(f"_A_{jn}") or act.name == jn:
-                    indices.append(i)
+        for jn in self.joint_names:
+            candidates = (f"{prefix}A_{jn}", jn)
+            for cand in candidates:
+                if cand in name_to_idx:
+                    indices.append(name_to_idx[cand])
                     break
-        if len(indices) != len(self.joint_names):
-            matched = [hand_entity.actuators[i].name for i in indices]
-            raise RuntimeError(
-                f"InjuredJointPowerConstraint: expected {len(self.joint_names)} "
-                f"actuators for {self.joint_names}, but matched {len(indices)}: "
-                f"{matched}. Available: {[a.name for a in hand_entity.actuators]}"
+            else:
+                raise RuntimeError(
+                    f"InjuredJointPowerConstraint: no actuator matched {jn!r} "
+                    f"(tried {candidates}). "
+                    f"Available: {list(name_to_idx)}"
+                )
+        if len(set(indices)) != len(indices):
+            raise ValueError(
+                f"joint_names contains duplicates: {self.joint_names}"
             )
-        self._sensor_indices = indices
+        self._actuator_indices = indices
 
     def compute_cost(
         self, env, action: np.ndarray, obs: Dict[str, Any], info: Dict[str, Any]
@@ -372,37 +379,15 @@ class InjuredJointPowerConstraint(BaseConstraint):
         physics, task = self._get_dm_internals(env)
         hand_entity = task.right_hand if self.hand == "right" else task.left_hand
 
-        if self._sensor_indices is None:
-            self._build_sensor_indices(hand_entity)
+        if self._actuator_indices is None:
+            self._build_actuator_indices(hand_entity)
 
         force = physics.bind(hand_entity.actuator_force_sensors).sensordata
         velocity = physics.bind(hand_entity.actuator_velocity_sensors).sensordata
 
-        #check code during development
-        assert len(force) == len(hand_entity.actuator_force_sensors), (
-            f"Force sensor length mismatch: {len(force)} values vs "
-            f"{len(hand_entity.actuator_force_sensors)} sensor elements"
-        )
-        assert len(velocity) == len(hand_entity.actuator_velocity_sensors), (
-            f"Velocity sensor length mismatch: {len(velocity)} values vs "
-            f"{len(hand_entity.actuator_velocity_sensors)} sensor elements"
-        )
-        assert len(force) == len(velocity) == len(hand_entity.actuators), (
-            f"Actuator/sensor length mismatch: force={len(force)}, "
-            f"velocity={len(velocity)}, actuators={len(hand_entity.actuators)}"
-        )
-        assert len(self._sensor_indices) == len(self.joint_names), (
-            f"Injured actuator count mismatch: {len(self._sensor_indices)} indices "
-            f"for {len(self.joint_names)} joint names {self.joint_names}"
-        )
-        assert all(0 <= i < len(force) for i in self._sensor_indices), (
-            f"Sensor indices out of range: {self._sensor_indices} for "
-            f"force/velocity length {len(force)}"
-        )
-
         injured_power = sum(
             abs(float(force[i])) * abs(float(velocity[i]))
-            for i in self._sensor_indices
+            for i in self._actuator_indices
         )
         return self.penalty_coef * injured_power
 

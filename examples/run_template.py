@@ -36,7 +36,8 @@ def main():
     # env_name = "OmniPiano-NocturneOp9No2-RightHandOnly-v0"
     # env_name = "OmniPiano-ClairDeLune-CollisionSafe-v0"
     # env_name = "OmniPiano-PolonaiseOp53-PowerConstrained-v0"
-    env_name = "OmniPiano-ClairDeLune-BimanualMiddleFingerLimitOT-v0"
+    # env_name = "OmniPiano-ClairDeLune-BimanualMiddleFingerLimitOT-v0"
+    env_name = "OmniPiano-ForElise-WristInjury-v0"
     print(f"Creating Safe/Robust environment: {env_name}")
 
     def env_creator():
