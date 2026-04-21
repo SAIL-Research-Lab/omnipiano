@@ -95,11 +95,11 @@ class PianoWithOneShadowHand(base.PianoTask):
 
         self._hand_side = hand_side
         if self._hand_side == HandSide.LEFT:
-            self._hand = self._left_hand
-            self._right_hand.detach()
+            self._hand = self.left_hand
+            self.right_hand.detach()
         else:
-            self._hand = self._right_hand
-            self._left_hand.detach()
+            self._hand = self.right_hand
+            self.left_hand.detach()
 
         if not disable_fingering_reward and not disable_colorization:
             self._colorize_fingertips()

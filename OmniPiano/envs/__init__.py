@@ -22,6 +22,8 @@ from OmniPiano.safety.constraints import (
     TotalActuatorPowerConstraint,
     InjuredJointPowerConstraint,
 )
+from OmniPiano.tasks.hand_spec import HandSpec
+from robopianist.models.hands import HandSide
 
 # ===========================================================================
 # Task Type 1: Right-Hand Wrist Limit
@@ -497,5 +499,54 @@ register(
                 group_name="bimanual_thumb_little_budget",
             ),
         ]
+    ),
+)
+
+# ===========================================================================
+# Task Type 10: Three-Hand Pianist (morphological prototype)
+#
+# Definition:
+#     A third hand is attached near the keyboard center alongside the canonical
+#     right/left pair, giving the agent 3x ShadowHands (66 hand actuators total
+#     = 3 hands x 22 per Shadow Hand). The piano's sustain pedal is a separate
+#     actuator owned by the piano model (not any hand), so the full env
+#     action_spec is 66 + 1 = 67; it stays 1 regardless of hand count.
+#     `disable_fingering_reward=True` forces the OT (optimal-transport) reward
+#     path, which matches all 5 * N_hands = 15 fingertips to the currently
+#     required keys via Hungarian assignment — so the third hand is directly
+#     reward-constrained (fingertips are pulled toward keys; forearm-collision
+#     and energy penalties also enumerate all N*(N-1)/2 hand pairs / N hands).
+#
+# The three hands are labeled by logical `group` (treble / middle / bass) as
+# pure metadata for a future multi-agent wrapper; `group` is NOT read by the
+# reward or observation pipeline today.
+#
+# Same piece as Task 8c (FantaisieImpromptu): a presto-arpeggio virtuoso work
+# with wide range and fast voice-changes — rich enough that a third hand can
+# plausibly help the OT assignment find lower-cost matchings.
+# ===========================================================================
+register(
+    id="OmniPiano-FantaisieImpromptu-ThreeHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
+    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    hand_specs=(
+        HandSpec(
+            name="rh",
+            side=HandSide.RIGHT,
+            position=(0.4, 0.30, 0.13),
+            group="treble",
+        ),
+        HandSpec(
+            name="lh",
+            side=HandSide.LEFT,
+            position=(0.4, -0.30, 0.13),
+            group="bass",
+        ),
+        HandSpec(
+            name="rh_c",
+            side=HandSide.RIGHT,
+            position=(0.4, 0.0, 0.13),
+            group="middle",
+        ),
     ),
 )

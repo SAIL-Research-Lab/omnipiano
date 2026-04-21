@@ -16,6 +16,7 @@
 
 import itertools
 from typing import Optional
+from unittest import mock
 
 import numpy as np
 from absl.testing import absltest, parameterized
@@ -23,6 +24,8 @@ from dm_control import composer
 from mujoco_utils import spec_utils
 from note_seq.protobuf import music_pb2
 
+from OmniPiano.tasks.hand_spec import HandSpec
+from robopianist.models.hands import HandSide
 from robopianist.music import midi_file
 from robopianist.suite.tasks import piano_with_shadow_hands
 
@@ -273,6 +276,147 @@ class PianoWithShadowHandsTest(parameterized.TestCase):
 
     # TODO(kevin): Add unit tests for individual reward components.
     # TODO(kevin): Add unit tests for augmentation / midi selection.
+
+
+def _three_hand_specs():
+    return (
+        HandSpec(name="rh", side=HandSide.RIGHT, position=(0.4, 0.30, 0.13), group="treble"),
+        HandSpec(name="lh", side=HandSide.LEFT, position=(0.4, -0.30, 0.13), group="bass"),
+        HandSpec(name="rh_c", side=HandSide.RIGHT, position=(0.4, 0.0, 0.13), group="middle"),
+    )
+
+
+def _get_three_hand_env(control_timestep: float = 0.01) -> composer.Environment:
+    task = piano_with_shadow_hands.PianoWithShadowHands(
+        midi=_get_test_midi(dt=control_timestep),
+        n_steps_lookahead=0,
+        control_timestep=control_timestep,
+        change_color_on_activation=True,
+        disable_fingering_reward=True,
+        hand_specs=_three_hand_specs(),
+    )
+    return composer.Environment(task, strip_singleton_obs_buffer_dim=True)
+
+
+class ThreeHandRegressionTest(absltest.TestCase):
+    """Regression tests for N-hand generalization.
+
+    These guard against reintroducing 2-hand hardcoding in reward / observable
+    paths (the class of silent bug that made OT / forearm reward underreport
+    before the Phase 1 N-hand refactor).
+    """
+
+    def test_hand_count_and_observables(self) -> None:
+        env = _get_three_hand_env()
+        timestep = env.reset()
+
+        self.assertLen(env.task.hands, 3)
+        self.assertEqual(
+            list(env.task.hands_by_name.keys()), ["rh", "lh", "rh_c"]
+        )
+        for name in ["rh_shadow_hand", "lh_shadow_hand", "rh_c_shadow_hand"]:
+            self.assertIn(f"{name}/joints_pos", timestep.observation)
+
+    def test_before_step_offset_dispatch_heterogeneous_hands(self) -> None:
+        """The offset loop in before_step must route each action slice to its
+        own hand's actuators, including when hands have different action sizes.
+
+        Regression guard: the pre-refactor `np.split(action[:-1], 2)` would
+        (a) crash on 3+ hands and (b) silently misalign if any two hands had
+        different action sizes. The offset loop handles both.
+        """
+        specs = (
+            HandSpec(name="rh", side=HandSide.RIGHT, position=(0.4, 0.30, 0.13)),
+            HandSpec(
+                name="lh", side=HandSide.LEFT, position=(0.4, -0.30, 0.13),
+                reduced_action_space=True,  # smaller spec than the other two
+            ),
+            HandSpec(name="rh_c", side=HandSide.RIGHT, position=(0.4, 0.0, 0.13)),
+        )
+        task = piano_with_shadow_hands.PianoWithShadowHands(
+            midi=_get_test_midi(dt=0.01),
+            n_steps_lookahead=0,
+            control_timestep=0.01,
+            change_color_on_activation=True,
+            disable_fingering_reward=True,
+            hand_specs=specs,
+        )
+        env = composer.Environment(task, strip_singleton_obs_buffer_dim=True)
+        env.reset()
+
+        sizes = [h.action_spec(env.physics).shape[0] for h in env.task.hands]
+        # Heterogeneity is load-bearing: on equal sizes, a buggy equal-split
+        # dispatch would also pass this test.
+        self.assertNotEqual(
+            sizes[0], sizes[1],
+            msg="Test setup invariant broken: lh should differ in size from rh.",
+        )
+        self.assertEqual(sum(sizes) + 1, env.action_spec().shape[0])
+
+        # Build action with a distinct constant per hand so any misrouted slice
+        # shows up as a mismatch rather than a numerically plausible value.
+        per_hand_parts = []
+        expected_per_hand = {}
+        for i, hand in enumerate(env.task.hands):
+            spec = hand.action_spec(env.physics)
+            vals = np.full(spec.shape, float(i + 1), dtype=spec.dtype)
+            per_hand_parts.append(vals)
+            expected_per_hand[hand.name] = vals
+        sustain_val = np.array([0.7], dtype=per_hand_parts[0].dtype)
+        action = np.concatenate(per_hand_parts + [sustain_val])
+
+        # Explicit offset-loop invariant: after consuming all hand slices, the
+        # cursor must land exactly at `len(action) - 1` so the remaining 1
+        # byte is sustain. If sum(sizes) < len(action) - 1, some action bytes
+        # are silently dropped; if > len(action) - 1, the final hand's slice
+        # would overrun into the sustain byte (or past the end).
+        self.assertEqual(
+            sum(sizes),
+            action.shape[0] - 1,
+            msg="offset-loop invariant broken: sum(per-hand sizes) != len(action[:-1]).",
+        )
+
+        env.task.before_step(env.physics, action, env.random_state)
+
+        for hand in env.task.hands:
+            actual_ctrl = env.physics.bind(hand.actuators).ctrl
+            np.testing.assert_array_equal(
+                actual_ctrl,
+                expected_per_hand[hand.name],
+                err_msg=(
+                    f"Hand '{hand.name}' received wrong slice "
+                    "(offset loop broken)."
+                ),
+            )
+
+        # Sustain goes to piano._sustain_state directly (no MuJoCo actuator),
+        # so verify via the cached state.
+        np.testing.assert_array_equal(
+            env.task.piano._sustain_state, sustain_val,
+        )
+
+    def test_ot_cost_matrix_uses_all_fingertips(self) -> None:
+        """OT cost matrix must have 5 * N_hands rows, not a hardcoded 10."""
+        env = _get_three_hand_env()
+        env.reset()
+
+        import scipy.optimize
+        captured = {}
+        real = scipy.optimize.linear_sum_assignment
+
+        def spy(cost_matrix, *args, **kwargs):
+            captured.setdefault("shape", cost_matrix.shape)
+            return real(cost_matrix, *args, **kwargs)
+
+        zero_action = np.zeros(env.action_spec().shape)
+        with mock.patch(
+            "robopianist.suite.tasks.piano_with_shadow_hands.linear_sum_assignment",
+            side_effect=spy,
+        ):
+            env.step(zero_action)
+
+        self.assertIn("shape", captured)
+        self.assertEqual(captured["shape"][0], 5 * len(env.task.hands))
 
 
 if __name__ == "__main__":

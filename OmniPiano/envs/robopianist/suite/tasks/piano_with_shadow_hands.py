@@ -180,9 +180,11 @@ class PianoWithShadowHands(base.PianoTask):
         random_state: np.random.RandomState,
     ) -> None:
         """Applies the control to the hands and the sustain pedal to the piano."""
-        action_right, action_left = np.split(action[:-1], 2)
-        self.right_hand.apply_action(physics, action_right, random_state)
-        self.left_hand.apply_action(physics, action_left, random_state)
+        offset = 0
+        for hand in self.hands:
+            size = hand.action_spec(physics).shape[0]
+            hand.apply_action(physics, action[offset : offset + size], random_state)
+            offset += size
         self.piano.apply_sustain(physics, action[-1], random_state)
 
     def after_step(
@@ -224,9 +226,8 @@ class PianoWithShadowHands(base.PianoTask):
         return self._task_observables
 
     def action_spec(self, physics: mjcf.Physics) -> specs.BoundedArray:
-        right_spec = self.right_hand.action_spec(physics)
-        left_spec = self.left_hand.action_spec(physics)
-        hands_spec = spec_utils.merge_specs([right_spec, left_spec])
+        per_hand_specs = [hand.action_spec(physics) for hand in self.hands]
+        hands_spec = spec_utils.merge_specs(per_hand_specs)
         sustain_spec = specs.BoundedArray(
             shape=(1,),
             dtype=hands_spec.dtype,
@@ -249,13 +250,17 @@ class PianoWithShadowHands(base.PianoTask):
     # Helper methods.
 
     def _compute_forearm_reward(self, physics: mjcf.Physics) -> float:
-        """Reward for not colliding the forearms."""
-        if collision_utils.has_collision(
-            physics,
-            [g.full_identifier for g in self.right_hand.root_body.geom],
-            [g.full_identifier for g in self.left_hand.root_body.geom],
-        ):
-            return 0.0
+        """Reward for not colliding the forearms (checked across all hand pairs)."""
+        hand_geoms = [
+            [g.full_identifier for g in hand.root_body.geom]
+            for hand in self.hands
+        ]
+        for i in range(len(hand_geoms)):
+            for j in range(i + 1, len(hand_geoms)):
+                if collision_utils.has_collision(
+                    physics, hand_geoms[i], hand_geoms[j]
+                ):
+                    return 0.0
         return 0.5
 
     def _compute_sustain_reward(self, physics: mjcf.Physics) -> float:
@@ -271,7 +276,7 @@ class PianoWithShadowHands(base.PianoTask):
     def _compute_energy_reward(self, physics: mjcf.Physics) -> float:
         """Reward for minimizing energy."""
         rew = 0.0
-        for hand in [self.right_hand, self.left_hand]:
+        for hand in self.hands:
             power = hand.observables.actuators_power(physics).copy()
             rew -= self._energy_penalty_coef * np.sum(power)
         return rew
@@ -333,8 +338,11 @@ class PianoWithShadowHands(base.PianoTask):
     def _compute_ot_fingering_reward(self, physics: mjcf.Physics) -> float:
         """ OT reward calculation from RP1M https://arxiv.org/abs/2408.11048 """
         # calcuate fingertip positions
-        fingertip_pos = [physics.bind(finger).xpos.copy() for finger in self.left_hand.fingertip_sites]
-        fingertip_pos += [physics.bind(finger).xpos.copy() for finger in self.right_hand.fingertip_sites]
+        fingertip_pos = []
+        for hand in self.hands:
+            fingertip_pos += [
+                physics.bind(finger).xpos.copy() for finger in hand.fingertip_sites
+            ]
         
         # calcuate the positions of piano keys to press.
         keys_to_press = np.flatnonzero(self._goal_current[:-1]) # keys to press
@@ -420,7 +428,7 @@ class PianoWithShadowHands(base.PianoTask):
             # slider joints (which are in units of meters).
             # "position",
         ]
-        for hand in [self.right_hand, self.left_hand]:
+        for hand in self.hands:
             for obs in enabled_observables:
                 getattr(hand.observables, obs).enabled = True
 
@@ -450,7 +458,7 @@ class PianoWithShadowHands(base.PianoTask):
 
     def _colorize_fingertips(self) -> None:
         """Colorize the fingertips of the hands."""
-        for hand in [self.right_hand, self.left_hand]:
+        for hand in self.hands:
             for i, body in enumerate(hand.fingertip_bodies):
                 color = hand_consts.FINGERTIP_COLORS[i] + (_FINGERTIP_ALPHA,)
                 for geom in body.find_all("geom"):
@@ -475,7 +483,7 @@ class PianoWithShadowHands(base.PianoTask):
 
     def _disable_collisions_between_hands(self) -> None:
         """Disable collisions between the hands."""
-        for hand in [self.right_hand, self.left_hand]:
+        for hand in self.hands:
             for geom in hand.mjcf_model.find_all("geom"):
                 # If both hands have the same contype and conaffinity, then they can't
                 # collide. They can still collide with the piano since the piano has
@@ -495,5 +503,5 @@ class PianoWithShadowHands(base.PianoTask):
         if not self._randomize_hand_positions:
             return
         offset = random_state.uniform(low=-_POSITION_OFFSET, high=_POSITION_OFFSET)
-        for hand in [self.right_hand, self.left_hand]:
+        for hand in self.hands:
             hand.shift_pose(physics, (0, offset, 0))

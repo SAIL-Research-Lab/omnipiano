@@ -5,8 +5,9 @@ This module implements the register() + make() pattern (following Robust-Gymnasi
 - make(): Looks up the registry, resolves configs, and builds the full wrapper chain.
 """
 
-from dataclasses import dataclass
-from typing import Optional, Dict
+import dataclasses
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Sequence
 
 import gymnasium as gym
 from shimmy.dm_control_compatibility import DmControlCompatibilityV0
@@ -16,7 +17,13 @@ from robopianist.wrappers.evaluation import MidiEvaluationWrapper
 from OmniPiano.wrappers.robust_wrapper import RobustWrapper
 from OmniPiano.wrappers.safety_wrapper import SafetyWrapper
 from OmniPiano.wrappers.metrics_wrapper import MetricsWrapper
-from OmniPiano.configs import RobustConfig, SafetyConfig, TaskVariantConfig
+from OmniPiano.configs import (
+    BenchmarkEnvConfig,
+    RobustConfig,
+    SafetyConfig,
+    TaskVariantConfig,
+)
+from OmniPiano.tasks.hand_spec import HandSpec
 from OmniPiano.tasks.omni_piano_task import OmniPianoTask
 
 
@@ -27,6 +34,9 @@ class TaskSpec:
     safety_config: Optional[SafetyConfig] = None
     robust_config: Optional[RobustConfig] = None
     task_config: Optional[TaskVariantConfig] = None
+    env_config: Optional[BenchmarkEnvConfig] = None
+    # N-hand morphology. None = use PianoTask's default 2-hand (rh, lh) pair.
+    hand_specs: Optional[Sequence[HandSpec]] = None
 
 
 _registry: Dict[str, TaskSpec] = {}
@@ -68,6 +78,18 @@ def make(
             safety_config = task_spec.safety_config
         if task_config is None and task_spec.task_config is not None:
             task_config = task_spec.task_config
+
+        # Resolution order for task-constructor kwargs:
+        #   caller kwargs  >  hand_specs  >  env_config fields  >  dataclass defaults
+        # setdefault() only writes when the key is absent, so the FIRST writer
+        # wins. Apply sources from most-specific to least-specific: caller
+        # kwargs are already in `kwargs`, then hand_specs (task-level
+        # morphology), then env_config fields (benchmark-wide defaults).
+        if task_spec.hand_specs is not None:
+            kwargs.setdefault("hand_specs", task_spec.hand_specs)
+        env_cfg = task_spec.env_config or BenchmarkEnvConfig()
+        for k, v in dataclasses.asdict(env_cfg).items():
+            kwargs.setdefault(k, v)
     else:
         base_env_name = env_name
 
