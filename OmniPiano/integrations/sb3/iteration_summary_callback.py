@@ -93,6 +93,7 @@ class TrainIterationSummaryCallback(BaseCallback):
             "ep_sustain_f1_mean",
             "episode_energy_reward_mean",
             "episode_fingering_reward_mean",
+            "episode_ot_fingering_reward_mean",
             "episode_forearm_reward_mean",
             "episode_key_press_reward_mean",
             "episode_sustain_reward_mean",
@@ -130,6 +131,10 @@ class TrainIterationSummaryCallback(BaseCallback):
             _parse_finite_float(r.get("episode_fingering_reward", ""))
             for r in rows
         ]
+        ot_fingering_rewards = [
+            _parse_finite_float(r.get("episode_ot_fingering_reward", ""))
+            for r in rows
+        ]
         forearm_rewards = [
             _parse_finite_float(r.get("episode_forearm_reward", ""))
             for r in rows
@@ -161,6 +166,7 @@ class TrainIterationSummaryCallback(BaseCallback):
             _mean_or_empty(sustain_f1s, has_episode),
             _mean_or_empty(energy_rewards, has_episode),
             _mean_or_empty(fingering_rewards, has_episode),
+            _mean_or_empty(ot_fingering_rewards, has_episode),
             _mean_or_empty(forearm_rewards, has_episode),
             _mean_or_empty(key_press_rewards, has_episode),
             _mean_or_empty(sustain_rewards, has_episode),
@@ -208,6 +214,9 @@ class TrainIterationSummaryCallback(BaseCallback):
                 ),
                 "episode_fingering_reward": info.get(
                     EpisodeInfoKeys.EPISODE_TASK_FINGERING_REWARD, ""
+                ),
+                "episode_ot_fingering_reward": info.get(
+                    EpisodeInfoKeys.EPISODE_TASK_OT_FINGERING_REWARD, ""
                 ),
                 "episode_forearm_reward": info.get(
                     EpisodeInfoKeys.EPISODE_TASK_FOREARM_REWARD, ""

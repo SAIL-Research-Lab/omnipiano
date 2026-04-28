@@ -1,15 +1,22 @@
-"""Helpers for unwrapping Gym/Shimmy/dm_env wrapper chains."""
+"""Helpers for unwrapping Gym / dm_env wrapper chains.
+
+Walks ``env.env`` (gym.Wrapper convention) down to the gym↔dm_env
+adapter, then reads its ``_env`` attribute to enter the dm_env chain.
+The adapter is ``OmniPiano.envs.dm_env_adapter.DmEnvToGymnasium``;
+the same access pattern also works for ``shimmy.DmControlCompatibilityV0``
+since both expose ``_env``.
+"""
 
 
 def get_dm_env_from_gym(env):
-    """Unwrap Gymnasium wrappers and return shimmy's underlying dm_env object."""
+    """Unwrap Gymnasium wrappers and return the underlying dm_env object."""
     env_ptr = env
     while hasattr(env_ptr, "env"):
         env_ptr = env_ptr.env
 
     if not hasattr(env_ptr, "_env"):
         raise AttributeError(
-            "Expected a shimmy wrapper with '_env' after unwrapping Gym wrappers."
+            "Expected a dm_env adapter exposing '_env' after unwrapping Gym wrappers."
         )
     return env_ptr._env
 

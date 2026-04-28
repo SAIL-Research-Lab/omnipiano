@@ -135,34 +135,67 @@ for _ in range(100):
 env.close()
 ```
 
-### Training with SB3 (PPO)
+### Registry-first contract
 
-A full training + evaluation template is provided at `examples/run_template.py`:
+`make(env_name, log_dir=None, log_split="train", **kwargs)` enforces a
+**strict registry-only contract**:
 
-```bash
-cd examples
-python run_template.py
-```
+* `env_name` MUST be a registered task id (see `OmniPiano/envs/__init__.py`
+  for the full list). Unknown ids raise `ValueError` listing every valid
+  id — typo-resistant.
+* All experiment-defining configs (`safety`, `robust`, `task_variant`,
+  `env_config`, `hand_specs`) come from the registered `TaskSpec` only.
+  To vary any of them, **register a new task id** rather than overriding
+  at make() time. This keeps every experiment configuration tied to a
+  canonical, traceable id — `eval_summary.json` records `env_name` and
+  algorithm hparams; together they fully describe the run.
+* `**kwargs` is whitelisted to **runtime-bypass** fields that don't
+  affect the policy's training trajectory:
+  `seed`, `record_dir`, `record_every`, `record_resolution`,
+  `camera_id`. Anything else (`n_steps_lookahead`, `frame_stack`,
+  `disable_fingering_reward`, `hand_specs`, ...) raises `ValueError`.
 
-This will:
-1. Train a PPO policy on the selected task with parallel environments
-2. Save the trained model to `examples/logs/<run>/final_model.zip`
-3. Run deterministic evaluation episodes with video recording
-4. Export training curves to `train_iteration_summary.csv` and evaluation metrics to `eval_episode_log.csv`
+### Training + evaluation templates
 
-To switch tasks, edit the `env_name` variable in `run_template.py`:
+OmniPiano ships only environments, wrappers, and protocol defaults — it
+does **not** own a rollout loop. Training and evaluation are the
+framework's responsibility. Reference templates:
 
-```python
-# Choose one:
-env_name = "OmniPiano-ForElise-WristLimit-v0"
-env_name = "OmniPiano-ClairDeLune-CollisionSafe-v0"
-env_name = "OmniPiano-PolonaiseOp53-PowerConstrained-v0"
-# ... etc.
-```
+* **Stable Baselines 3** — `examples/run_sb3_template.py` (PPO) and
+  `examples/run_sb3_sac_template.py` (SAC). Both are CLI-driven (no
+  file editing): `--env <registered-id>`, `--experiment-name`,
+  `--total-steps`, `--seed`, plus algorithm-specific defaults pinned to
+  paper values.
 
-For custom SafeRL algorithms, use the `make()` function directly — the environment
-follows the standard Gymnasium API and exposes `reward`, `cost`, and task metrics
-through `info`. See `task_description.md` and `design_rationale.md` for details.
+* **OmniSafe** — `examples/run_omnisafe_template.py`. PPOLag via
+  `omnisafe.Agent(...).learn()` with a `CMDP` adapter that wraps an
+  OmniPiano gymnasium env. Scaffold — see the TODO markers before
+  running.
+
+Templates read **algorithm-agnostic** protocol constants (env-step
+budget, scalar seed, final-eval episode count) from
+`BenchmarkProtocolConfig` in `OmniPiano/configs/__init__.py`. **Algorithm
+hyperparameters** (`gamma`, `batch_size`, `buffer_size`,
+`learning_starts`, `n_envs`, network architecture) live in each
+trainer's argparse defaults and are dumped to
+`eval_summary.json["hparams"]` for audit. They do not belong in
+`BenchmarkProtocolConfig` because, e.g., `replay_capacity` is
+off-policy-only and `gamma=0.8` (SAC) vs `gamma=0.9` (PPO) makes a
+single shared default meaningless.
+
+`seed` is a single scalar passed to the framework (`PPO(seed=...)` /
+`custom_cfgs={'seed': ...}`); paper-style N-seed replication is done by
+running the script N times with distinct `seed` values and aggregating
+`eval_summary.json` files offline.
+
+To switch tasks, pass a different `--env <registered-id>` on the command
+line, or use a pinned `examples/runs/*.sh` wrapper (one per registered
+experiment).
+
+For any other framework, call `OmniPiano.make(env_id)` — the
+environment follows the standard Gymnasium API and exposes reward,
+per-step cost (`info["step_safety/cost_total"]`), and episode-level
+task metrics (`info["episode_task/f1"]`, ...) through `info`.
 
 ## Current Package Layout
 
@@ -173,55 +206,83 @@ current codebase is organized as follows:
 ```text
 OmniPiano/
 ├── __init__.py
-├── README.md
 ├── configs/
-│   └── __init__.py
+│   └── __init__.py             # All config dataclasses
 ├── envs/
-│   ├── __init__.py
-│   ├── registration.py
-│   └── robopianist/
-├── safety/
-│   └── constraints.py
+│   ├── __init__.py             # Task registrations (register(...) calls)
+│   ├── registration.py         # make() factory + TaskSpec + registry
+│   ├── dm_env_adapter.py       # Custom dm_env -> gymnasium adapter (no shimmy)
+│   ├── dm_env_obs_noise.py     # Per-key observation noise wrapper (dm_env layer)
+│   └── robopianist/            # Vendored upstream robopianist (READ-ONLY)
 ├── tasks/
 │   ├── __init__.py
-│   └── omni_piano_task.py
+│   ├── omni_piano_task.py      # OmniPianoTask: MJCF-level task variants
+│   └── hand_spec.py            # HandSpec: N-hand morphology declarations
+├── safety/
+│   └── constraints.py          # BaseConstraint + concrete safety rules
+├── wrappers/
+│   ├── __init__.py
+│   ├── metrics_wrapper.py      # task reward terms + episode metrics -> info
+│   ├── safety_wrapper.py       # safety constraint cost -> info
+│   └── robust_wrapper.py       # action noise + obs noise reporting
 ├── utils/
-│   ├── env_unwrap.py
-│   ├── info_keys.py
-│   ├── iteration_summary_callback.py
-│   └── logger_wrapper.py
-└── wrappers/
-    ├── __init__.py
-    ├── metrics_wrapper.py
-    ├── robust_wrapper.py
-    └── safety_wrapper.py
+│   ├── env_unwrap.py           # gym/dm_env unwrap helpers
+│   ├── info_keys.py            # canonical info-dict key constants
+│   └── logger_wrapper.py       # eval-time episode CSV logger
+└── integrations/
+    └── sb3/
+        ├── __init__.py
+        └── iteration_summary_callback.py   # SB3-specific train logger
 ```
 
-There is also a repository-level example entry point at `examples/run_template.py`.
+Repository-level example entry points live under `examples/`:
+* `run_sb3_template.py` — PPO trainer (Stable Baselines 3, CLI-driven)
+* `run_sb3_sac_template.py` — SAC trainer (Stable Baselines 3, CLI-driven)
+* `run_omnisafe_template.py` — PPOLag scaffold (OmniSafe)
+* `render_checkpoint.py` — load an SB3 checkpoint and render an MP4
+* `trial.py` — minimal interactive smoke-test loop
+* `runs/*.sh` — pinned shell wrappers around the trainer templates,
+  one per registered experiment (e.g., `sac_3hand_winter_wind.sh`)
+
+OmniPiano itself does not ship any training or eval code; the templates
+under `examples/` are reference implementations.
 
 ## High-Level Execution Flow
 
-The end-to-end environment construction pipeline is:
+The end-to-end environment construction pipeline (paper-chain layout —
+mirrors `robopianist-rl/train.py:get_env()` at the dm_env layer):
 
 1. `import OmniPiano`
    `OmniPiano/__init__.py` exposes `make` and `register`, and imports
    `OmniPiano.envs` for registration side effects.
 2. Registered tasks are declared in `OmniPiano/envs/__init__.py`
    Each task is added with `register(id=..., base_env_name=..., ...)`.
-3. `OmniPiano.envs.registration.make(...)` resolves configs
-   If `env_name` is registered, `make(...)` loads its default `TaskSpec` and
-   merges any caller overrides.
-4. `suite.load_with_task(..., task_cls=OmniPianoTask, ...)` builds the base task
-   This is where the vendored `robopianist` environment is instantiated.
-5. dm_env-level wrappers are applied
-   `MidiEvaluationWrapper` is always applied; `PianoSoundVideoWrapper` is added
-   only when `record_dir` is provided.
-6. The dm_env is converted to Gymnasium with Shimmy
-   `DmControlCompatibilityV0` is used, with a temporary patch so the wrapped
-   dm_env chain is still recognized as a `dm_control` environment.
-7. Gym-level wrappers are applied in a fixed order
-   `MetricsWrapper` -> `SafetyWrapper` -> `RobustWrapper`
-8. Eval-only episode CSV logging is added when requested
+3. `OmniPiano.envs.registration.make(env_name, **kwargs)` resolves configs
+   `env_name` MUST be a registered id (unknown names raise `ValueError`).
+   All four configs (`safety`, `robust`, `task_variant`, `env`) and
+   `hand_specs` come from the registered `TaskSpec`. Caller `**kwargs`
+   are strictly whitelisted to runtime-bypass fields (`seed`,
+   `record_dir`, `record_every`, `record_resolution`, `camera_id`);
+   anything else raises `ValueError`. To vary an experiment-defining
+   parameter, register a new task id.
+4. `suite.load_with_task(..., task_cls=OmniPianoTask, stretch=, shift=, ...)`
+   builds the base task with the vendored `robopianist` task class.
+5. dm_env-level wrappers are applied in this order:
+   `EpisodeStatisticsWrapper` -> `[PianoSoundVideoWrapper if record_dir]`
+   -> `MidiEvaluationWrapper` -> `[DmEnvObsNoiseWrapper if obs_noise_std>0]`
+   -> `[ObservationActionRewardWrapper if action_reward_observation]`
+   -> `ConcatObservationWrapper` (Dict -> flat ndarray)
+   -> `[FrameStackingWrapper if frame_stack>1]`
+   -> `CanonicalSpecWrapper(clip=...)` -> `SinglePrecisionWrapper`.
+6. The dm_env is converted to Gymnasium via the custom
+   `OmniPiano.envs.dm_env_adapter.DmEnvToGymnasium` adapter (no shimmy,
+   no monkey-patching). The adapter's `reset(seed=X)` rebuilds the
+   chain on demand to honor gymnasium's reseed contract — required
+   because `dm_control.composer_utils.Environment` fixes its
+   `random_state` at construction time.
+7. Gym-level wrappers are applied in a fixed order:
+   `MetricsWrapper` -> `SafetyWrapper` -> `RobustWrapper`.
+8. Eval-only episode CSV logging is added when `log_split == "eval"`:
    `SafeRecordEpisodeStatistics` writes eval episode metrics to CSV.
 
 ## Module Responsibilities
@@ -236,10 +297,11 @@ The end-to-end environment construction pipeline is:
   * **Role**: Defines the benchmark configuration dataclasses.
   * **Content**:
     1. `SafetyConfig`: list of instantiated safety constraints.
-    2. `RobustConfig`: perturbation parameters such as `action_noise_std` and `obs_noise_std`.
-    3. `TaskVariantConfig`: low-level task switches such as `left_hand_immobile` / `right_hand_immobile`.
-    4. `LoggingConfig`: shared logging configuration such as log directory and split.
-    5. `EvalProtocolConfig`: shared evaluation protocol settings such as seeds and number of evaluation episodes.
+    2. `RobustConfig`: perturbation parameters (`action_noise_std`, `obs_noise_std`).
+    3. `TaskVariantConfig`: **OmniPiano-only** XML/MJCF-level task variants applied inside `OmniPianoTask._apply_task_variants` (`left_hand_immobile`, `right_hand_immobile`). Paper-comparable env parameters (e.g., `disable_fingering_reward`) live in `BenchmarkEnvConfig`, not here.
+    4. `LoggingConfig`: shared logging configuration (log directory, split).
+    5. `BenchmarkProtocolConfig`: **algorithm-agnostic** shared protocol (total env-step budget, scalar seed, `num_eval_eps`, `protocol_version`). The single source of truth for cross-framework comparability. Algorithm hyperparameters (`batch_size`, `discount`, `replay_capacity`, `warmstart_steps`, etc.) deliberately live in each trainer's argparse defaults and are dumped to `eval_summary.json["hparams"]`.
+    6. `BenchmarkEnvConfig`: shared task-environment defaults — listed in the **same order as `robopianist-rl/train.py:Args`** (21 fields including `n_steps_lookahead`, `trim_silence`, `gravity_compensation`, `disable_fingering_reward`, `frame_stack`, `clip`, `action_reward_observation`, recording knobs, etc.), with each field annotated `=` (paper-same) / `≠ run.sh adopts` / `≠ OmniPiano-fixed`. This is the audit point for paper-vs-OmniPiano env diff.
 * **`OmniPiano/envs/__init__.py`**
   * **Role**: The official repository of benchmark task declarations.
   * **Content**: Registers all benchmark tasks through `register(...)`. Each task maps a human-readable benchmark ID to its `TaskSpec`, which bundles the base environment name plus the default safety, robustness, and task-variant configurations. Current tasks span wrist-limit, right-hand-only, binary collision, continuous collision force, dense power cost, action/observation robustness, injury-style power constraints, OT fingering with shared per-joint ceilings, and OT fingering with summed chain budgets.
@@ -249,12 +311,19 @@ The end-to-end environment construction pipeline is:
   * **Role**: The entry point factory for environment creation.
   * **Responsibilities**:
     1. Implements the `register()` + `make()` pattern.
-    2. Resolves a registered task name into its `TaskSpec` and default configs, while still allowing caller-provided overrides.
-    3. Calls the underlying `load_with_task(...)` to instantiate `OmniPianoTask` on top of the vendored RoboPianist task.
-    4. Adds dm_env-level wrappers such as `MidiEvaluationWrapper` and optional `PianoSoundVideoWrapper`.
-    5. Converts the dm_env into a Gymnasium environment via Shimmy.
-    6. Applies the benchmark wrapper stack in a fixed order: `MetricsWrapper` -> `SafetyWrapper` -> `RobustWrapper`.
-    7. Optionally adds eval-time CSV episode logging when `log_split == "eval"`.
+    2. Enforces a strict registry-only contract: unknown `env_name` raises `ValueError`. All experiment-defining configs (`safety`, `robust`, `task_variant`, `env`, `hand_specs`) are sourced exclusively from the `TaskSpec` — to vary any of them, register a new task id rather than overriding at make() time.
+    3. Validates caller `**kwargs` against a runtime-bypass whitelist (`seed`, `record_dir`, `record_every`, `record_resolution`, `camera_id`); any other key raises `ValueError`.
+    4. Calls `suite.load_with_task(..., task_cls=OmniPianoTask, ...)` to instantiate `OmniPianoTask` on top of the vendored RoboPianist task, with `stretch` / `shift` from the resolved `BenchmarkEnvConfig`.
+    5. Builds the dm_env wrapper chain (paper-chain layout): `EpisodeStatistics` -> optional `PianoSoundVideo` -> `MidiEvaluation` -> optional `DmEnvObsNoise` -> optional `ObservationActionReward` -> `ConcatObservation` -> optional `FrameStacking` -> `CanonicalSpec(clip=...)` -> `SinglePrecision`.
+    6. Converts dm_env -> Gymnasium via the custom `DmEnvToGymnasium` adapter (no shimmy).
+    7. Applies the gym-level wrapper stack: `MetricsWrapper` -> `SafetyWrapper` -> `RobustWrapper`.
+    8. Optionally adds eval-time CSV episode logging when `log_split == "eval"`.
+* **`OmniPiano/envs/dm_env_adapter.py`**
+  * **Role**: Custom `dm_env -> gymnasium.Env` adapter (replaces shimmy).
+  * **Responsibilities**: Wraps a dm_env builder closure, exposes the gymnasium API (`reset` / `step` / `action_space` / `observation_space`), and honors `reset(seed=X)` by rebuilding the dm_env chain on demand — because `dm_control.composer_utils.Environment` fixes its `random_state` at construction time and exposes no setter. Required for any framework that respects gym's reseed contract (SB3 `make_vec_env`, OmniSafe vec envs, gymnasium's `AsyncVectorEnv`, etc.).
+* **`OmniPiano/envs/dm_env_obs_noise.py`**
+  * **Role**: Per-key observation noise injection at the dm_env layer (before `ConcatObservationWrapper`).
+  * **Responsibilities**: Applied conditionally when `RobustConfig.obs_noise_std > 0`. Operates on the dm_env Dict observation so it can pick noise targets by key name (skipping categorical / counter keys like `goal`); writes its last-step L2 noise magnitude as a side channel that `RobustWrapper` reads at the gym layer for logging.
 
 ### 4. Low-Level Physics Interceptor (`tasks/`)
 * **`OmniPiano/tasks/omni_piano_task.py`**
@@ -289,22 +358,47 @@ These wrappers follow the standard Gymnasium API and handle the data flow betwee
 * **`OmniPiano/utils/logger_wrapper.py`**
   * **Role**: The evaluation-phase episode logger.
   * **Responsibilities**: Records episode metrics to CSV without coupling logging to a specific RL algorithm. This is mainly used for evaluation-time episode logging.
-* **`OmniPiano/utils/iteration_summary_callback.py`**
-  * **Role**: The training-phase iteration logger used by the example script.
-  * **Responsibilities**: Aggregates completed training episodes per iteration and writes `train_iteration_summary.csv`. This is mainly used for training-time summary logging in the Stable-Baselines3 example pipeline.
 
-## Example Entry Point
+### 8. Framework Integrations (`integrations/`)
+Framework-specific glue code is isolated under `integrations/<framework>/`
+so the OmniPiano core (`envs/`, `wrappers/`, `configs/`, `tasks/`,
+`safety/`, `utils/`) stays framework-agnostic. Only files under
+`integrations/<framework>/` may depend on a specific RL framework's
+internals.
 
-The standard runnable example is `examples/run_template.py`, not
-`OmniPiano/examples/run_template.py`.
+* **`OmniPiano/integrations/sb3/iteration_summary_callback.py`**
+  * **Role**: The training-phase iteration logger used by the SB3 templates.
+  * **Responsibilities**: Aggregates completed training episodes per iteration and writes `train_iteration_summary.csv`. SB3-specific (consumes `BaseCallback`); analogous OmniSafe / other-framework loggers, if needed, would live under their own `integrations/<framework>/` subpackage.
 
-It demonstrates how to:
+## Example Entry Points
 
-1. create a registered environment with `make(...)`,
-2. train a PPO policy,
-3. save the final model,
-4. run deterministic evaluation episodes,
-5. record evaluation videos and CSV metrics.
+All runnable scripts live under `examples/` (not under `OmniPiano/`).
+
+* **`examples/run_sb3_template.py`** — PPO trainer.
+  CLI-driven (`--env`, `--experiment-name`, `--total-steps`, `--seed`,
+  `--gamma`, `--n-envs`, ...). Demonstrates: registered env via
+  `make(...)`, PPO training with SB3's `EvalCallback` for periodic eval,
+  inline rollout loop for the final benchmark eval (needed because
+  `evaluate_policy` discards terminal-step `info`), CSV metrics and
+  per-episode video.
+* **`examples/run_sb3_sac_template.py`** — SAC trainer with the same
+  CLI surface tuned to SAC defaults (`--gamma 0.8`, `--batch-size 256`,
+  `--buffer-size 1_000_000`, `--learning-starts 5_000`, ...).
+* **`examples/run_omnisafe_template.py`** — PPOLag scaffold.
+* **`examples/render_checkpoint.py`** — load an SB3 zip checkpoint,
+  build the matching env (auto-detects PPO/SAC), runs one deterministic
+  episode, writes the MP4 + WAV. Verifies the env's observation space
+  matches the model's expectation before rolling out, so a checkpoint /
+  env id mismatch fails fast.
+* **`examples/runs/*.sh`** — shell wrappers that pin the CLI flags for
+  each registered experiment (one `.sh` per experiment), so a run is
+  reproducible from the script name alone:
+  ```bash
+  bash examples/runs/sac_3hand_winter_wind.sh
+  bash examples/runs/ppo_2hand_forelise_ann.sh
+  ```
+  Each wrapper passes `"$@"` to the trainer so additional CLI overrides
+  still work.
 
 ## Notes on Installation
 

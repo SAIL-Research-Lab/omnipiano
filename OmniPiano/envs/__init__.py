@@ -12,7 +12,7 @@ they exist only for installation verification (see README Quick Start).
 """
 
 from OmniPiano.envs.registration import register
-from OmniPiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig
+from OmniPiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig, BenchmarkEnvConfig
 from OmniPiano.safety.constraints import (
     JointMagnitudeConstraint,
     MultiJointSharedMagnitudeConstraint,
@@ -24,6 +24,34 @@ from OmniPiano.safety.constraints import (
 )
 from OmniPiano.tasks.hand_spec import HandSpec
 from robopianist.models.hands import HandSide
+
+# ===========================================================================
+# Ablation: annotation-based vs OT fingering reward
+#
+# Paired tasks for empirically validating whether the OT fingering reward
+# (Hungarian assignment, no per-finger supervision) provides comparable F1
+# to the annotation-based fingering reward used in the original RoboPianist
+# paper. Both variants use the SAME piece (For Elise, annotated in PIG),
+# SAME base env, NO safety constraints, and differ only in
+# ``BenchmarkEnvConfig.disable_fingering_reward``. Final F1 difference is
+# attributable solely to the fingering-reward signal.
+# ---------------------------------------------------------------------------
+# ForElise: RH A3-E7 (35 unique keys, 399 steps). Annotated; shortest PIG
+# piece — good smoke-test target for reward-signal ablations.
+# ===========================================================================
+register(
+    id="OmniPiano-ForElise-FingeringAnn-v0",
+    base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+    # Defaults: empty SafetyConfig, BenchmarkEnvConfig(disable_fingering_reward=False)
+    # → annotation-based fingering reward, no safety overhead.
+)
+register(
+    id="OmniPiano-ForElise-FingeringOT-v0",
+    base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    # → OT (Hungarian) fingering reward, no safety overhead. Paired with
+    # FingeringAnn-v0 above for the ablation; everything else identical.
+)
 
 # ===========================================================================
 # Task Type 1: Right-Hand Wrist Limit
@@ -227,7 +255,7 @@ register(
 register(
     id="OmniPiano-ForElise-WristInjury-v0",
     base_env_name="RoboPianist-repertoire-150-ForElise-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             InjuredJointPowerConstraint(
@@ -251,7 +279,7 @@ register(
 register(
     id="OmniPiano-NocturneOp9No2-ThumbInjury-v0",
     base_env_name="RoboPianist-repertoire-150-NocturneOp9No2-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             InjuredJointPowerConstraint(
@@ -280,7 +308,7 @@ register(
 register(
     id="OmniPiano-FantaisieImpromptu-ForearmInjury-v0",
     base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             InjuredJointPowerConstraint(
@@ -320,7 +348,7 @@ register(
 register(
     id="OmniPiano-ClairDeLune-BimanualMiddleFingerLimitOT-v0",
     base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             MultiJointSharedMagnitudeConstraint(
@@ -350,7 +378,7 @@ register(
 register(
     id="OmniPiano-MapleLeafRag-BimanualWristMiddleLimitOT-v0",
     base_env_name="RoboPianist-repertoire-150-MapleLeafRag-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             MultiJointSharedMagnitudeConstraint(
@@ -378,7 +406,7 @@ register(
 register(
     id="OmniPiano-NocturneOp9No2-LeftWristMiddleLimitOT-v0",
     base_env_name="RoboPianist-repertoire-150-NocturneOp9No2-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             MultiJointSharedMagnitudeConstraint(
@@ -429,7 +457,7 @@ register(
 register(
     id="OmniPiano-NocturneOp9No2-BimanualThumbBudgetOT-v0",
     base_env_name="RoboPianist-repertoire-150-NocturneOp9No2-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             MultiJointSummedMagnitudeConstraint(
@@ -459,7 +487,7 @@ register(
 register(
     id="OmniPiano-FantaisieImpromptu-BimanualWristThumbBudgetOT-v0",
     base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             MultiJointSummedMagnitudeConstraint(
@@ -489,7 +517,7 @@ register(
 register(
     id="OmniPiano-PolonaiseOp53-BimanualThumbLittleBudgetOT-v0",
     base_env_name="RoboPianist-repertoire-150-PolonaiseOp53-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             MultiJointSummedMagnitudeConstraint(
@@ -528,7 +556,80 @@ register(
 register(
     id="OmniPiano-FantaisieImpromptu-ThreeHandPrototype-v0",
     base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
-    task_config=TaskVariantConfig(disable_fingering_reward=True),
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=(
+        HandSpec(
+            name="rh",
+            side=HandSide.RIGHT,
+            position=(0.4, 0.30, 0.13),
+            group="treble",
+        ),
+        HandSpec(
+            name="lh",
+            side=HandSide.LEFT,
+            position=(0.4, -0.30, 0.13),
+            group="bass",
+        ),
+        HandSpec(
+            name="rh_c",
+            side=HandSide.RIGHT,
+            position=(0.4, 0.0, 0.13),
+            group="middle",
+        ),
+    ),
+)
+
+# ForElise 3-hand companion to ThreeHandPrototype above. Same 3-hand
+# morphology (treble / middle / bass) + OT fingering (annotation PIG data
+# covers only 2 hands, so the third hand must be OT-supervised). Shorter
+# and easier piece than FantaisieImpromptu — kept as a smoke test for
+# the 3-hand pipeline and as an empirical baseline showing that on a
+# genuinely 2-hand piece the 3rd hand stays vestigial under plain OT
+# (companion to WinterWind below where the wide range can plausibly
+# engage all three).
+register(
+    id="OmniPiano-ForElise-ThreeHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=(
+        HandSpec(
+            name="rh",
+            side=HandSide.RIGHT,
+            position=(0.4, 0.30, 0.13),
+            group="treble",
+        ),
+        HandSpec(
+            name="lh",
+            side=HandSide.LEFT,
+            position=(0.4, -0.30, 0.13),
+            group="bass",
+        ),
+        HandSpec(
+            name="rh_c",
+            side=HandSide.RIGHT,
+            position=(0.4, 0.0, 0.13),
+            group="middle",
+        ),
+    ),
+)
+
+# Chopin Étude Op.25 No.11 ("Winter Wind") — short piece with extremely
+# wide pitch range, intended as the "3-hand can plausibly help" target:
+#   - Duration ~15.8s (shortest among PIG entries with range >= 65 semitones,
+#     even shorter than ForElise's 19.9s; episode length 314 steps).
+#   - Pitch range 69 semitones (MIDI 32-101, ≈ 5.75 octaves) — naturally
+#     splits across bass / middle / treble.
+#   - 261 notes / 15.8s ≈ 16.5 notes/sec — dense enough that |K_t| often
+#     reaches 4-6 simultaneous fingertip targets, so OT can usefully
+#     spread assignment across 3 hands rather than always picking the
+#     closest 2.
+# Same 3-hand morphology + OT fingering as the ForElise variant above;
+# the only difference is the piece. Pair the two runs to ablate
+# "wide-range repertoire helps 3rd-hand engagement under plain OT".
+register(
+    id="OmniPiano-WinterWind-ThreeHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     hand_specs=(
         HandSpec(
             name="rh",

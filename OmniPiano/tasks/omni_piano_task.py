@@ -1,5 +1,4 @@
 from robopianist.suite.tasks import piano_with_shadow_hands
-from dm_control import mjcf
 from OmniPiano.configs import TaskVariantConfig
 
 
@@ -12,13 +11,10 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
     def __init__(self, task_config: TaskVariantConfig, **kwargs):
         self.task_config = task_config
 
-        if task_config.disable_fingering_reward:
-            kwargs["disable_fingering_reward"] = True
-
         # 1. Call the parent constructor.
         # This builds the default XML tree (mjcf_model) in memory.
         super().__init__(**kwargs)
-        
+
         # 2. Dynamically modify the XML tree based on the config
         self._apply_task_variants()
         

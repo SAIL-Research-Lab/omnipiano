@@ -133,11 +133,13 @@ class PianoWithShadowHands(base.PianoTask):
             sustain_reward=self._compute_sustain_reward,
             energy_reward=self._compute_energy_reward,
         )
+        # TODO(dev): these prints are for task-design iteration only; remove
+        # once the per-task reward choice is finalized.
         if not self._disable_fingering_reward:
+            print("Based on the current task design, using annotation-based fingering reward.")
             self._reward_fn.add("fingering_reward", self._compute_fingering_reward)
         else:
-            # use OT based fingering
-            print('Fingering is unavailable. OT fingering reward is used.')
+            print("Based on the current task design, using optimal-transport (OT) fingering reward.")
             self._reward_fn.add("ot_fingering_reward", self._compute_ot_fingering_reward)
 
         if not self._disable_forearm_reward:
