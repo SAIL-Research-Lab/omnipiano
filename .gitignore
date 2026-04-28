@@ -1,21 +1,22 @@
-# 忽略根目录下的所有文件和文件夹
+# Ignore everything at the repo root by default
 /*
 
-# 排除需要追踪的文件夹
+# Whitelist directories and files we actually want tracked
 !/OmniPiano/
 !/examples/
 !/demos/
 !/setup.py
 !/README.md
 
-# 忽略 examples 下的日志
+# Training/eval logs and personal scratch under examples/
 /examples/logs/
 /examples/trial.py
 
-# PIG 数据集预处理产物（用户需自行运行 robopianist preprocess 生成）
+# Python bytecode cache (any __pycache__/ anywhere in the tree)
+__pycache__/
+
+# PIG dataset preprocessing artifacts (users run `robopianist preprocess` to generate)
 OmniPiano/envs/robopianist/music/data/pig_single_finger/
 
-# 排除 .gitignore 文件自身
+# Whitelist .gitignore itself
 !.gitignore
-
-
