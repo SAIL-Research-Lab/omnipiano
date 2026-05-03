@@ -129,9 +129,17 @@ class Piano(composer.Entity):
             pos="0.417 -0.039 0.717",
             xyaxes="-0.002 1.000 0.000 -0.867 -0.002 0.498",
         )
-        pad_y = 0.5
+        # The topdown camera is rotated 90° about Z (quat [1,0,0,1]), so the
+        # piano's long axis (world Y, half-extent self._size[1]) projects onto
+        # the camera's *horizontal* image axis. Horizontal extent depends on
+        # render-time aspect ratio, which the MJCF can't know up-front, so we
+        # size fovy to fit the full keyboard width even at 1:1 aspect — this
+        # was the implicit assumption that broke for 3+ hand morphologies
+        # where outer hands sit near the keyboard ends and were getting
+        # cropped under the original pad_y=0.5.
+        margin = 1.2
         distance = 1.0
-        fovy_radians = 2 * np.arctan2(pad_y * self._size[1], distance)
+        fovy_radians = 2 * np.arctan2(margin * self._size[1], distance)
         self._mjcf_root.worldbody.add(
             "camera",
             name="topdown",

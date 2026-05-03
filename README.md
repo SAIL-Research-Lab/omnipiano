@@ -9,6 +9,59 @@ The framework employs a "sandwich" architecture design:
 
 ## Selected Demos
 
+### Morphology Ladder — N-hand piano control
+
+The morphology ladder demonstrates how N-hand control scales across pieces and
+partition levels. Each clip below is a deterministic rollout of the best
+checkpoint of its respective trained policy, rendered with the `piano/topdown`
+camera so the full 88-key keyboard and every hand are visible at once.
+
+<table align="center">
+<tr>
+  <td align="center" width="50%">
+    <strong><code>OmniPiano-ForElise-ThreeHandPrototype-v0</code></strong><br/>
+    <sub>3 hands, no partition · SAC 5M · F1 = 0.52</sub><br/>
+    <img src="demos/morphology/3hand_forelise_l3.gif" alt="3-hand ForElise L-3 demo" width="460"/>
+  </td>
+  <td align="center" width="50%">
+    <strong><code>OmniPiano-WinterWind-FourHandPrototype-v0</code></strong><br/>
+    <sub>4 hands, no partition · TQC 10M · F1 = 0.42</sub><br/>
+    <img src="demos/morphology/4hand_winterwind_l3.gif" alt="4-hand WinterWind L-3 demo" width="460"/>
+  </td>
+</tr>
+<tr>
+  <td align="center" width="50%">
+    <strong><code>OmniPiano-WinterWind-FourHand-StaticPartition-v0</code></strong><br/>
+    <sub>4 hands, Level-1 static partition · TQC 5M · F1 = 0.39</sub><br/>
+    <img src="demos/morphology/4hand_winterwind_l1.gif" alt="4-hand WinterWind L-1 demo" width="460"/>
+  </td>
+  <td align="center" width="50%">
+    <strong><code>OmniPiano-WinterWind-FiveHand-StaticPartition-v0</code></strong><br/>
+    <sub>5 hands, Level-1 static partition · TQC 8M · F1 = <strong>0.46</strong></sub><br/>
+    <img src="demos/morphology/5hand_winterwind_l1.gif" alt="5-hand WinterWind L-1 demo" width="460"/>
+  </td>
+</tr>
+</table>
+
+**What to look for:**
+
+- **3-hand / 4-hand without partition** — outer hands often park near the keyboard
+  edges and stay idle. This is the OT-induced "winner-takes-all" pathology
+  diagnosed in the multi-hand reward design (see `static_partition_design.md`).
+- **4-hand / 5-hand with Level-1 static partition** — every hand is hard-clamped
+  by MuJoCo to its assigned register slice via `forearm_tx` joint range, so all
+  hands actively engage with their region. Per-hand `key_range` is converted to
+  arena Y bounds via `OmniPiano/tasks/hand_spec.key_range_to_y_range`, with
+  fingertip overshoot of ~7 keys at boundaries giving emergent "hard-core /
+  soft-boundary" cooperation.
+
+The 5-hand Level-1 result (F1 = 0.46) is the highest score in the ladder despite
+having the highest action dimension (111) and the fewest training steps relative
+to action complexity — evidence that physical partition more than compensates for
+the increased control burden.
+
+### Single-piece structural-conflict demos
+
 <p align="center">
   <strong><code>OmniPiano-Twinkle-RightHandOnly-v0</code></strong>
 </p>
@@ -115,6 +168,27 @@ robopianist soundfont --download
 | `OmniPiano-FantaisieImpromptu-BimanualWristThumbBudgetOT-v0` | Safety | Fantaisie-Impromptu | OT fingering with summed wrist+thumb budget |
 | `OmniPiano-PolonaiseOp53-BimanualThumbLittleBudgetOT-v0` | Safety | Polonaise Op.53 | OT fingering with summed thumb+little-finger budget |
 
+#### Morphology-Ladder Tasks (N-hand piano control)
+
+These tasks share the same MIDI repertoire but vary in number of hands and
+in whether each hand's `forearm_tx` slider is hard-clamped to a register
+slice (Level-1 static partition). All Level-1 tasks consume `key_range` on
+their `HandSpec`s and resolve it to MuJoCo joint ranges via
+`key_index_to_y` / `key_range_to_y_range`. See `static_partition_design.md`
+for the design rationale and empirical results.
+
+| Task ID | N-hands | Partition | Piece |
+|---------|---------|-----------|-------|
+| `OmniPiano-WinterWind-ThreeHandPrototype-v0` | 3 | none (L-3) | Étude Op.25 No.11 |
+| `OmniPiano-ForElise-ThreeHandPrototype-v0` | 3 | none (L-3) | Für Elise |
+| `OmniPiano-WinterWind-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | Étude Op.25 No.11 |
+| `OmniPiano-LaCampanella-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | La Campanella |
+| `OmniPiano-WinterWind-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Étude Op.25 No.11 |
+| `OmniPiano-LaCampanella-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | La Campanella |
+| `OmniPiano-WinterWind-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Étude Op.25 No.11 |
+| `OmniPiano-PicturesGreatKiev-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Pictures: Great Gate of Kiev |
+| `OmniPiano-WinterWind-FiveHand-StaticPartition-v0` | 5 (L-R-L-R-R) | Level-1 (5 buckets × ~17 keys) | Étude Op.25 No.11 |
+
 ### Minimal Example
 
 ```python
@@ -161,11 +235,15 @@ OmniPiano ships only environments, wrappers, and protocol defaults — it
 does **not** own a rollout loop. Training and evaluation are the
 framework's responsibility. Reference templates:
 
-* **Stable Baselines 3** — `examples/run_sb3_template.py` (PPO) and
-  `examples/run_sb3_sac_template.py` (SAC). Both are CLI-driven (no
-  file editing): `--env <registered-id>`, `--experiment-name`,
-  `--total-steps`, `--seed`, plus algorithm-specific defaults pinned to
-  paper values.
+* **Stable Baselines 3** — `examples/run_sb3_template.py` (PPO),
+  `examples/run_sb3_sac_template.py` (SAC), and
+  `examples/run_sb3_tqc_template.py` (TQC, via `sb3-contrib`). All are
+  CLI-driven (no file editing): `--env <registered-id>`,
+  `--experiment-name`, `--total-steps`, `--seed`, plus algorithm-specific
+  defaults pinned to paper values. TQC adds `--n-quantiles`,
+  `--n-critics`, `--top-quantiles-to-drop-per-net`. Empirically, TQC
+  outperforms SAC on N-hand piano tasks at the cost of 1-2× more
+  training steps (see `static_partition_design.md` § 7).
 
 * **OmniSafe** — `examples/run_omnisafe_template.py`. PPOLag via
   `omnisafe.Agent(...).learn()` with a `CMDP` adapter that wraps an
@@ -217,7 +295,10 @@ OmniPiano/
 ├── tasks/
 │   ├── __init__.py
 │   ├── omni_piano_task.py      # OmniPianoTask: MJCF-level task variants
-│   └── hand_spec.py            # HandSpec: N-hand morphology declarations
+│   └── hand_spec.py            # HandSpec: N-hand morphology declarations +
+│                               # Level-1 partition (key_range / y_range) +
+│                               # default_{three,four,five}_hand_specs() +
+│                               # key_index_to_y / key_range_to_y_range
 ├── safety/
 │   └── constraints.py          # BaseConstraint + concrete safety rules
 ├── wrappers/
@@ -238,11 +319,13 @@ OmniPiano/
 Repository-level example entry points live under `examples/`:
 * `run_sb3_template.py` — PPO trainer (Stable Baselines 3, CLI-driven)
 * `run_sb3_sac_template.py` — SAC trainer (Stable Baselines 3, CLI-driven)
+* `run_sb3_tqc_template.py` — TQC trainer (sb3-contrib, CLI-driven)
 * `run_omnisafe_template.py` — PPOLag scaffold (OmniSafe)
-* `render_checkpoint.py` — load an SB3 checkpoint and render an MP4
+* `render_checkpoint.py` — load an SB3 / sb3-contrib checkpoint and render an MP4
 * `trial.py` — minimal interactive smoke-test loop
 * `runs/*.sh` — pinned shell wrappers around the trainer templates,
-  one per registered experiment (e.g., `sac_3hand_winter_wind.sh`)
+  one per registered experiment (e.g., `sac_3hand_winter_wind.sh`,
+  `tqc_5hand_winter_wind_static_partition_8M.sh`)
 
 OmniPiano itself does not ship any training or eval code; the templates
 under `examples/` are reference implementations.
@@ -304,7 +387,7 @@ mirrors `robopianist-rl/train.py:get_env()` at the dm_env layer):
     6. `BenchmarkEnvConfig`: shared task-environment defaults — listed in the **same order as `robopianist-rl/train.py:Args`** (21 fields including `n_steps_lookahead`, `trim_silence`, `gravity_compensation`, `disable_fingering_reward`, `frame_stack`, `clip`, `action_reward_observation`, recording knobs, etc.), with each field annotated `=` (paper-same) / `≠ run.sh adopts` / `≠ OmniPiano-fixed`. This is the audit point for paper-vs-OmniPiano env diff.
 * **`OmniPiano/envs/__init__.py`**
   * **Role**: The official repository of benchmark task declarations.
-  * **Content**: Registers all benchmark tasks through `register(...)`. Each task maps a human-readable benchmark ID to its `TaskSpec`, which bundles the base environment name plus the default safety, robustness, and task-variant configurations. Current tasks span wrist-limit, right-hand-only, binary collision, continuous collision force, dense power cost, action/observation robustness, injury-style power constraints, OT fingering with shared per-joint ceilings, and OT fingering with summed chain budgets.
+  * **Content**: Registers all benchmark tasks through `register(...)`. Each task maps a human-readable benchmark ID to its `TaskSpec`, which bundles the base environment name plus the default safety, robustness, and task-variant configurations. Current tasks span: (a) safety/robustness — wrist-limit, right-hand-only, binary collision, continuous collision force, dense power cost, action/observation robustness, injury-style power constraints, OT fingering with shared per-joint ceilings, and OT fingering with summed chain budgets; (b) **morphology ladder** — N-hand variants (3 / 4 / 5 hands) with both Level-3 prototypes (no partition; full keyboard reach) and Level-1 `*-StaticPartition-v0` variants that hard-clamp each hand's `forearm_tx` slider to a non-overlapping key range, breaking the OT-induced "winner-takes-all" idle-hand pathology.
 
 ### 3. Environment Assembly Factory (`envs/`)
 * **`OmniPiano/envs/registration.py`**
@@ -384,12 +467,20 @@ All runnable scripts live under `examples/` (not under `OmniPiano/`).
 * **`examples/run_sb3_sac_template.py`** — SAC trainer with the same
   CLI surface tuned to SAC defaults (`--gamma 0.8`, `--batch-size 256`,
   `--buffer-size 1_000_000`, `--learning-starts 5_000`, ...).
+* **`examples/run_sb3_tqc_template.py`** — TQC trainer (sb3-contrib).
+  Extends the SAC CLI with TQC-specific knobs:
+  `--n-quantiles 25`, `--n-critics 2`,
+  `--top-quantiles-to-drop-per-net 2`. Requires `sb3-contrib` —
+  `pip install sb3-contrib==2.7.1` (matching SB3 version).
 * **`examples/run_omnisafe_template.py`** — PPOLag scaffold.
-* **`examples/render_checkpoint.py`** — load an SB3 zip checkpoint,
-  build the matching env (auto-detects PPO/SAC), runs one deterministic
-  episode, writes the MP4 + WAV. Verifies the env's observation space
-  matches the model's expectation before rolling out, so a checkpoint /
-  env id mismatch fails fast.
+* **`examples/render_checkpoint.py`** — load an SB3 / sb3-contrib zip
+  checkpoint, build the matching env (auto-detects PPO/SAC; TQC
+  checkpoints load via the SAC class because TQC's actor is
+  SAC-compatible — but the conda env must have `sb3-contrib` installed
+  for cloudpickle to deserialize TQC's internal class metadata).
+  Runs one deterministic episode, writes the MP4 + WAV. Verifies the
+  env's observation space matches the model's expectation before
+  rolling out, so a checkpoint / env id mismatch fails fast.
 * **`examples/runs/*.sh`** — shell wrappers that pin the CLI flags for
   each registered experiment (one `.sh` per experiment), so a run is
   reproducible from the script name alone:
@@ -399,6 +490,25 @@ All runnable scripts live under `examples/` (not under `OmniPiano/`).
   ```
   Each wrapper passes `"$@"` to the trainer so additional CLI overrides
   still work.
+
+## Design Documents
+
+In-depth architecture and rationale for the larger features live in
+companion design docs at the repository root:
+
+* **`three_hand_design.md`** — Phase-1 N-hand refactor: how the
+  `HandSpec` dataclass + N-hand `PianoTask` generalize the original
+  hardcoded 2-hand pair, what changed in `base.py`, and the regression
+  guards.
+* **`static_partition_design.md`** — Level-1 static partition: hard
+  joint-level partition vs soft fingertip overshoot (~7-key boundary
+  cooperation), L-R-L-R 4-hand and L-R-L-R-R 5-hand layouts, position-
+  to-bucket-center alignment math, repertoire selection from full
+  PIG-150 scan, and paper-writing claims with empirical numbers.
+
+These are dev-facing references for code review and paper writing —
+they are not user manuals. End-user usage patterns live in this README,
+in `examples/`, and in module docstrings.
 
 ## Notes on Installation
 

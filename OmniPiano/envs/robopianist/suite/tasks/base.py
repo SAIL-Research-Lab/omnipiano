@@ -216,11 +216,21 @@ class PianoTask(PianoOnlyTask):
         gravity_compensation: bool,
         primitive_fingertip_collisions: bool,
     ) -> shadow_hand.ShadowHand:
-        joint_range = [-self._piano.size[1], self._piano.size[1]]
-
-        # Offset the joint range by the hand's initial position.
-        joint_range[0] -= spec.position[1]
-        joint_range[1] -= spec.position[1]
+        # Static partition (Level 1+): if the spec carries y_range or
+        # key_range, override forearm_tx joint range with the resolved arena
+        # Y bounds. Otherwise fall back to the original "full keyboard
+        # reach" behavior — preserving 2-hand and Level-3 N-hand semantics.
+        # ``HandSpec.resolved_y_range`` is the single source of truth; do
+        # NOT inspect spec.key_range / spec.y_range directly here.
+        partition_y_range = spec.resolved_y_range
+        if partition_y_range is not None:
+            y_lo, y_hi = partition_y_range
+            joint_range = [y_lo - spec.position[1], y_hi - spec.position[1]]
+        else:
+            joint_range = [-self._piano.size[1], self._piano.size[1]]
+            # Offset the joint range by the hand's initial position.
+            joint_range[0] -= spec.position[1]
+            joint_range[1] -= spec.position[1]
 
         hand = shadow_hand.ShadowHand(
             name=f"{spec.name}_shadow_hand",

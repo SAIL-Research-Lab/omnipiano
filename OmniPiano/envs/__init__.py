@@ -22,7 +22,11 @@ from OmniPiano.safety.constraints import (
     TotalActuatorPowerConstraint,
     InjuredJointPowerConstraint,
 )
-from OmniPiano.tasks.hand_spec import HandSpec
+from OmniPiano.tasks.hand_spec import (
+    HandSpec,
+    default_four_hand_specs,
+    default_five_hand_specs,
+)
 from robopianist.models.hands import HandSide
 
 # ===========================================================================
@@ -549,13 +553,22 @@ register(
 # pure metadata for a future multi-agent wrapper; `group` is NOT read by the
 # reward or observation pipeline today.
 #
-# Same piece as Task 8c (FantaisieImpromptu): a presto-arpeggio virtuoso work
-# with wide range and fast voice-changes — rich enough that a third hand can
-# plausibly help the OT assignment find lower-cost matchings.
+# Repertoire choice — Chopin Étude Op.25 No.11 ("Winter Wind"):
+#   - Duration ~15.8s (short enough for fast iteration; episode length 314 steps).
+#   - Pitch range 69 semitones (MIDI 32-101, ~5.75 octaves) — naturally splits
+#     across bass / middle / treble registers.
+#   - 261 notes / 15.8s ~16.5 notes/sec — dense enough that |K_t| often reaches
+#     4-6 simultaneous fingertip targets, so OT can usefully spread assignment
+#     across 3 hands rather than always picking the closest 2.
+#
+# Earlier prototypes also registered FantaisieImpromptu (too long for fast
+# iteration on this morphology) and ForElise (a genuinely 2-hand piece — 3rd
+# hand empirically stayed vestigial under plain OT). Both removed; WinterWind
+# kept as the single canonical 3-hand task.
 # ===========================================================================
 register(
-    id="OmniPiano-FantaisieImpromptu-ThreeHandPrototype-v0",
-    base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
+    id="OmniPiano-WinterWind-ThreeHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     hand_specs=(
         HandSpec(
@@ -579,14 +592,14 @@ register(
     ),
 )
 
-# ForElise 3-hand companion to ThreeHandPrototype above. Same 3-hand
-# morphology (treble / middle / bass) + OT fingering (annotation PIG data
-# covers only 2 hands, so the third hand must be OT-supervised). Shorter
-# and easier piece than FantaisieImpromptu — kept as a smoke test for
-# the 3-hand pipeline and as an empirical baseline showing that on a
-# genuinely 2-hand piece the 3rd hand stays vestigial under plain OT
-# (companion to WinterWind below where the wide range can plausibly
-# engage all three).
+# ForElise variant of the 3-hand prototype. Originally removed when
+# pruning 3-hand registrations (ForElise's 2-hand-native repertoire makes
+# the 3rd hand stay vestigial under plain OT). RESTORED here because the
+# trained checkpoint at examples/logs/sac_3hand_forelise_1/best_model.zip
+# (SAC 5M, F1 ≈ 0.53 — substantially higher than 3-hand WinterWind's
+# 0.31) is the cleanest 3-hand demo for the README morphology ladder.
+# Same hand_specs layout as WinterWind 3-hand for cross-piece
+# comparability.
 register(
     id="OmniPiano-ForElise-ThreeHandPrototype-v0",
     base_env_name="RoboPianist-repertoire-150-ForElise-v0",
@@ -613,41 +626,209 @@ register(
     ),
 )
 
-# Chopin Étude Op.25 No.11 ("Winter Wind") — short piece with extremely
-# wide pitch range, intended as the "3-hand can plausibly help" target:
-#   - Duration ~15.8s (shortest among PIG entries with range >= 65 semitones,
-#     even shorter than ForElise's 19.9s; episode length 314 steps).
-#   - Pitch range 69 semitones (MIDI 32-101, ≈ 5.75 octaves) — naturally
-#     splits across bass / middle / treble.
-#   - 261 notes / 15.8s ≈ 16.5 notes/sec — dense enough that |K_t| often
-#     reaches 4-6 simultaneous fingertip targets, so OT can usefully
-#     spread assignment across 3 hands rather than always picking the
-#     closest 2.
-# Same 3-hand morphology + OT fingering as the ForElise variant above;
-# the only difference is the piece. Pair the two runs to ablate
-# "wide-range repertoire helps 3rd-hand engagement under plain OT".
+# ===========================================================================
+# Task 11 (preview): 4-hand prototypes — two (LH, RH) duet pairs.
+#
+# Spatial layout L-R-L-R alternating along the keyboard (y = -0.45 / -0.15
+# / +0.15 / +0.45), mirroring real piano-four-hands practice: Secondo
+# (bass-side player) contributes the left pair (LH bass + RH mid-bass);
+# Primo (treble-side player) contributes the right pair (LH mid-treble +
+# RH treble). Inner two hands coincide with the default 2-hand positions,
+# so this layout reads as "the 2-hand baseline split into two duet pairs
+# each ~0.30 m wide". Logical groups: bass / mid_bass / mid_treble /
+# treble — pure metadata for future multi-agent wrappers; not consumed
+# by reward or observation pipelines today.
+#
+# Same OT-fingering setup as the 3-hand variant (PIG annotation only covers
+# 2 hands, so any N>2 morphology MUST use OT). Two pieces selected to test
+# distinct hypotheses about when extra hands help:
+#
+#   * ``WinterWind`` (Chopin Étude Op.25 No.11) — extends the 3-hand ladder
+#     to 4-hand on the same piece, isolating "one more hand" from "different
+#     repertoire". Wide pitch range (69 semitones) gives the extra hand a
+#     plausibly useful role.
+#   * ``LaCampanella`` (Liszt) — chosen specifically because human virtuosos
+#     widely recognize this étude as approaching "two hands aren't enough":
+#     extreme pitch jumps, fast repeated-note ornamentation, sustained chord
+#     + melody texture in the same passage. Strong candidate for "4 hands
+#     genuinely beat 3" — if the policy can't show clear gains here, the
+#     extra hand is unlikely to help anywhere in PIG-150.
+#
+# Earlier prototypes also registered FantaisieImpromptu (too long for fast
+# iteration; the 4/5-hand ladder needs more wall-clock per run) and ForElise
+# (a genuinely 2-hand piece — extra hands stayed vestigial under plain OT
+# even at 3-hand, so 4/5-hand re-running this control would be redundant).
+# Both removed.
+#
+# See ``OmniPiano.tasks.hand_spec.default_four_hand_specs`` for the exact
+# layout (positions, groups, naming).
+# ===========================================================================
 register(
-    id="OmniPiano-WinterWind-ThreeHandPrototype-v0",
+    id="OmniPiano-WinterWind-FourHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=default_four_hand_specs(),
+)
+register(
+    id="OmniPiano-LaCampanella-FourHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-LaCampanella-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=default_four_hand_specs(),
+)
+
+# ===========================================================================
+# Task 12 (preview): 5-hand prototypes — extend FourHandPrototype with one
+# center hand (rh_c) inserted at y=0.
+#
+# Spacing tightens from 0.30 (used by 2/3/4-hand) to 0.20: at 0.30 the
+# outermost hand would push to ±0.60, past the playable keyboard edge.
+# Shadow Hand mesh width (~0.10 m) still fits comfortably at 0.20 spacing
+# without inter-hand mesh collisions. Center hand uses HandSide.RIGHT for
+# consistency with the existing 3-hand ``rh_c``.
+#
+# Repertoire selection: WinterWind + Pictures-At-An-Exhibition-GreatKiev.
+# Picked from a full PIG-150 scan that bucketed every piece into the 5
+# spatial regions used by ``default_five_hand_specs`` and ranked by
+# (a) all-5-bucket coverage, (b) frequency of ≥3-bucket simultaneous
+# activity, (c) polyphony density, (d) length:
+#   * WinterWind (Chopin Étude Op.25 No.11) — 314 steps, all 5 buckets
+#     non-empty (min 5.1%), 42% of steps with ≥3 buckets active. Shared
+#     with 3/4-hand morphology ladder for clean "5 vs 4 hands" delta.
+#   * PicturesAtAnExhibitionGreatKiev (Mussorgsky) — 720 steps but the
+#     ONLY PIG-150 piece that combines (i) all 5 buckets ≥7%, (ii) 51%
+#     ≥3-bucket activity, (iii) 11% ≥4-bucket activity, (iv) polyphony
+#     mean 3.78 / max 8. Genuinely "5 hands' worth" of material.
+#
+# The original LaCampanella choice was dropped: its lowest pitch is key
+# 30, leaving the bass bucket (keys 0-17) completely empty — the leftmost
+# 5-hand slot would be permanently idle, masking the policy quality.
+#
+# See ``OmniPiano.tasks.hand_spec.default_five_hand_specs`` for the exact
+# layout (positions, groups, naming).
+# ===========================================================================
+register(
+    id="OmniPiano-WinterWind-FiveHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=default_five_hand_specs(),
+)
+register(
+    id="OmniPiano-PicturesGreatKiev-FiveHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-PicturesAtAnExhibitionGreatKiev-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=default_five_hand_specs(),
+)
+
+
+# ===========================================================================
+# Task 13: Level-1 (static partition) variants of the 4-hand morphology.
+#
+# Identical to ``OmniPiano-WinterWind-FourHandPrototype-v0`` (same OT reward,
+# same hand attach positions, same MIDI) EXCEPT each hand carries a
+# ``key_range`` that hard-clamps its forearm_tx slider to a non-overlapping
+# slice of the 88-key piano. This is the "Level 1" rung of the multi-hand
+# benchmark: the OT-only Level-3 baseline learns to park the outer hands at
+# the keyboard edges (no per-hand gradient signal under pure OT — see the
+# diagnosis in three_hand_design notes), so Level-1 ablates that failure by
+# physically forbidding outer hands from reaching the central registers.
+#
+# Boundaries: bass / mid-bass / mid-treble / treble, each ~22 keys (~2
+# octaves), aligned with classical piano-four-hands Primo/Secondo practice.
+# Inner pair (rh_t2 / lh_b2) coincides with the default 2-hand attach
+# positions, so Level-1 reads as "2-hand baseline + 2 outer hands each
+# constrained to its own register".
+# ===========================================================================
+register(
+    id="OmniPiano-WinterWind-FourHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     hand_specs=(
-        HandSpec(
-            name="rh",
-            side=HandSide.RIGHT,
-            position=(0.4, 0.30, 0.13),
-            group="treble",
-        ),
-        HandSpec(
-            name="lh",
-            side=HandSide.LEFT,
-            position=(0.4, -0.30, 0.13),
-            group="bass",
-        ),
-        HandSpec(
-            name="rh_c",
-            side=HandSide.RIGHT,
-            position=(0.4, 0.0, 0.13),
-            group="middle",
-        ),
+        HandSpec(name="lh_b", side=HandSide.LEFT,
+                 position=(0.4, -0.45, 0.13), key_range=(0, 21),
+                 group="bass"),
+        HandSpec(name="rh_b", side=HandSide.RIGHT,
+                 position=(0.4, -0.15, 0.13), key_range=(22, 43),
+                 group="mid_bass"),
+        HandSpec(name="lh_t", side=HandSide.LEFT,
+                 position=(0.4, +0.15, 0.13), key_range=(44, 65),
+                 group="mid_treble"),
+        HandSpec(name="rh_t", side=HandSide.RIGHT,
+                 position=(0.4, +0.45, 0.13), key_range=(66, 87),
+                 group="treble"),
+    ),
+)
+register(
+    id="OmniPiano-LaCampanella-FourHand-StaticPartition-v0",
+    base_env_name="RoboPianist-repertoire-150-LaCampanella-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=(
+        HandSpec(name="lh_b", side=HandSide.LEFT,
+                 position=(0.4, -0.45, 0.13), key_range=(0, 21),
+                 group="bass"),
+        HandSpec(name="rh_b", side=HandSide.RIGHT,
+                 position=(0.4, -0.15, 0.13), key_range=(22, 43),
+                 group="mid_bass"),
+        HandSpec(name="lh_t", side=HandSide.LEFT,
+                 position=(0.4, +0.15, 0.13), key_range=(44, 65),
+                 group="mid_treble"),
+        HandSpec(name="rh_t", side=HandSide.RIGHT,
+                 position=(0.4, +0.45, 0.13), key_range=(66, 87),
+                 group="treble"),
+    ),
+)
+
+
+# ===========================================================================
+# Task 14: Level-1 (static partition) variant of the 5-hand morphology.
+#
+# Same algorithm/reward setup as the 5-hand prototypes (Task 12) EXCEPT each
+# hand carries a ``key_range`` that hard-clamps its forearm_tx slider to a
+# non-overlapping slice of the 88-key piano. Five evenly-keyed buckets:
+#   bass     keys  0-17  (18 keys, A0-D2)
+#   low_mid  keys 18-35  (18 keys, D#2-G3)
+#   middle   keys 36-52  (17 keys, G#3-C5)  ← contains middle C (key 39)
+#   high_mid keys 53-70  (18 keys, C#5-F#6)
+#   treble   keys 71-87  (17 keys, G6-C8)
+#
+# Hand attach positions are set to each bucket's geometric center —
+# specifically ``0.5 * (key_index_to_y(lo) + key_index_to_y(hi))``, the
+# midpoint of the two endpoint key Y coordinates (NOT key_index_to_y at
+# the midpoint key index, which differs by up to 12 mm because key Y
+# spacing is not uniform across white/black keys). This makes each hand's
+# forearm_tx joint range symmetric around its rest position. See
+# ``default_five_hand_specs`` for rationale on why we use bucket-center
+# positions instead of uniform 0.20 m spacing.
+#
+# Sides follow the L-R-L-R-R duet-extension pattern from the prototype:
+#   bass duet (Secondo)  : lh_b (LEFT) + rh_b (RIGHT)
+#   center solo          : lh_c (LEFT)
+#   treble pair          : rh_t2 + rh_t1 (both RIGHT, stacked)
+#
+# WinterWind chosen as the first 5-hand partition env: shortest viable
+# 5-hand piece (314 steps), shared with 3/4-hand morphology ladder, and
+# all 5 buckets have ≥5% of note events under the env-loader path
+# (no idle hand). PicturesGreatKiev variant is paper-quality but 720
+# steps; can be added later for the demo run.
+# ===========================================================================
+register(
+    id="OmniPiano-WinterWind-FiveHand-StaticPartition-v0",
+    base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=(
+        HandSpec(name="lh_b", side=HandSide.LEFT,
+                 position=(0.4, -0.4817, 0.13), key_range=(0, 17),
+                 group="bass"),
+        HandSpec(name="rh_b", side=HandSide.RIGHT,
+                 position=(0.4, -0.2345, 0.13), key_range=(18, 35),
+                 group="low_mid"),
+        HandSpec(name="lh_c", side=HandSide.LEFT,
+                 position=(0.4, +0.0061, 0.13), key_range=(36, 52),
+                 group="middle"),
+        HandSpec(name="rh_t2", side=HandSide.RIGHT,
+                 position=(0.4, +0.2468, 0.13), key_range=(53, 70),
+                 group="high_mid"),
+        HandSpec(name="rh_t1", side=HandSide.RIGHT,
+                 position=(0.4, +0.4879, 0.13), key_range=(71, 87),
+                 group="treble"),
     ),
 )
