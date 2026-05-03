@@ -1,16 +1,22 @@
 # Ignore everything at the repo root by default
 /*
 
-# Whitelist directories and files we actually want tracked
+# Whitelist directories and files we actually want tracked.
+#
+# Note: ``examples/`` is intentionally NOT whitelisted. Everything under
+# ``examples/`` is project-internal — trainer templates assuming a
+# specific RL framework (SB3 / sb3-contrib / OmniSafe), shell wrappers
+# pinning algorithm + hparams + seed, paper-writing analysis tools, and
+# rendering helpers tied to the SB3 zip checkpoint format. The public
+# benchmark surface is the registered env id (``OmniPiano-*-v0``), the
+# reward formulas, and the wrapper stack — NOT a particular way to
+# train it. Users adopting OmniPiano are expected to wire their own
+# trainer (RLlib, CleanRL, Mava, or SB3 — their choice) using the
+# minimal ``OmniPiano.make(env_id)`` snippet shown in the README.
 !/OmniPiano/
-!/examples/
 !/demos/
 !/setup.py
 !/README.md
-
-# Training/eval logs and personal scratch under examples/
-/examples/logs/
-/examples/trial.py
 
 # Python bytecode cache (any __pycache__/ anywhere in the tree)
 __pycache__/

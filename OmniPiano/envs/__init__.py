@@ -626,6 +626,45 @@ register(
     ),
 )
 
+# PianoSonataNo301StMov as 3-hand prototype. Empirically the strongest
+# 3-hand stress-test in PIG-150 — under the natural 3-bucket partition
+# (B0=keys 0-28, B1=29-57, B2=58-87, centered on the existing 3-hand
+# attach positions ±0.30 / 0.0):
+#   bucket distribution: B0=8.0% / B1=65.7% / B2=26.3%   (min_bkt=8.0%)
+#   ≥2-bucket simultaneous: 53.7%
+#   =3-bucket simultaneous: 9.4%   ← UNIQUE in PIG-150 sample
+#   poly_mean=3.59, poly_max=7, length=572 steps
+# WinterWind 3-hand has 0% =3-bucket simultaneity (3 hands never all
+# active at once); ForElise 3-hand has 0% too (78% of notes in the
+# middle bucket — typical 2-hand piece, 3rd hand stays vestigial).
+# PianoSonataNo301StMov is the only 3-hand candidate with non-trivial
+# 3-bucket simultaneous activity → genuinely needs all 3 hands.
+register(
+    id="OmniPiano-PianoSonataNo301StMov-ThreeHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-PianoSonataNo301StMov-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=(
+        HandSpec(
+            name="rh",
+            side=HandSide.RIGHT,
+            position=(0.4, 0.30, 0.13),
+            group="treble",
+        ),
+        HandSpec(
+            name="lh",
+            side=HandSide.LEFT,
+            position=(0.4, -0.30, 0.13),
+            group="bass",
+        ),
+        HandSpec(
+            name="rh_c",
+            side=HandSide.RIGHT,
+            position=(0.4, 0.0, 0.13),
+            group="middle",
+        ),
+    ),
+)
+
 # ===========================================================================
 # Task 11 (preview): 4-hand prototypes — two (LH, RH) duet pairs.
 #
@@ -647,18 +686,28 @@ register(
 #     to 4-hand on the same piece, isolating "one more hand" from "different
 #     repertoire". Wide pitch range (69 semitones) gives the extra hand a
 #     plausibly useful role.
-#   * ``LaCampanella`` (Liszt) — chosen specifically because human virtuosos
-#     widely recognize this étude as approaching "two hands aren't enough":
-#     extreme pitch jumps, fast repeated-note ornamentation, sustained chord
-#     + melody texture in the same passage. Strong candidate for "4 hands
-#     genuinely beat 3" — if the policy can't show clear gains here, the
-#     extra hand is unlikely to help anywhere in PIG-150.
+#     4-bucket distribution (B0=keys 0-21, B1=22-43, B2=44-65, B3=66-87):
+#       B0=10% / B1=53% / B2=29% / B3=8%   (min_bkt=8%, ≥3-bkt=13%, ≥4-bkt=5%)
+#     314 steps. Healthy across all 4 buckets; canonical 4-hand anchor.
+#   * ``PianoSonataNo301StMov`` (Mozart K.330 / sonata-form 1st mvt) —
+#     repertoire-diversity candidate. Compared to WinterWind, has lower
+#     bass coverage but ~2× higher ≥3-bucket simultaneous activity:
+#     4-bucket distribution: B0=4.3% / B1=26.8% / B2=56.7% / B3=12.2%
+#     (min_bkt=4.3%, ≥3-bkt=26%, ≥4-bkt=1.7%).  572 steps. Good for
+#     stress-testing multi-hand synchrony; outer bass hand is slightly
+#     under-utilized (4.3% < the 5% guideline) but acceptable.
 #
 # Earlier prototypes also registered FantaisieImpromptu (too long for fast
-# iteration; the 4/5-hand ladder needs more wall-clock per run) and ForElise
+# iteration; the 4/5-hand ladder needs more wall-clock per run), ForElise
 # (a genuinely 2-hand piece — extra hands stayed vestigial under plain OT
-# even at 3-hand, so 4/5-hand re-running this control would be redundant).
-# Both removed.
+# even at 3-hand, so 4/5-hand re-running this control would be redundant),
+# and ``LaCampanella`` (Liszt). LaCampanella was DROPPED from 4-hand for
+# the same reason it was dropped from 5-hand: its lowest pitch is key 30,
+# leaving the bass bucket (keys 0-21) completely empty — `lh_b` would be
+# permanently idle, masking the policy quality.  4-bucket bass=0% under
+# the canonical partition. Future replacement candidates should be
+# evaluated on (a) min_bkt ≥ 5%, (b) ≥3-bkt ≥ 15%, (c) length 300-600
+# steps, with the empirical numbers documented here for traceability.
 #
 # See ``OmniPiano.tasks.hand_spec.default_four_hand_specs`` for the exact
 # layout (positions, groups, naming).
@@ -670,8 +719,8 @@ register(
     hand_specs=default_four_hand_specs(),
 )
 register(
-    id="OmniPiano-LaCampanella-FourHandPrototype-v0",
-    base_env_name="RoboPianist-repertoire-150-LaCampanella-v0",
+    id="OmniPiano-PianoSonataNo301StMov-FourHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-PianoSonataNo301StMov-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     hand_specs=default_four_hand_specs(),
 )
@@ -758,8 +807,11 @@ register(
     ),
 )
 register(
-    id="OmniPiano-LaCampanella-FourHand-StaticPartition-v0",
-    base_env_name="RoboPianist-repertoire-150-LaCampanella-v0",
+    # LaCampanella 4-hand StaticPartition was DROPPED — same reason as 4-hand
+    # Prototype above (4-bucket bass=0% → lh_b permanently idle). Replaced
+    # by PianoSonataNo301StMov StaticPartition below for repertoire diversity.
+    id="OmniPiano-PianoSonataNo301StMov-FourHand-StaticPartition-v0",
+    base_env_name="RoboPianist-repertoire-150-PianoSonataNo301StMov-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     hand_specs=(
         HandSpec(name="lh_b", side=HandSide.LEFT,

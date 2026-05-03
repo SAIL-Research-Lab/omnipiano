@@ -1,6 +1,25 @@
 # OmniPiano Framework Architecture Guide
 
-`OmniPiano` is a safety and robustness benchmark built on top of DeepMind's `robopianist`.
+`OmniPiano` is a **general RL benchmark** built on top of DeepMind's
+`robopianist`. The current task suites cover:
+
+* **Morphology** — N-hand piano control (2 / 3 / 4 / 5 hands), with both
+  unconstrained (Level-3) prototypes and Level-1 `StaticPartition`
+  variants that hard-clamp each hand to a non-overlapping key range.
+* **Safety** — joint magnitude limits, hand-hand collisions (binary +
+  continuous force), dense actuator power cost, joint-injury budgets,
+  shared per-joint ceilings, and summed-chain budgets.
+* **Robustness** — Gaussian action noise and per-key observation noise
+  with magnitude reporting.
+* **Task variants** — left/right-hand-immobile, alternative fingering
+  rewards (annotation vs OT), repertoire ablations.
+
+The benchmark is **algorithm-agnostic** and **framework-agnostic** — any
+trainer that consumes the standard Gymnasium API (`reset` / `step`,
+`info["episode_task/*"]`, `info["step_safety/*"]`) can use OmniPiano.
+Reference trainer templates live under `examples/` for Stable Baselines 3
+(PPO / SAC / TQC) and OmniSafe (PPOLag); other frameworks (RLlib, CleanRL,
+Mava, MARLlib, ...) plug in via the same interface.
 
 The framework employs a "sandwich" architecture design:
 1. **Top Layer (Registry & Examples)**: Provides a unified, extremely simple interface for users to instantiate pre-defined benchmark tasks via a Task Registry.
@@ -186,13 +205,26 @@ for the design rationale and empirical results.
 |---------|---------|-----------|-------|
 | `OmniPiano-WinterWind-ThreeHandPrototype-v0` | 3 | none (L-3) | Étude Op.25 No.11 |
 | `OmniPiano-ForElise-ThreeHandPrototype-v0` | 3 | none (L-3) | Für Elise |
+| `OmniPiano-PianoSonataNo301StMov-ThreeHandPrototype-v0` | 3 | none (L-3) | Mozart K.330 1st mvt |
 | `OmniPiano-WinterWind-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | Étude Op.25 No.11 |
-| `OmniPiano-LaCampanella-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | La Campanella |
+| `OmniPiano-PianoSonataNo301StMov-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | Mozart K.330 1st mvt |
 | `OmniPiano-WinterWind-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Étude Op.25 No.11 |
-| `OmniPiano-LaCampanella-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | La Campanella |
+| `OmniPiano-PianoSonataNo301StMov-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Mozart K.330 1st mvt |
 | `OmniPiano-WinterWind-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Étude Op.25 No.11 |
 | `OmniPiano-PicturesGreatKiev-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Pictures: Great Gate of Kiev |
 | `OmniPiano-WinterWind-FiveHand-StaticPartition-v0` | 5 (L-R-L-R-R) | Level-1 (5 buckets × ~17 keys) | Étude Op.25 No.11 |
+
+> **Repertoire selection note**: LaCampanella was previously registered for
+> 4-hand and 5-hand variants but DROPPED across the entire morphology ladder —
+> its lowest pitch is key 30 (D2#), leaving the bass bucket of every partition
+> scheme (5-bucket B0 / 4-bucket B0) at 0% activity, which would idle the
+> bass-most hand. PianoSonataNo301StMov was selected as the diversity
+> alternative for both 3-hand and 4-hand: it is the only PIG-150 piece in our
+> sample with non-trivial 3-bucket simultaneous activity (9.4% of steps with
+> all three 3-bucket regions active simultaneously, vs 0% on WinterWind /
+> ForElise). Empirical numbers (per-bucket distribution, polyphony, length)
+> are documented inline in `OmniPiano/envs/__init__.py` for traceable future
+> repertoire replacement.
 
 ### Minimal Example
 
@@ -234,51 +266,46 @@ env.close()
   `camera_id`. Anything else (`n_steps_lookahead`, `frame_stack`,
   `disable_fingering_reward`, `hand_specs`, ...) raises `ValueError`.
 
-### Training + evaluation templates
+### Training + evaluation
 
-OmniPiano ships only environments, wrappers, and protocol defaults — it
-does **not** own a rollout loop. Training and evaluation are the
-framework's responsibility. Reference templates:
+OmniPiano ships **only environments, wrappers, and protocol defaults** —
+it does not own a rollout loop. Training and evaluation are the
+framework's responsibility, and OmniPiano is intentionally
+framework-agnostic: any RL stack (Stable Baselines 3, sb3-contrib,
+RLlib, CleanRL, Mava, MARLlib, OmniSafe, JAX-based libraries, ...) can
+consume an OmniPiano env through the standard Gymnasium API.
 
-* **Stable Baselines 3** — `examples/run_sb3_template.py` (PPO),
-  `examples/run_sb3_sac_template.py` (SAC), and
-  `examples/run_sb3_tqc_template.py` (TQC, via `sb3-contrib`). All are
-  CLI-driven (no file editing): `--env <registered-id>`,
-  `--experiment-name`, `--total-steps`, `--seed`, plus algorithm-specific
-  defaults pinned to paper values. TQC adds `--n-quantiles`,
-  `--n-critics`, `--top-quantiles-to-drop-per-net`. Empirically, TQC
-  outperforms SAC on N-hand piano tasks at the cost of 1-2× more
-  training steps (see `static_partition_design.md` § 7).
+The minimum a trainer needs:
 
-* **OmniSafe** — `examples/run_omnisafe_template.py`. PPOLag via
-  `omnisafe.Agent(...).learn()` with a `CMDP` adapter that wraps an
-  OmniPiano gymnasium env. Scaffold — see the TODO markers before
-  running.
+```python
+from OmniPiano import make
 
-Templates read **algorithm-agnostic** protocol constants (env-step
-budget, scalar seed, final-eval episode count) from
-`BenchmarkProtocolConfig` in `OmniPiano/configs/__init__.py`. **Algorithm
-hyperparameters** (`gamma`, `batch_size`, `buffer_size`,
-`learning_starts`, `n_envs`, network architecture) live in each
-trainer's argparse defaults and are dumped to
-`eval_summary.json["hparams"]` for audit. They do not belong in
-`BenchmarkProtocolConfig` because, e.g., `replay_capacity` is
-off-policy-only and `gamma=0.8` (SAC) vs `gamma=0.9` (PPO) makes a
-single shared default meaningless.
+env = make("OmniPiano-WinterWind-FourHand-StaticPartition-v0", seed=42)
+obs, info = env.reset()
+# ... your trainer's vec-env / rollout / eval loop here ...
+```
 
-`seed` is a single scalar passed to the framework (`PPO(seed=...)` /
-`custom_cfgs={'seed': ...}`); paper-style N-seed replication is done by
-running the script N times with distinct `seed` values and aggregating
-`eval_summary.json` files offline.
+OmniPiano exposes:
 
-To switch tasks, pass a different `--env <registered-id>` on the command
-line, or use a pinned `examples/runs/*.sh` wrapper (one per registered
-experiment).
+* **Reward** — standard gymnasium `step()` return; the per-step task
+  reward composed from key_press / sustain / fingering (OT or
+  annotation) / forearm / energy terms.
+* **Per-step safety cost** — `info["step_safety/cost_total"]` for
+  CMDP-style algorithms (PPOLag, CPO, SafeAC, ...).
+* **Episode-level metrics** — `info["episode_task/f1"]`,
+  `info["episode_task/key_precision"]`, `info["episode_task/sustain_f1"]`,
+  etc., emitted at episode termination for offline aggregation.
 
-For any other framework, call `OmniPiano.make(env_id)` — the
-environment follows the standard Gymnasium API and exposes reward,
-per-step cost (`info["step_safety/cost_total"]`), and episode-level
-task metrics (`info["episode_task/f1"]`, ...) through `info`.
+The protocol-level constants intended to be **shared across frameworks**
+for fair comparison are in `BenchmarkProtocolConfig`
+(`OmniPiano/configs/__init__.py`):
+total env-step budget, evaluation seed, and final-eval episode count.
+Algorithm-specific hyperparameters (`gamma`, `batch_size`, network
+architecture, etc.) belong in each trainer's own configuration —
+OmniPiano deliberately takes no opinion there.
+
+Paper-style N-seed replication: run your trainer N times with distinct
+seeds and aggregate the per-run `eval_summary.json` files offline.
 
 ## Current Package Layout
 
@@ -321,19 +348,16 @@ OmniPiano/
         └── iteration_summary_callback.py   # SB3-specific train logger
 ```
 
-Repository-level example entry points live under `examples/`:
-* `run_sb3_template.py` — PPO trainer (Stable Baselines 3, CLI-driven)
-* `run_sb3_sac_template.py` — SAC trainer (Stable Baselines 3, CLI-driven)
-* `run_sb3_tqc_template.py` — TQC trainer (sb3-contrib, CLI-driven)
-* `run_omnisafe_template.py` — PPOLag scaffold (OmniSafe)
-* `render_checkpoint.py` — load an SB3 / sb3-contrib checkpoint and render an MP4
-* `trial.py` — minimal interactive smoke-test loop
-* `runs/*.sh` — pinned shell wrappers around the trainer templates,
-  one per registered experiment (e.g., `sac_3hand_winter_wind.sh`,
-  `tqc_5hand_winter_wind_static_partition_8M.sh`)
+The `examples/` directory of this repository is **deliberately empty in
+the public release** — it is reserved for project-internal experiment
+configurations, paper-writing analysis tools, and rendering helpers
+that are tied to specific RL frameworks (SB3 / sb3-contrib / OmniSafe).
+Including those would push every adopter toward our particular
+training stack, contradicting OmniPiano's framework-agnostic design.
 
-OmniPiano itself does not ship any training or eval code; the templates
-under `examples/` are reference implementations.
+For training and evaluation, write a thin trainer in your own
+framework that calls `OmniPiano.make(env_id)`. See "Training +
+evaluation" above for the minimal boilerplate and the metrics surface.
 
 ## High-Level Execution Flow
 
@@ -460,41 +484,19 @@ internals.
 
 ## Example Entry Points
 
-All runnable scripts live under `examples/` (not under `OmniPiano/`).
+The public release of OmniPiano intentionally **does not ship trainer
+or rendering examples**. The benchmark surface is `OmniPiano.make()`
+plus the registered env ids; how to wire that into a particular RL
+framework is left to the adopter's choice (see "Training + evaluation"
+above for the minimal call pattern).
 
-* **`examples/run_sb3_template.py`** — PPO trainer.
-  CLI-driven (`--env`, `--experiment-name`, `--total-steps`, `--seed`,
-  `--gamma`, `--n-envs`, ...). Demonstrates: registered env via
-  `make(...)`, PPO training with SB3's `EvalCallback` for periodic eval,
-  inline rollout loop for the final benchmark eval (needed because
-  `evaluate_policy` discards terminal-step `info`), CSV metrics and
-  per-episode video.
-* **`examples/run_sb3_sac_template.py`** — SAC trainer with the same
-  CLI surface tuned to SAC defaults (`--gamma 0.8`, `--batch-size 256`,
-  `--buffer-size 1_000_000`, `--learning-starts 5_000`, ...).
-* **`examples/run_sb3_tqc_template.py`** — TQC trainer (sb3-contrib).
-  Extends the SAC CLI with TQC-specific knobs:
-  `--n-quantiles 25`, `--n-critics 2`,
-  `--top-quantiles-to-drop-per-net 2`. Requires `sb3-contrib` —
-  `pip install sb3-contrib==2.7.1` (matching SB3 version).
-* **`examples/run_omnisafe_template.py`** — PPOLag scaffold.
-* **`examples/render_checkpoint.py`** — load an SB3 / sb3-contrib zip
-  checkpoint, build the matching env (auto-detects PPO/SAC; TQC
-  checkpoints load via the SAC class because TQC's actor is
-  SAC-compatible — but the conda env must have `sb3-contrib` installed
-  for cloudpickle to deserialize TQC's internal class metadata).
-  Runs one deterministic episode, writes the MP4 + WAV. Verifies the
-  env's observation space matches the model's expectation before
-  rolling out, so a checkpoint / env id mismatch fails fast.
-* **`examples/runs/*.sh`** — shell wrappers that pin the CLI flags for
-  each registered experiment (one `.sh` per experiment), so a run is
-  reproducible from the script name alone:
-  ```bash
-  bash examples/runs/sac_3hand_winter_wind.sh
-  bash examples/runs/ppo_2hand_forelise_ann.sh
-  ```
-  Each wrapper passes `"$@"` to the trainer so additional CLI overrides
-  still work.
+For framework-specific reference implementations (SB3 PPO/SAC, TQC via
+sb3-contrib, OmniSafe PPOLag scaffolds, MP4 rendering of saved
+checkpoints, repertoire-analysis CSV tools, ...) we maintain a
+project-internal collection under `examples/` that is **not part of the
+public repository**. These are tools the OmniPiano team uses for paper
+experiments and demos; they hard-code algorithm choices and
+hyperparameters that should not propagate to users of the benchmark.
 
 ## Design Documents
 
