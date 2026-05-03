@@ -16,32 +16,37 @@ partition levels. Each clip below is a deterministic rollout of the best
 checkpoint of its respective trained policy, rendered with the `piano/topdown`
 camera so the full 88-key keyboard and every hand are visible at once.
 
-<table align="center">
-<tr>
-  <td align="center" width="50%">
-    <strong><code>OmniPiano-ForElise-ThreeHandPrototype-v0</code></strong><br/>
-    <sub>3 hands, no partition · SAC 5M · F1 = 0.52</sub><br/>
-    <img src="demos/morphology/3hand_forelise_l3.gif" alt="3-hand ForElise L-3 demo" width="460"/>
-  </td>
-  <td align="center" width="50%">
-    <strong><code>OmniPiano-WinterWind-FourHandPrototype-v0</code></strong><br/>
-    <sub>4 hands, no partition · TQC 10M · F1 = 0.42</sub><br/>
-    <img src="demos/morphology/4hand_winterwind_l3.gif" alt="4-hand WinterWind L-3 demo" width="460"/>
-  </td>
-</tr>
-<tr>
-  <td align="center" width="50%">
-    <strong><code>OmniPiano-WinterWind-FourHand-StaticPartition-v0</code></strong><br/>
-    <sub>4 hands, Level-1 static partition · TQC 5M · F1 = 0.39</sub><br/>
-    <img src="demos/morphology/4hand_winterwind_l1.gif" alt="4-hand WinterWind L-1 demo" width="460"/>
-  </td>
-  <td align="center" width="50%">
-    <strong><code>OmniPiano-WinterWind-FiveHand-StaticPartition-v0</code></strong><br/>
-    <sub>5 hands, Level-1 static partition · TQC 8M · F1 = <strong>0.46</strong></sub><br/>
-    <img src="demos/morphology/5hand_winterwind_l1.gif" alt="5-hand WinterWind L-1 demo" width="460"/>
-  </td>
-</tr>
-</table>
+<p align="center">
+  <strong><code>OmniPiano-ForElise-ThreeHandPrototype-v0</code></strong><br/>
+  <sub>3 hands, no partition · SAC 5M · F1 = 0.52</sub>
+</p>
+<p align="center">
+  <img src="demos/morphology/3hand_forelise_l3.gif" alt="3-hand ForElise L-3 demo" width="640"/>
+</p>
+
+<p align="center">
+  <strong><code>OmniPiano-WinterWind-FourHandPrototype-v0</code></strong><br/>
+  <sub>4 hands, no partition · TQC 10M · F1 = 0.42</sub>
+</p>
+<p align="center">
+  <img src="demos/morphology/4hand_winterwind_l3.gif" alt="4-hand WinterWind L-3 demo" width="640"/>
+</p>
+
+<p align="center">
+  <strong><code>OmniPiano-WinterWind-FourHand-StaticPartition-v0</code></strong><br/>
+  <sub>4 hands, Level-1 static partition · TQC 5M · F1 = 0.39</sub>
+</p>
+<p align="center">
+  <img src="demos/morphology/4hand_winterwind_l1.gif" alt="4-hand WinterWind L-1 demo" width="640"/>
+</p>
+
+<p align="center">
+  <strong><code>OmniPiano-WinterWind-FiveHand-StaticPartition-v0</code></strong><br/>
+  <sub>5 hands, Level-1 static partition · TQC 8M · F1 = <strong>0.46</strong></sub>
+</p>
+<p align="center">
+  <img src="demos/morphology/5hand_winterwind_l1.gif" alt="5-hand WinterWind L-1 demo" width="640"/>
+</p>
 
 **What to look for:**
 
