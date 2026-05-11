@@ -17,9 +17,11 @@
 The benchmark is **algorithm-agnostic** and **framework-agnostic** — any
 trainer that consumes the standard Gymnasium API (`reset` / `step`,
 `info["episode_task/*"]`, `info["step_safety/*"]`) can use OmniPiano.
-Reference trainer templates live under `examples/` for Stable Baselines 3
-(PPO / SAC / TQC) and OmniSafe (PPOLag); other frameworks (RLlib, CleanRL,
-Mava, MARLlib, ...) plug in via the same interface.
+The public release deliberately does NOT ship trainer templates: users
+write a thin trainer in their framework of choice (Stable Baselines 3,
+sb3-contrib, OmniSafe, RLlib, CleanRL, Mava, MARLlib, ...) that calls
+`OmniPiano.make(env_id)` — see the "Training + evaluation" section
+below for the minimal boilerplate and the metrics surface.
 
 The framework employs a "sandwich" architecture design:
 1. **Top Layer (Registry & Examples)**: Provides a unified, extremely simple interface for users to instantiate pre-defined benchmark tasks via a Task Registry.
@@ -37,7 +39,8 @@ camera so the full 88-key keyboard and every hand are visible at once.
 
 <p align="center">
   <strong><code>OmniPiano-ForElise-ThreeHandPrototype-v0</code></strong><br/>
-  <sub>3 hands, no partition · SAC 5M · F1 = 0.52</sub>
+  <sub>3 hands, no partition · SAC 5M · F1 = 0.52</sub><br/>
+  <sub>⚠ <em>Demo GIF rendered under the pre-2026-05 round-number 3-hand positions (±0.30 / 0.0). The current registered env uses bucket-center positions (±0.4051 / 0.0) per the N-hand morphology axiom; a fresh demo will be rendered once the policy is retrained on the new geometry.</em></sub>
 </p>
 <p align="center">
   <img src="demos/morphology/3hand_forelise_l3.gif" alt="3-hand ForElise L-3 demo" width="640"/>
@@ -86,17 +89,27 @@ the increased control burden.
 
 ### Single-piece structural-conflict demos
 
+GIFs below illustrate the task TYPE on TwinkleTwinkleLittleStar (an
+unregistered debug piece used for smoke-tests only). The registered
+benchmark envs of the same task type — listed below each GIF — run on
+PIG-150 pieces with substantially harder reward landscapes.
+
 <p align="center">
-  <strong><code>OmniPiano-Twinkle-RightHandOnly-v0</code></strong>
+  <strong>Right-Hand-Only task</strong><br/>
+  <sub>illustration on TwinkleTwinkleLittleStar debug piece<br/>
+  Registered env: <code>OmniPiano-NocturneOp9No2-RightHandOnly-v0</code></sub>
 </p>
 <p align="center">
-  <img src="demos/Right_Hand_Only/preview.gif" alt="OmniPiano-Twinkle-RightHandOnly-v0 demo" width="520"/>
+  <img src="demos/Right_Hand_Only/preview.gif" alt="Right-hand-only task demo" width="520"/>
 </p>
 <p align="center">
-  <strong><code>OmniPiano-Twinkle-CollisionSafe-v0</code></strong>
+  <strong>Collision-Safe task</strong><br/>
+  <sub>illustration on TwinkleTwinkleLittleStar debug piece<br/>
+  Registered envs: <code>OmniPiano-ClairDeLune-CollisionSafe-v0</code>,
+  <code>OmniPiano-MapleLeafRag-CollisionSafe-v0</code></sub>
 </p>
 <p align="center">
-  <img src="demos/Collision_Safe/preview.gif" alt="OmniPiano-Twinkle-CollisionSafe-v0 demo" width="520"/>
+  <img src="demos/Collision_Safe/preview.gif" alt="Collision-safe task demo" width="520"/>
 </p>
 <p align="center">
   Animated previews are loaded from the repository <code>demos/</code> folder.
@@ -201,29 +214,62 @@ their `HandSpec`s and resolve it to MuJoCo joint ranges via
 `key_index_to_y` / `key_range_to_y_range`. See `static_partition_design.md`
 for the design rationale and empirical results.
 
-| Task ID | N-hands | Partition | Piece |
+All N-hand attach positions follow the **N-hand morphology axiom**: each
+hand's wrist sits at the geometric center of its canonical key-range
+bucket. Prototype (L-3) and StaticPartition (L-1) variants of the same
+N-hand morphology share identical attach geometry — they differ only in
+whether the `forearm_tx` slider is hard-clamped to its bucket. See
+`static_partition_design.md` § 4.5 for the rule and bucket schemes.
+
+| Task ID | N-hands | Partition | Piece (steps · min_bkt · eqN) |
 |---------|---------|-----------|-------|
-| `OmniPiano-WinterWind-ThreeHandPrototype-v0` | 3 | none (L-3) | Étude Op.25 No.11 |
-| `OmniPiano-ForElise-ThreeHandPrototype-v0` | 3 | none (L-3) | Für Elise |
-| `OmniPiano-PianoSonataNo301StMov-ThreeHandPrototype-v0` | 3 | none (L-3) | Mozart K.330 1st mvt |
-| `OmniPiano-WinterWind-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | Étude Op.25 No.11 |
-| `OmniPiano-PianoSonataNo301StMov-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | Mozart K.330 1st mvt |
+| `OmniPiano-WinterWind-ThreeHandPrototype-v0` | 3 | none (L-3) | Étude Op.25 No.11 (314 · 17% · 0%) |
+| `OmniPiano-ForElise-ThreeHandPrototype-v0` | 3 | none (L-3) | Für Elise (399 · 10% · 0%) — pedagogical "vestigial 3rd hand" |
+| `OmniPiano-PicturesGreatKiev-ThreeHandPrototype-v0` | 3 | none (L-3) | Pictures: Great Gate of Kiev (720 · 14% · **35%** ⭐) |
+| `OmniPiano-PolonaiseOp40No1-ThreeHandPrototype-v0` | 3 | none (L-3) | Chopin "Military" Polonaise (563 · 12% · 27%) |
+| `OmniPiano-PianoSonataNo281StMov-ThreeHandPrototype-v0` | 3 | none (L-3) | Mozart K.545 "Facile" 1st mvt (301 · 7% · 23%) — shortest |
+| `OmniPiano-WinterWind-ThreeHand-StaticPartition-v0` | 3 | Level-1 (3 buckets, 29/30/29 keys) | Étude Op.25 No.11 |
+| `OmniPiano-PicturesGreatKiev-ThreeHand-StaticPartition-v0` | 3 | Level-1 (3 buckets, 29/30/29 keys) | Pictures: Great Gate of Kiev |
+| `OmniPiano-PolonaiseOp40No1-ThreeHand-StaticPartition-v0` | 3 | Level-1 (3 buckets, 29/30/29 keys) | Chopin "Military" Polonaise |
+| `OmniPiano-PianoSonataNo281StMov-ThreeHand-StaticPartition-v0` | 3 | Level-1 (3 buckets, 29/30/29 keys) | Mozart K.545 "Facile" 1st mvt |
+| `OmniPiano-WinterWind-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | Étude Op.25 No.11 (314 · 9% · 0%) |
+| `OmniPiano-PianoSonataNo301StMov-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | Mozart K.330 1st mvt (571 · 4% · 2%) |
+| `OmniPiano-PicturesGreatKiev-FourHandPrototype-v0` | 4 (L-R-L-R) | none (L-3) | Pictures: Great Gate of Kiev (720 · 12% · **10%** ⭐) |
 | `OmniPiano-WinterWind-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Étude Op.25 No.11 |
 | `OmniPiano-PianoSonataNo301StMov-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Mozart K.330 1st mvt |
-| `OmniPiano-WinterWind-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Étude Op.25 No.11 |
-| `OmniPiano-PicturesGreatKiev-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Pictures: Great Gate of Kiev |
-| `OmniPiano-WinterWind-FiveHand-StaticPartition-v0` | 5 (L-R-L-R-R) | Level-1 (5 buckets × ~17 keys) | Étude Op.25 No.11 |
+| `OmniPiano-PicturesGreatKiev-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Pictures: Great Gate of Kiev |
+| `OmniPiano-WinterWind-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Étude Op.25 No.11 (314 · 5% · 0%) |
+| `OmniPiano-PicturesGreatKiev-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Pictures: Great Gate of Kiev (720 · 7% · 1%) — only PIG-150 piece passing 5-hand filter |
+| `OmniPiano-WinterWind-FiveHand-StaticPartition-v0` | 5 (L-R-L-R-R) | Level-1 (5 buckets, 18/18/17/18/17 keys) | Étude Op.25 No.11 |
+
+> **Notation**: `steps · min_bkt · eqN` = episode length · minimum bucket
+> occupancy · % of steps with ALL N buckets simultaneously active. Higher
+> `eqN` = more genuine N-hand coordination needed. Filter-passing pieces
+> (per `examples/repertoire/analyze_{N}hand.py`): 39 / 2 / 1 for 3/4/5-hand
+> respectively. `PicturesGreatKiev` is the only piece passing all three
+> filters and serves as the cross-ladder stress-test anchor.
 
 > **Repertoire selection note**: LaCampanella was previously registered for
 > 4-hand and 5-hand variants but DROPPED across the entire morphology ladder —
 > its lowest pitch is key 30 (D2#), leaving the bass bucket of every partition
 > scheme (5-bucket B0 / 4-bucket B0) at 0% activity, which would idle the
-> bass-most hand. PianoSonataNo301StMov was selected as the diversity
-> alternative for both 3-hand and 4-hand: it is the only PIG-150 piece in our
-> sample with non-trivial 3-bucket simultaneous activity (9.4% of steps with
-> all three 3-bucket regions active simultaneously, vs 0% on WinterWind /
-> ForElise). Empirical numbers (per-bucket distribution, polyphony, length)
-> are documented inline in `OmniPiano/envs/__init__.py` for traceable future
+> bass-most hand.
+>
+> The 3-hand suite uses **WinterWind** (anchor, eq3=0%, 314 steps), **ForElise**
+> (pedagogical negative example, Prototype only — eq3=0%, 79% middle bucket),
+> **PicturesGreatKiev** (cross-ladder stress, eq3=35%, 720 steps),
+> **PolonaiseOp40No1** (high-eq3 medium-length, eq3=27%, 563 steps), and
+> **PianoSonataNo281StMov** (shortest top-tier, eq3=23%, 301 steps).
+>
+> The 4-hand suite uses **WinterWind** (anchor), **PicturesGreatKiev**
+> (the only PIG-150 piece with eq4 > 10%), and **PianoSonataNo301StMov**
+> (Mozart K.330; included as a bucket-imbalanced control — min_bkt=4.2%
+> just under the 5% guideline). PianoSonataNo301StMov is **4-hand only**;
+> dropped from 3-hand after a 2026-05 PIG-150 rerun showed
+> PolonaiseOp40No1 dominates it on every 3-hand metric at similar length.
+>
+> Empirical numbers (per-bucket distribution, polyphony, length) are
+> documented inline in `OmniPiano/envs/__init__.py` for traceable future
 > repertoire replacement.
 
 ### Minimal Example
@@ -457,8 +503,8 @@ These wrappers follow the standard Gymnasium API and handle the data flow betwee
   * **Role**: Responsible for executing safety constraints and exposing costs.
   * **Responsibilities**: Iterates through all configured safety constraints, aggregates per-step and per-episode safety cost, writes safety signals into `info`, and intentionally does **not** modify the environment reward. This preserves the benchmark principle that reward-cost trade-offs should be handled by the RL algorithm rather than hard-coded inside the environment.
 * **`OmniPiano/wrappers/robust_wrapper.py`**
-  * **Role**: Responsible for signal-level robustness perturbation.
-  * **Responsibilities**: Injects action noise before forwarding actions to the wrapped environment, injects observation noise after receiving observations, and logs perturbation magnitude for analysis. This keeps robustness perturbations decoupled from both the base task definition and the safety-cost computation logic.
+  * **Role**: Responsible for the action-noise side of signal-level robustness perturbation and for aggregating perturbation magnitudes at the gym layer.
+  * **Responsibilities**: Injects action noise before forwarding actions to the wrapped environment, reads the per-step observation-noise L2 magnitude exported by the dm_env-layer `DmEnvObsNoiseWrapper` (where the actual observation-noise injection happens — see `dm_env_obs_noise.py` below), and writes both action- and observation-noise magnitudes to `info` for analysis. Splitting observation-noise injection into the dm_env layer (`DmEnvObsNoiseWrapper`) keeps per-key noise targets — e.g., skipping categorical / counter observables like `goal` — operating on the raw observation Dict before `ConcatObservationWrapper` flattens it. This keeps robustness perturbations decoupled from both the base task definition and the safety-cost computation logic.
 
 ### 7. Metrics & Logging Utilities (`utils/`)
 * **`OmniPiano/utils/info_keys.py`**
@@ -514,8 +560,14 @@ companion design docs at the repository root:
   PIG-150 scan, and paper-writing claims with empirical numbers.
 
 These are dev-facing references for code review and paper writing —
-they are not user manuals. End-user usage patterns live in this README,
-in `examples/`, and in module docstrings.
+they are not user manuals. End-user usage patterns live in this README
+and in module docstrings (e.g., `OmniPiano/envs/__init__.py` for
+registered task IDs, `OmniPiano/wrappers/*.py` for wrapper semantics).
+The local `examples/` directory contains framework-specific reference
+implementations (SB3 / sb3-contrib / OmniSafe trainers, MP4 rendering,
+repertoire analysis CSV tools) but is **gitignored / not part of the
+public release** — see the `examples/` note in "Repository Layout" above
+for the framework-agnostic rationale.
 
 ## Notes on Installation
 

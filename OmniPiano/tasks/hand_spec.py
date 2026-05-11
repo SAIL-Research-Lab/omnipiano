@@ -7,7 +7,7 @@ and builds one `ShadowHand` per spec — this replaces the old hard-coded
 right/left pair while preserving backward compatibility via the default specs.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from robopianist.models.hands import HandSide, shadow_hand
@@ -225,14 +225,78 @@ def default_two_hand_specs() -> Tuple[HandSpec, HandSpec]:
     )
 
 
+def default_three_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec]:
+    """3-hand morphology — canonical (LH, RH) pair + one center hand.
+
+    Layout (y in arena coords; +y = treble side; positions = bucket centers
+    of the canonical 29/30/29-key partition; see N-hand morphology axiom):
+        rh    at +0.4056  (treble  bucket = keys 59-87, 29 keys)
+        lh    at -0.4051  (bass    bucket = keys 0-28,  29 keys)
+        rh_c  at  0.0000  (middle  bucket = keys 29-58, 30 keys)
+
+    N-hand morphology axiom: each hand's attach position[1] equals the
+    geometric center of its canonical key-range bucket — i.e.,
+    ``0.5 * (key_index_to_y(lo) + key_index_to_y(hi))``. Under any Level-1
+    StaticPartition variant of the 3-hand morphology this makes the
+    forearm_tx joint range symmetric around the attach point. Per-hand
+    forearm range asymmetry is ~5e-5 m on the outer hands and exactly 0
+    on the center hand (the residual is purely 4-decimal rounding noise
+    on the position values; the test threshold in
+    ``ThreeHandPartitionPositionAlignmentTest::test_forearm_range_symmetric``
+    is 0.05 m, so the actual margin is ~1000× over the bound). Under
+    partition-free Prototype variants the position is identical, so
+    L-3 Prototype vs L-1 StaticPartition comparisons isolate the
+    partition constraint cleanly. See `static_partition_design.md`
+    § N-hand axiom.
+
+    Bucket scheme 29/30/29 chosen over the alternatives 29/29/30,
+    30/29/29, 30/28/30 because: (a) middle bucket strictly centered at
+    y=0 (cleanest layout for the center hand); (b) middle bucket widest
+    at 30 keys aligns with the bass/middle/treble register distribution
+    of typical piano repertoire (most note density in middle register);
+    (c) outer-pair POSITION asymmetry around y=0 is ~5e-4 m (driven by
+    the piano's intrinsic non-symmetry — A#0 lone black key shifts the
+    geometry by ~0.5 mm; this is geometric truth, not a design defect,
+    and is orthogonal to the per-hand forearm range asymmetry above).
+
+    Returned in the historical order (rh, lh, rh_c) — NOT spatial
+    left→right — to preserve action-vector layout compatibility with
+    existing 3-hand prototype registrations and any 3-hand checkpoints
+    trained before the bucket-center-position migration.
+    """
+    return (
+        HandSpec(name="rh", side=HandSide.RIGHT,
+                 position=(0.4, +0.4056, 0.13), group="treble"),
+        HandSpec(name="lh", side=HandSide.LEFT,
+                 position=(0.4, -0.4051, 0.13), group="bass"),
+        HandSpec(name="rh_c", side=HandSide.RIGHT,
+                 position=(0.4, 0.0, 0.13), group="middle"),
+    )
+
+
 def default_four_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec, HandSpec]:
     """4-hand morphology — two (LH, RH) duet pairs, alternating L-R-L-R.
 
-    Layout (y in arena coords; +y = treble side):
-        lh_b at -0.45  (bass,        Secondo's LH)
-        rh_b at -0.15  (mid_bass,    Secondo's RH)
-        lh_t at +0.15  (mid_treble,  Primo's   LH)
-        rh_t at +0.45  (treble,      Primo's   RH)
+    Layout (y in arena coords; +y = treble side; positions = bucket centers
+    of the canonical 4 × 22-key partition, see N-hand morphology axiom):
+        lh_b at -0.4521  (bass        bucket = keys 0-21)
+        rh_b at -0.1527  (mid_bass    bucket = keys 22-43)
+        lh_t at +0.1528  (mid_treble  bucket = keys 44-65)
+        rh_t at +0.4526  (treble      bucket = keys 66-87)
+
+    N-hand morphology axiom: each hand's attach position[1] equals the
+    geometric center of its canonical key-range bucket — i.e.,
+    ``0.5 * (key_index_to_y(lo) + key_index_to_y(hi))``. This makes the
+    forearm_tx joint range symmetric around the attach point under any
+    Level-1 StaticPartition variant. Per-hand forearm range asymmetry
+    is ~5e-5 to ~1e-4 m (purely 4-decimal rounding noise on position
+    values; the test threshold in
+    ``FourHandPartitionPositionAlignmentTest::test_forearm_range_symmetric``
+    is 0.05 m, so the actual margin is ~500× over the bound). Under
+    partition-free Prototype variants the position is identical, so
+    L-3 Prototype vs L-1 StaticPartition comparisons isolate the
+    partition constraint cleanly. See `static_partition_design.md`
+    § N-hand axiom for the full rationale.
 
     Mirrors real piano-four-hands practice: two players sit at one piano,
     each contributing one (LH, RH) pair to a contiguous register slice.
@@ -242,19 +306,21 @@ def default_four_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec, HandSpec]:
 
     Why this matters vs. an L-L-R-R "stacked-by-side" layout:
       - Each spatial pair == one human's two hands (~0.30 m apart);
-        the L-L-R-R alternative would make the "outer pair" 0.90 m apart,
+        the L-L-R-R alternative would make the "outer pair" ~0.90 m apart,
         not anatomically a pair at all.
-      - Inner-pair thumbs (rh_b at -0.15 + lh_t at +0.15) face *outward*,
-        leaving a thumb-gap at the keyboard center — natural for
-        boundary-region sharing between Secondo and Primo.
+      - Inner-pair thumbs (rh_b + lh_t) face *outward*, leaving a
+        thumb-gap at the keyboard center — natural for boundary-region
+        sharing between Secondo and Primo.
       - Each duet pair can independently consume the standard 2-hand PIG
         fingering convention (RH=fingers 1-5, LH=6-10) on its own slice,
         making future per-pair-fingering rewards trivial to wire in.
 
-    Spacing 0.30 m matches the 2-hand and 3-hand precedent. Inner hands at
-    ±0.15 coincide with the default 2-hand positions. Returned in spatial
-    left→right order (bass → treble) so action vector layout matches
-    "leftmost hand first".
+    Adjacent-hand spacing is ~0.30 m (0.2994 / 0.3055 / 0.2998); inner
+    hands at ±0.1527 m are very close to the default 2-hand ±0.15 m
+    positions (offset ~0.0027 m, visually imperceptible) but are not
+    identical — the axiom prioritizes partition-symmetry over exact
+    2-hand backward compat. Returned in spatial left→right order
+    (bass → treble) so action vector layout matches "leftmost hand first".
 
     All hands use the default Shadow Hand DoFs / forearm DoFs from
     ``HandSpec``'s field defaults — N-hand variants don't change a
@@ -264,13 +330,13 @@ def default_four_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec, HandSpec]:
     """
     return (
         HandSpec(name="lh_b", side=HandSide.LEFT,
-                 position=(0.4, -0.45, 0.13), group="bass"),
+                 position=(0.4, -0.4521, 0.13), group="bass"),
         HandSpec(name="rh_b", side=HandSide.RIGHT,
-                 position=(0.4, -0.15, 0.13), group="mid_bass"),
+                 position=(0.4, -0.1527, 0.13), group="mid_bass"),
         HandSpec(name="lh_t", side=HandSide.LEFT,
-                 position=(0.4, +0.15, 0.13), group="mid_treble"),
+                 position=(0.4, +0.1528, 0.13), group="mid_treble"),
         HandSpec(name="rh_t", side=HandSide.RIGHT,
-                 position=(0.4, +0.45, 0.13), group="treble"),
+                 position=(0.4, +0.4526, 0.13), group="treble"),
     )
 
 
@@ -333,8 +399,10 @@ def default_five_hand_specs() -> Tuple[
     # ``key_index_to_y((lo+hi)/2)`` (the latter would differ by up to
     # 12 mm because white/black key Y spacing is non-uniform). With this
     # choice, the forearm_tx joint range is symmetric around the attach
-    # point (asymmetry < 0.0002 m, verified by FiveHandPartitionPosition-
-    # AlignmentTest::test_forearm_range_symmetric).
+    # point. Per-hand forearm range asymmetry is ~5e-5 to ~1e-4 m (purely
+    # 4-decimal rounding noise on the position values; the test threshold
+    # in ``FiveHandPartitionPositionAlignmentTest::test_forearm_range_symmetric``
+    # is 0.05 m, so the actual margin is ~500× over the bound).
     # Bucket boundaries: [(0,17), (18,35), (36,52), (53,70), (71,87)].
     # Positions are CACHED as float constants below for deterministic
     # registry behavior across Python runs.
