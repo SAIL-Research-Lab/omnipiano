@@ -1000,7 +1000,13 @@ _FIVE_HAND_BUCKETS = [(0, 17), (18, 35), (36, 52), (53, 70), (71, 87)]
 
 
 def _five_hand_partition_specs():
-    """5-hand L-R-L-R-R layout with key_range partition matching Task 14."""
+    """5-hand L-R-R-L-R layout with key_range partition matching Task 14.
+
+    Decomposes into 3 anatomically valid multi-agent agents:
+      left  : (lh_b LEFT, rh_b RIGHT)   — standard (LH, RH) duet
+      center: (rh_c RIGHT)              — single hand soloist
+      right : (lh_t LEFT, rh_t RIGHT)   — standard (LH, RH) duet
+    """
     from OmniPiano.tasks.hand_spec import HandSpec
     return (
         HandSpec(name="lh_b", side=HandSide.LEFT,
@@ -1009,13 +1015,13 @@ def _five_hand_partition_specs():
         HandSpec(name="rh_b", side=HandSide.RIGHT,
                  position=(0.4, -0.2345, 0.13), key_range=(18, 35),
                  group="low_mid"),
-        HandSpec(name="lh_c", side=HandSide.LEFT,
+        HandSpec(name="rh_c", side=HandSide.RIGHT,
                  position=(0.4, +0.0061, 0.13), key_range=(36, 52),
                  group="middle"),
-        HandSpec(name="rh_t2", side=HandSide.RIGHT,
+        HandSpec(name="lh_t", side=HandSide.LEFT,
                  position=(0.4, +0.2468, 0.13), key_range=(53, 70),
                  group="high_mid"),
-        HandSpec(name="rh_t1", side=HandSide.RIGHT,
+        HandSpec(name="rh_t", side=HandSide.RIGHT,
                  position=(0.4, +0.4879, 0.13), key_range=(71, 87),
                  group="treble"),
     )
@@ -1038,17 +1044,21 @@ def _get_five_hand_partition_env(control_timestep: float = 0.01):
 
 
 class FiveHandDuetLayoutTest(absltest.TestCase):
-    """Regression tests for the L-R-L-R-R duet-extension layout of
+    """Regression tests for the L-R-R-L-R 3-agent-friendly layout of
     ``default_five_hand_specs``.
 
     Specifically guards against:
-      (a) silent reversion to the older L-L-R-R-R "stacked-by-side" layout
+      (a) reversion to the older L-L-R-R-R "stacked-by-side" layout
+          or the L-R-L-R-R layout (both put two RIGHT hands on a
+          single right-side multi-agent agent — anatomically impossible)
       (b) drift in the bucket-center attach positions
       (c) name/side mismatch between the spec name prefix and HandSide
     """
 
-    def test_default_five_hand_is_lrlrr(self):
-        """Sides sorted by Y position must be [L, R, L, R, R]."""
+    def test_default_five_hand_is_lrrlr(self):
+        """Sides sorted by Y position must be [L, R, R, L, R] — gives both
+        outer agents a standard (LH, RH) duet pair and the center solo
+        as a single RIGHT hand under 3-agent decomposition."""
         from OmniPiano.tasks.hand_spec import default_five_hand_specs
         specs = default_five_hand_specs()
         self.assertEqual(len(specs), 5)
@@ -1056,9 +1066,9 @@ class FiveHandDuetLayoutTest(absltest.TestCase):
         sides = [s.side for s in ordered]
         self.assertEqual(
             sides,
-            [HandSide.LEFT, HandSide.RIGHT, HandSide.LEFT,
-             HandSide.RIGHT, HandSide.RIGHT],
-            msg=f"5-hand layout is not L-R-L-R-R; got {sides}",
+            [HandSide.LEFT, HandSide.RIGHT, HandSide.RIGHT,
+             HandSide.LEFT, HandSide.RIGHT],
+            msg=f"5-hand layout is not L-R-R-L-R; got {sides}",
         )
 
     def test_default_five_hand_names_match_sides(self):
@@ -1168,7 +1178,7 @@ class FiveHandPartitionPositionAlignmentTest(absltest.TestCase):
 class FiveHandStaticPartitionTest(absltest.TestCase):
     """End-to-end tests for the 5-hand Level-1 partition env.
 
-    Mirrors FourHandStaticPartitionTest but with 5 hands and the L-R-L-R-R
+    Mirrors FourHandStaticPartitionTest but with 5 hands and the L-R-R-L-R
     side layout. Validates that:
       (a) the compiled MuJoCo model gets the right joint ranges from
           spec.key_range → key_range_to_y_range conversion

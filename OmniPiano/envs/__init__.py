@@ -869,26 +869,30 @@ register(
 )
 
 # ===========================================================================
-# Task 12 (preview): 5-hand prototypes — L-R-L-R-R alternating extension
-# of the 4-hand layout, with a LEFT center hand `lh_c`.
+# Task 12 (preview): 5-hand prototypes — L-R-R-L-R 3-agent-friendly
+# extension of the 4-hand layout, with a RIGHT center hand `rh_c`.
 #
 # Attach positions at the geometric centers of the canonical 5-bucket
 # partition (18/18/17/18/17 keys; bucket boundaries [(0,17), (18,35),
 # (36,52), (53,70), (71,87)]) per the N-hand morphology axiom — see
 # ``default_five_hand_specs``:
-#   lh_b   at -0.4817  (bass     bucket = keys 0-17)
-#   rh_b   at -0.2345  (low_mid  bucket = keys 18-35)
-#   lh_c   at +0.0061  (middle   bucket = keys 36-52, centered ~y=0)
-#   rh_t2  at +0.2468  (high_mid bucket = keys 53-70)
-#   rh_t1  at +0.4879  (treble   bucket = keys 71-87)
+#   lh_b   at -0.4817  (LEFT,  bass     bucket = keys 0-17)
+#   rh_b   at -0.2345  (RIGHT, low_mid  bucket = keys 18-35)
+#   rh_c   at +0.0061  (RIGHT, middle   bucket = keys 36-52, centered ~y=0)
+#   lh_t   at +0.2468  (LEFT,  high_mid bucket = keys 53-70)
+#   rh_t   at +0.4879  (RIGHT, treble   bucket = keys 71-87)
 #
 # Adjacent-hand spacing ~0.241 m (non-uniform, reflecting non-uniform
 # piano key spacing); Shadow Hand mesh ~0.10 m → ~0.14 m gap, well
-# clear of inter-hand collision. Center hand is LEFT (`lh_c`), NOT
-# right — with 5 hands and a 2-LH / 3-RH count, putting LH at center
-# gives the bass half a natural Secondo (LH, RH) duet pair; the treble
-# half is an unavoidable (rh_t2, rh_t1) stack-of-two-RHs (only one
-# half can decompose cleanly under odd N).
+# clear of inter-hand collision. Layout decomposes cleanly into THREE
+# anatomically valid multi-agent agents:
+#   left player  : (lh_b LEFT, rh_b RIGHT)   — standard (LH, RH) duet
+#   center solo  : (rh_c RIGHT)              — single hand
+#   right player : (lh_t LEFT, rh_t RIGHT)   — standard (LH, RH) duet
+# Both outer agents get a proper (LH, RH) pair (~0.24 m apart, matches a
+# single human's two-handed reach). Side ratio 2-LH / 3-RH preserved
+# from prior version; naming `_b` / `_c` / `_t` aligns with 4-hand and
+# 3-hand conventions (`rh_c` matches the 3-hand center hand name).
 #
 # Repertoire empirical numbers below are from a full PIG-150 scan under
 # the canonical 5-bucket partition [(0,17),(18,35),(36,52),(53,70),(71,87)]
@@ -1032,16 +1036,23 @@ register(
 # ``default_five_hand_specs`` for rationale on why we use bucket-center
 # positions instead of uniform 0.20 m spacing.
 #
-# Sides follow the L-R-L-R-R duet-extension pattern from the prototype:
-#   bass duet (Secondo)  : lh_b (LEFT) + rh_b (RIGHT)
-#   center solo          : lh_c (LEFT)
-#   treble pair          : rh_t2 + rh_t1 (both RIGHT, stacked)
+# Sides follow the L-R-R-L-R 3-agent-friendly pattern from the prototype:
+#   left player  (LH, RH duet) : lh_b (LEFT) + rh_b (RIGHT)
+#   center solo                : rh_c (RIGHT)
+#   right player (LH, RH duet) : lh_t (LEFT) + rh_t (RIGHT)
+# Each outer agent has a standard (LH, RH) pair at ~0.24 m spacing;
+# center is a single soloist hand. See ``default_five_hand_specs``
+# docstring for the multi-agent decomposition rationale.
 #
-# WinterWind chosen as the first 5-hand partition env: shortest viable
-# 5-hand piece (314 steps), shared with 3/4-hand morphology ladder, and
-# all 5 buckets have ≥5% of note events under the env-loader path
-# (no idle hand). PicturesGreatKiev variant is paper-quality but 720
-# steps; can be added later for the demo run.
+# WinterWind chosen as the (currently only) 5-hand StaticPartition env:
+# shortest viable 5-hand piece (314 steps), shared with 3/4-hand
+# morphology ladder, and all 5 buckets have ≥5% of note events under
+# the env-loader path (no idle hand). The corresponding
+# `OmniPiano-PicturesGreatKiev-FiveHandPrototype-v0` is already
+# registered (the only PIG-150 piece passing the strict 5-hand filter);
+# a `PicturesGreatKiev-FiveHand-StaticPartition-v0` variant could be
+# added when paper-quality 5-hand L-1 runs become feasible (720 steps =
+# ~2.3× WinterWind wall-clock).
 # ===========================================================================
 register(
     id="OmniPiano-WinterWind-FiveHand-StaticPartition-v0",
@@ -1054,13 +1065,13 @@ register(
         HandSpec(name="rh_b", side=HandSide.RIGHT,
                  position=(0.4, -0.2345, 0.13), key_range=(18, 35),
                  group="low_mid"),
-        HandSpec(name="lh_c", side=HandSide.LEFT,
+        HandSpec(name="rh_c", side=HandSide.RIGHT,
                  position=(0.4, +0.0061, 0.13), key_range=(36, 52),
                  group="middle"),
-        HandSpec(name="rh_t2", side=HandSide.RIGHT,
+        HandSpec(name="lh_t", side=HandSide.LEFT,
                  position=(0.4, +0.2468, 0.13), key_range=(53, 70),
                  group="high_mid"),
-        HandSpec(name="rh_t1", side=HandSide.RIGHT,
+        HandSpec(name="rh_t", side=HandSide.RIGHT,
                  position=(0.4, +0.4879, 0.13), key_range=(71, 87),
                  group="treble"),
     ),

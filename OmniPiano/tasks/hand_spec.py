@@ -343,30 +343,41 @@ def default_four_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec, HandSpec]:
 def default_five_hand_specs() -> Tuple[
     HandSpec, HandSpec, HandSpec, HandSpec, HandSpec
 ]:
-    """5-hand morphology — L-R-L-R-R alternating with attach positions
+    """5-hand morphology — L-R-R-L-R alternating with attach positions
     aligned to the natural key_range bucket centers.
 
     Layout (spatial left → right; y in arena coords):
         lh_b   at -0.4817  (LEFT,  bass        bucket = keys 0-17)
         rh_b   at -0.2345  (RIGHT, low_mid     bucket = keys 18-35)
-        lh_c   at +0.0061  (LEFT,  middle      bucket = keys 36-52)
-        rh_t2  at +0.2468  (RIGHT, high_mid    bucket = keys 53-70)
-        rh_t1  at +0.4879  (RIGHT, treble      bucket = keys 71-87)
+        rh_c   at +0.0061  (RIGHT, middle      bucket = keys 36-52)
+        lh_t   at +0.2468  (LEFT,  high_mid    bucket = keys 53-70)
+        rh_t   at +0.4879  (RIGHT, treble      bucket = keys 71-87)
 
-    Why L-R-L-R-R (and not the previous L-L-R-R-R or the "ideal" L-R-L-R-?)
+    Why L-R-R-L-R (and not the earlier L-R-L-R-R or L-L-R-R-R)
 
-      - **L-R alternation in the bass half mirrors the 4-hand duet design.**
-        Adjacent (LH, RH) pair at (-0.48, -0.23) reads as Secondo's hands.
-      - **Center hand at y=0 is LEFT** (`lh_c`), not RIGHT (was `rh_c`).
-        This deliberately breaks the 3-hand `rh_c` convention because with
-        5 hands and a fixed 2-LH / 3-RH ratio, putting LH in the center
-        gives every L-R adjacent pair a natural "duet" spatial structure
-        on the bass half (see above). The treble half (rh_t2 + rh_t1)
-        becomes a "two RH" stack — analogous to the L-L-R-R original
-        4-hand layout but only on one side, accepting that 5 hands cannot
-        decompose into perfect duet pairs.
-      - **Asymmetric (3 RH + 2 LH)** is preserved from the prior version;
-        flipping to 3 LH + 2 RH would only require mirroring all sides.
+      The L-R-R-L-R layout decomposes cleanly into THREE anatomically
+      valid agents under the multi-agent wrapper:
+
+          left player  : (lh_b LEFT, rh_b RIGHT)   spacing 0.247 m  — (LH, RH) duet
+          center solo  : (rh_c RIGHT)              single hand
+          right player : (lh_t LEFT, rh_t RIGHT)   spacing 0.241 m  — (LH, RH) duet
+
+      Both outer agents get a STANDARD (LH, RH) pair at ~0.24 m spacing
+      (matches a single human's two-handed reach, mirroring the 4-hand
+      Secondo/Primo duet design). The center hand is a soloist — this is
+      the only "asymmetric" agent, but it has only one hand so anatomy
+      is trivially fine.
+
+      The earlier L-R-L-R-R layout (with `lh_c` LEFT at center +
+      `rh_t2 RIGHT, rh_t1 RIGHT` stacked on the treble half) put TWO
+      right hands on a single right-side agent — anatomically impossible
+      for a single human. L-R-R-L-R fixes this by moving one LEFT hand
+      from center to the treble side, freeing the center to be a single
+      RIGHT hand.
+
+      Side ratio (3 RIGHT + 2 LEFT) is preserved from the prior version;
+      naming convention now matches the 3-hand center hand (`rh_c`) and
+      uses the 4-hand-style `_b` / `_t` suffixes for outer-pair zones.
 
     Why the non-uniform 0.24-spacing positions (instead of 0.20 uniform)
 
@@ -411,10 +422,10 @@ def default_five_hand_specs() -> Tuple[
                  position=(0.4, -0.4817, 0.13), group="bass"),
         HandSpec(name="rh_b", side=HandSide.RIGHT,
                  position=(0.4, -0.2345, 0.13), group="low_mid"),
-        HandSpec(name="lh_c", side=HandSide.LEFT,
+        HandSpec(name="rh_c", side=HandSide.RIGHT,
                  position=(0.4, +0.0061, 0.13), group="middle"),
-        HandSpec(name="rh_t2", side=HandSide.RIGHT,
+        HandSpec(name="lh_t", side=HandSide.LEFT,
                  position=(0.4, +0.2468, 0.13), group="high_mid"),
-        HandSpec(name="rh_t1", side=HandSide.RIGHT,
+        HandSpec(name="rh_t", side=HandSide.RIGHT,
                  position=(0.4, +0.4879, 0.13), group="treble"),
     )

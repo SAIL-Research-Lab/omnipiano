@@ -238,9 +238,9 @@ whether the `forearm_tx` slider is hard-clamped to its bucket. See
 | `OmniPiano-WinterWind-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Étude Op.25 No.11 |
 | `OmniPiano-PianoSonataNo301StMov-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Mozart K.330 1st mvt |
 | `OmniPiano-PicturesGreatKiev-FourHand-StaticPartition-v0` | 4 (L-R-L-R) | Level-1 (4 buckets × 22 keys) | Pictures: Great Gate of Kiev |
-| `OmniPiano-WinterWind-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Étude Op.25 No.11 (314 · 5% · 0%) |
-| `OmniPiano-PicturesGreatKiev-FiveHandPrototype-v0` | 5 (L-R-L-R-R) | none (L-3) | Pictures: Great Gate of Kiev (720 · 7% · 1%) — only PIG-150 piece passing 5-hand filter |
-| `OmniPiano-WinterWind-FiveHand-StaticPartition-v0` | 5 (L-R-L-R-R) | Level-1 (5 buckets, 18/18/17/18/17 keys) | Étude Op.25 No.11 |
+| `OmniPiano-WinterWind-FiveHandPrototype-v0` | 5 (L-R-R-L-R) | none (L-3) | Étude Op.25 No.11 (314 · 5% · 0%) |
+| `OmniPiano-PicturesGreatKiev-FiveHandPrototype-v0` | 5 (L-R-R-L-R) | none (L-3) | Pictures: Great Gate of Kiev (720 · 7% · 1%) — only PIG-150 piece passing 5-hand filter |
+| `OmniPiano-WinterWind-FiveHand-StaticPartition-v0` | 5 (L-R-R-L-R) | Level-1 (5 buckets, 18/18/17/18/17 keys) | Étude Op.25 No.11 |
 
 > **Notation**: `steps · min_bkt · eqN` = episode length · minimum bucket
 > occupancy · % of steps with ALL N buckets simultaneously active. Higher
@@ -555,7 +555,7 @@ companion design docs at the repository root:
   guards.
 * **`static_partition_design.md`** — Level-1 static partition: hard
   joint-level partition vs soft fingertip overshoot (~7-key boundary
-  cooperation), L-R-L-R 4-hand and L-R-L-R-R 5-hand layouts, position-
+  cooperation), L-R-L-R 4-hand and L-R-R-L-R 5-hand layouts, position-
   to-bucket-center alignment math, repertoire selection from full
   PIG-150 scan, and paper-writing claims with empirical numbers.
 
