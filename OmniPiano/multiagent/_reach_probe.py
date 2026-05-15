@@ -109,7 +109,14 @@ def _settle_with_forearm_ctrl(
     forearm_ctrl: float,
     substeps: int,
 ) -> np.ndarray:
-    """Drive `target_hand_name`'s `forearm_tx` to `forearm_ctrl`, settle, read fingertips.
+    """Pin `target_hand_name`'s `forearm_tx` joint at clamp limit, settle, read fingertips.
+
+    Bypasses the actuator's PD dynamics — directly writes `qpos` to the clamp
+    extreme on each substep so the joint stays pinned regardless of PD
+    settling time. (The actuator path takes ~100+ control steps to converge
+    from ctrl=±5 to qpos=±0.14 due to position-control gains, which would
+    artificially shrink the measured fingertip envelope.) Other joints
+    receive ctrl=0 so fingers settle to their neutral pose.
 
     Returns: fingertip world-y, shape (5,).
     """
@@ -117,40 +124,47 @@ def _settle_with_forearm_ctrl(
     target_hand = task.hands_by_name[target_hand_name]
     physics = env.physics
 
-    # Build a single flat action vector: native scale, all neutral except
-    # target's forearm_tx pushed to extreme.
+    # Find the forearm_tx joint and its clamp range.
+    forearm_joint = None
+    for j in target_hand.mjcf_model.find_all("joint"):
+        if "forearm_tx" in j.name:
+            forearm_joint = j
+            break
+    if forearm_joint is None:
+        raise RuntimeError(
+            f"hand {target_hand_name!r} has no forearm_tx joint"
+        )
+
+    joint_range = forearm_joint.range
+    if joint_range is None:
+        raise RuntimeError(
+            f"forearm_tx for {target_hand_name!r} has no joint range; "
+            f"cannot determine clamp extreme"
+        )
+    target_qpos = float(joint_range[1] if forearm_ctrl > 0 else joint_range[0])
+
+    # Neutral action for all actuators (lets fingers settle to ctrl=0 pose).
     action_dim = task.action_spec(physics).shape[0]
     action = np.zeros(action_dim, dtype=np.float64)
 
-    # Find the offset of target_hand's actions within the flat vector
-    # (mirroring before_step's offset loop).
-    offset = 0
-    target_offset = None
-    target_size = None
-    for hand in task.hands:
-        size = hand.action_spec(physics).shape[0]
-        if hand is target_hand:
-            target_offset = offset
-            target_size = size
-            break
-        offset += size
-    if target_offset is None:
-        raise KeyError(f"hand {target_hand_name} not in task.hands")
-
-    # forearm_tx is the FIRST DoF in a Shadow Hand's action vector (see
-    # shadow_hand._DEFAULT_FOREARM_DOFS) — index 0 within the hand's slice.
-    action[target_offset] = forearm_ctrl
-
-    # Step until forearm settles. Each env.step does `control_timestep /
-    # physics_timestep` substeps internally — typical ratio 50:1. To get
-    # ~500 substeps we call env.step ~10 times.
-    physics_per_control = max(1, substeps // 50)
+    # Step several control timesteps to let the fingers / wrist joints
+    # settle around the pinned forearm position. We re-pin qpos after each
+    # env.step (which advances physics and would otherwise move the joint
+    # off-target if the actuator's ctrl pulls it back). substeps controls
+    # how long we let fingers settle.
+    physics_per_control = max(2, substeps // 50)
     for _ in range(physics_per_control):
+        # Pin forearm_tx to clamp limit by direct qpos write.
+        physics.bind(forearm_joint).qpos = target_qpos
+        # Also zero its velocity so it doesn't drift back.
+        physics.bind(forearm_joint).qvel = 0.0
         ts = env.step(action)
         if ts.last():
-            # episode ended unexpectedly mid-probe (shouldn't with long-enough
-            # probe MIDI, but guard anyway) — break before refs go stale.
             break
+
+    # Re-pin one more time before reading (in case the last step moved it).
+    physics.bind(forearm_joint).qpos = target_qpos
+    physics.bind(forearm_joint).qvel = 0.0
 
     fingertip_xpos = physics.bind(target_hand.fingertip_sites).xpos.copy()
     return fingertip_xpos[:, 1]  # Y-axis only
