@@ -259,18 +259,21 @@ def default_three_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec]:
     geometry by ~0.5 mm; this is geometric truth, not a design defect,
     and is orthogonal to the per-hand forearm range asymmetry above).
 
-    Returned in the historical order (rh, lh, rh_c) — NOT spatial
-    left→right — to preserve action-vector layout compatibility with
-    existing 3-hand prototype registrations and any 3-hand checkpoints
-    trained before the bucket-center-position migration.
+    Returned in spatial left→right order (bass → treble) so action
+    vector layout matches "leftmost hand first" — same convention as
+    ``default_four_hand_specs`` / ``default_five_hand_specs``. This is
+    the N-hand morphology action-layout axiom for N≥3
+    (``default_two_hand_specs`` is exempt because it freezes the
+    original RoboPianist (rh, lh) convention as a direct baseline; see
+    ``static_partition_design.md`` § N-hand axiom).
     """
     return (
-        HandSpec(name="rh", side=HandSide.RIGHT,
-                 position=(0.4, +0.4056, 0.13), group="treble"),
         HandSpec(name="lh", side=HandSide.LEFT,
                  position=(0.4, -0.4051, 0.13), group="bass"),
         HandSpec(name="rh_c", side=HandSide.RIGHT,
                  position=(0.4, 0.0, 0.13), group="middle"),
+        HandSpec(name="rh", side=HandSide.RIGHT,
+                 position=(0.4, +0.4056, 0.13), group="treble"),
     )
 
 

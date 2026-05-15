@@ -582,10 +582,11 @@ register(
 # where it serves as a bucket-imbalanced control).
 #
 # Positions = bucket centers of the canonical 29/30/29-key partition
-# (N-hand morphology axiom — see ``default_three_hand_specs``):
-#   rh    at +0.4056  (treble  bucket = keys 59-87, 29 keys)
+# (N-hand morphology axiom — see ``default_three_hand_specs``);
+# spec order is spatial left→right per the N-hand action-layout axiom:
 #   lh    at -0.4051  (bass    bucket = keys 0-28,  29 keys)
 #   rh_c  at  0.0000  (middle  bucket = keys 29-58, 30 keys, centered)
+#   rh    at +0.4056  (treble  bucket = keys 59-87, 29 keys)
 # 3-hand Prototype and StaticPartition share these positions exactly,
 # so the L-3 Prototype vs L-1 StaticPartition ablation isolates the
 # partition constraint cleanly (only forearm_tx joint range differs:
@@ -705,9 +706,9 @@ register(
 # multi-hand settings, so static partition physically forbids outer hands
 # from idling at the keyboard edges.
 #
-# Canonical 3-bucket partition (29/30/29 keys):
+# Canonical 3-bucket partition (29/30/29 keys, spatial left→right order):
 #   bass     keys  0-28  (29 keys)   ← lh
-#   middle   keys 29-58  (30 keys, contains middle C = key 39, centered at y=0)
+#   middle   keys 29-58  (30 keys, contains middle C = key 39, centered at y=0)   ← rh_c
 #   treble   keys 59-87  (29 keys)   ← rh
 # Hand attach positions exactly match the bucket centers (see
 # ``default_three_hand_specs``). Bucket scheme 29/30/29 chosen over
@@ -734,17 +735,18 @@ register(
 
 def _three_hand_partition_specs(*, group_override=None):
     """Inline 3-hand partition specs (29/30/29 keys, positions at
-    bucket centers per the N-hand morphology axiom)."""
+    bucket centers per the N-hand morphology axiom; spec order = spatial
+    left→right per the N-hand action-layout axiom for N≥3)."""
     return (
-        HandSpec(name="rh", side=HandSide.RIGHT,
-                 position=(0.4, +0.4056, 0.13), key_range=(59, 87),
-                 group="treble"),
         HandSpec(name="lh", side=HandSide.LEFT,
                  position=(0.4, -0.4051, 0.13), key_range=(0, 28),
                  group="bass"),
         HandSpec(name="rh_c", side=HandSide.RIGHT,
                  position=(0.4, 0.0, 0.13), key_range=(29, 58),
                  group="middle"),
+        HandSpec(name="rh", side=HandSide.RIGHT,
+                 position=(0.4, +0.4056, 0.13), key_range=(59, 87),
+                 group="treble"),
     )
 
 

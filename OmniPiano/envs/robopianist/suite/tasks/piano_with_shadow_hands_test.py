@@ -285,24 +285,27 @@ _THREE_HAND_BUCKETS = [(0, 28), (29, 58), (59, 87)]
 def _three_hand_specs():
     """3-hand prototype layout — matches ``default_three_hand_specs``
     and the Task 10 registration positions. Positions = bucket centers
-    of the canonical 29/30/29-key partition (N-hand morphology axiom).
+    of the canonical 29/30/29-key partition (N-hand morphology axiom);
+    spec order is spatial left→right per the N-hand action-layout
+    axiom for N≥3.
     """
     return (
-        HandSpec(name="rh", side=HandSide.RIGHT, position=(0.4, +0.4056, 0.13), group="treble"),
         HandSpec(name="lh", side=HandSide.LEFT, position=(0.4, -0.4051, 0.13), group="bass"),
         HandSpec(name="rh_c", side=HandSide.RIGHT, position=(0.4, 0.0, 0.13), group="middle"),
+        HandSpec(name="rh", side=HandSide.RIGHT, position=(0.4, +0.4056, 0.13), group="treble"),
     )
 
 
 def _three_hand_partition_specs():
-    """3-hand layout with key_range partition matching Task 10b."""
+    """3-hand layout with key_range partition matching Task 10b
+    (spatial left→right order)."""
     return (
-        HandSpec(name="rh", side=HandSide.RIGHT, position=(0.4, +0.4056, 0.13),
-                 key_range=(59, 87), group="treble"),
         HandSpec(name="lh", side=HandSide.LEFT, position=(0.4, -0.4051, 0.13),
                  key_range=(0, 28), group="bass"),
         HandSpec(name="rh_c", side=HandSide.RIGHT, position=(0.4, 0.0, 0.13),
                  key_range=(29, 58), group="middle"),
+        HandSpec(name="rh", side=HandSide.RIGHT, position=(0.4, +0.4056, 0.13),
+                 key_range=(59, 87), group="treble"),
     )
 
 
@@ -348,9 +351,9 @@ class ThreeHandRegressionTest(absltest.TestCase):
 
         self.assertLen(env.task.hands, 3)
         self.assertEqual(
-            list(env.task.hands_by_name.keys()), ["rh", "lh", "rh_c"]
+            list(env.task.hands_by_name.keys()), ["lh", "rh_c", "rh"]
         )
-        for name in ["rh_shadow_hand", "lh_shadow_hand", "rh_c_shadow_hand"]:
+        for name in ["lh_shadow_hand", "rh_c_shadow_hand", "rh_shadow_hand"]:
             self.assertIn(f"{name}/joints_pos", timestep.observation)
 
     def test_before_step_offset_dispatch_heterogeneous_hands(self) -> None:
@@ -589,8 +592,8 @@ class ThreeHandStaticPartitionTest(absltest.TestCase):
         env = _get_three_hand_partition_env()
         env.reset()
         # env.task.hands is in spec order — matches _three_hand_partition_specs:
-        # rh (treble 59-87), lh (bass 0-28), rh_c (middle 29-58).
-        expected_keys_in_spec_order = [(59, 87), (0, 28), (29, 58)]
+        # lh (bass 0-28), rh_c (middle 29-58), rh (treble 59-87) — spatial left→right.
+        expected_keys_in_spec_order = [(0, 28), (29, 58), (59, 87)]
         for hand, krng in zip(env.task.hands, expected_keys_in_spec_order):
             j = hand.mjcf_model.find('joint', 'forearm_tx')
             j_id = env.physics.bind(j).element_id
