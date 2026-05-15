@@ -1078,3 +1078,10 @@ register(
                  group="treble"),
     ),
 )
+
+
+# ===========================================================================
+# Multi-agent (PettingZoo ParallelEnv) registrations.
+# Side-effect import: triggers register_parallel() calls in multiagent_envs.py.
+# ===========================================================================
+from OmniPiano.envs import multiagent_envs  # noqa: F401, E402
