@@ -70,6 +70,14 @@ camera so the full 88-key keyboard and every hand are visible at once.
   <img src="demos/morphology/5hand_winterwind_l1.gif" alt="5-hand WinterWind L-1 demo" width="640"/>
 </p>
 
+<p align="center">
+  <strong><code>OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0</code></strong><br/>
+  <sub>4 hands · <strong>multi-agent: 2 independent policies</strong> (<code>secondo</code> = bass-side LH+RH; <code>primo</code> = treble-side LH+RH) · Territorial series (disjoint per-agent clamps; ~4-key emergent shared zone at center) · RLlib MAPPO 5M · eval reward = 768</sub>
+</p>
+<p align="center">
+  <img src="demos/morphology/4hand_winterwind_ma_duet.gif" alt="4-hand MA Duet WinterWind Territorial demo" width="640"/>
+</p>
+
 **What to look for:**
 
 - **3-hand / 4-hand without partition** — outer hands often park near the keyboard
