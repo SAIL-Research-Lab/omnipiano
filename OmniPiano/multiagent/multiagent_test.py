@@ -1,11 +1,10 @@
-"""Tests for the multi-agent PettingZoo ParallelEnv wrapper (Sub-phase 1A).
+"""Tests for the multi-agent PettingZoo ParallelEnv wrapper.
 
-Three classes:
-- ``PettingZooConformanceTest`` — runs ``parallel_api_test`` on each
-  registered 4-hand MA env
-- ``LayoutRegressionTest`` — pins agent names / action dims / obs space
-  structure against the AGENT_ASSIGNMENTS["FourHand"] decomposition
-- ``SmokeTest`` — 100 random-action steps, no crash, finite reward
+Covered sub-phases:
+  1A — 4-hand Duet (3 envs):     symmetric 2-agent, 1 inter-agent boundary
+  1B — 3-hand MainSolo (4 envs): introduces 1-hand agent edge case
+  1C — 5-hand Trio (1 env):      3-agent + multi-boundary (center_soloist
+                                 has 2 neighbors)
 """
 
 from __future__ import annotations
@@ -22,12 +21,30 @@ from OmniPiano.multiagent import (
 )
 
 
-# 4-hand envs registered in Sub-phase 1A.
+# Sub-phase 1A: 4-hand Duet.
 _FOUR_HAND_MA_ENVS = (
     "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0",
     "OmniPiano-PianoSonataNo301StMov-FourHand-MA-Duet-Territorial-v0",
     "OmniPiano-PicturesGreatKiev-FourHand-MA-Duet-Territorial-v0",
 )
+
+# Sub-phase 1B: 3-hand MainSolo.
+_THREE_HAND_MA_ENVS = (
+    "OmniPiano-WinterWind-ThreeHand-MA-MainSolo-Territorial-v0",
+    "OmniPiano-PicturesGreatKiev-ThreeHand-MA-MainSolo-Territorial-v0",
+    "OmniPiano-PolonaiseOp40No1-ThreeHand-MA-MainSolo-Territorial-v0",
+    "OmniPiano-PianoSonataNo281StMov-ThreeHand-MA-MainSolo-Territorial-v0",
+)
+
+# Sub-phase 1C: 5-hand Trio. Only WinterWind — PicturesGreatKiev 5-hand
+# StaticPartition is deferred at the SA layer (see Option C decision +
+# envs/__init__.py:1055 comment).
+_FIVE_HAND_MA_ENVS = (
+    "OmniPiano-WinterWind-FiveHand-MA-Trio-Territorial-v0",
+)
+
+# Aggregate for tests that should cover every registered MA env.
+_ALL_MA_ENVS = _FOUR_HAND_MA_ENVS + _THREE_HAND_MA_ENVS + _FIVE_HAND_MA_ENVS
 
 
 # ===========================================================================
@@ -35,9 +52,9 @@ _FOUR_HAND_MA_ENVS = (
 # ===========================================================================
 
 
-@pytest.mark.parametrize("env_id", _FOUR_HAND_MA_ENVS)
+@pytest.mark.parametrize("env_id", _ALL_MA_ENVS)
 def test_pettingzoo_parallel_api_conformance(env_id: str) -> None:
-    """Verify each 4-hand MA env satisfies the PettingZoo ParallelEnv API."""
+    """Verify each registered MA env satisfies the PettingZoo ParallelEnv API."""
     from pettingzoo.test import parallel_api_test
 
     # parallel_api_test cycles through reset/step many times — use num_cycles=50
@@ -120,11 +137,238 @@ class TestLayoutRegression:
 
 
 # ===========================================================================
+# 3-hand MainSolo layout regression — pins 1-hand agent edge case
+# ===========================================================================
+
+
+class TestThreeHandLayoutRegression:
+    """Pins agent decomposition for 3-hand MainSolo (Sub-phase 1B).
+
+    Validates the 1-hand agent code path: treble_soloist controls only `rh`
+    (action dim 22, NO sustain slice since secondo is sustain owner),
+    boundary_hands has exactly 1 neighbor (secondo's rh_c).
+    """
+
+    def setup_method(self) -> None:
+        self.env = make_parallel(
+            "OmniPiano-WinterWind-ThreeHand-MA-MainSolo-Territorial-v0", seed=0
+        )
+
+    def teardown_method(self) -> None:
+        self.env.close()
+
+    def test_possible_agents_spatial_order(self) -> None:
+        # Spatial L→R: secondo (bass + middle, 2 hands) before treble_soloist (1 hand).
+        assert self.env.possible_agents == ["secondo", "treble_soloist"]
+        assert AGENT_ASSIGNMENTS["ThreeHand"].agent_names == ("secondo", "treble_soloist")
+
+    def test_action_dims_one_hand_agent_has_no_sustain(self) -> None:
+        # secondo = (lh, rh_c) + sustain → 2×22 + 1 = 45
+        assert self.env.action_space("secondo").shape == (45,)
+        # treble_soloist = (rh) only → 22 (sustain belongs to secondo, no +1)
+        assert self.env.action_space("treble_soloist").shape == (22,)
+        for agent in ("secondo", "treble_soloist"):
+            sp = self.env.action_space(agent)
+            assert float(sp.low.min()) == -1.0
+            assert float(sp.high.max()) == 1.0
+
+    def test_obs_space_structure_three_hand(self) -> None:
+        secondo_obs = self.env.observation_space("secondo")
+        soloist_obs = self.env.observation_space("treble_soloist")
+        # own_hands
+        assert set(secondo_obs.spaces["own_hands"].spaces.keys()) == {"lh", "rh_c"}
+        assert set(soloist_obs.spaces["own_hands"].spaces.keys()) == {"rh"}
+        # boundary_hands: 1 neighbor each
+        assert set(secondo_obs.spaces["boundary_hands"].spaces.keys()) == {"rh"}
+        assert set(soloist_obs.spaces["boundary_hands"].spaces.keys()) == {"rh_c"}
+
+    def test_reach_three_hand_matches_design_doc(self) -> None:
+        """3-hand reach numbers from probe should match design doc § 5.2 within ±2 keys.
+
+        Design doc: secondo (0, 61), treble_soloist (51, 87); shared zone
+        51-62 ~= 12 keys. The runtime-aligned probe gives slightly different
+        endpoints due to neutral-finger-pose conservativeness; tolerance ±2.
+        """
+        _, infos = self.env.reset(seed=0)
+        sec_lo, sec_hi = infos["secondo"]["agent_key_range"]
+        ts_lo, ts_hi = infos["treble_soloist"]["agent_key_range"]
+        assert abs(sec_lo - 0) <= 2, f"secondo reach_lo {sec_lo} drift > 2 from design 0"
+        assert abs(sec_hi - 61) <= 2, f"secondo reach_hi {sec_hi} drift > 2 from design 61"
+        assert abs(ts_lo - 51) <= 2, f"treble_soloist reach_lo {ts_lo} drift > 2 from design 51"
+        assert abs(ts_hi - 87) <= 2, f"treble_soloist reach_hi {ts_hi} drift > 2 from design 87"
+        # Shared zone non-empty (must overlap ≥ 8 keys per design doc ~12).
+        sz_lo = max(sec_lo, ts_lo)
+        sz_hi = min(sec_hi, ts_hi)
+        sz_width = sz_hi - sz_lo + 1
+        assert sz_width >= 8, f"3-hand shared zone width {sz_width} too narrow (expect ≥10)"
+
+    def test_per_agent_clamp_secondo_hands_share_joint_range_three_hand(self) -> None:
+        """Plan § 2.2 under 3-hand: secondo's lh and rh_c must share forearm_tx joint.range."""
+        from OmniPiano.multiagent.parallel_env import _find_task
+        from OmniPiano.multiagent._reach_probe import y_to_key_index
+        task = _find_task(self.env._env)
+        ranges_by_hand: Dict[str, tuple] = {}
+        for spec_name, hand in task.hands_by_name.items():
+            fj = next(j for j in hand.mjcf_model.find_all("joint")
+                      if "forearm_tx" in j.name)
+            attach_y = float(hand.root_body.pos[1])
+            lo_key = y_to_key_index(attach_y + float(fj.range[0]))
+            hi_key = y_to_key_index(attach_y + float(fj.range[1]))
+            ranges_by_hand[spec_name] = (lo_key, hi_key)
+        # secondo agent owns (lh, rh_c) — must share key range = territory [0, 58].
+        assert ranges_by_hand["lh"] == ranges_by_hand["rh_c"], (
+            f"per-agent clamp violated for 3-hand secondo: "
+            f"lh={ranges_by_hand['lh']} rh_c={ranges_by_hand['rh_c']}"
+        )
+        # treble_soloist agent owns only rh — its own clamp = territory [59, 87].
+        assert ranges_by_hand["rh"][0] >= 58, (
+            f"treble_soloist (rh) clamp lo {ranges_by_hand['rh'][0]} should be >= 58"
+        )
+
+
+# ===========================================================================
+# 5-hand Trio layout regression — pins 3-agent + multi-boundary edge case
+# ===========================================================================
+
+
+class TestFiveHandLayoutRegression:
+    """Pins agent decomposition for 5-hand Trio (Sub-phase 1C).
+
+    Validates the 3-agent + multi-boundary code path: center_soloist has
+    2 neighbors (left_secondo and right_primo) so its `boundary_hands`
+    Dict has 2 keys, not 1 — exercising the wrapper's data-driven
+    boundary iteration. Also validates two simultaneous per-agent clamps:
+    left_secondo and right_primo each have their own (lh, rh) duet
+    sharing a per-agent territory clamp.
+    """
+
+    def setup_method(self) -> None:
+        self.env = make_parallel(
+            "OmniPiano-WinterWind-FiveHand-MA-Trio-Territorial-v0", seed=0
+        )
+
+    def teardown_method(self) -> None:
+        self.env.close()
+
+    def test_possible_agents_spatial_order(self) -> None:
+        # Spatial L→R: left_secondo, center_soloist, right_primo
+        assert self.env.possible_agents == [
+            "left_secondo", "center_soloist", "right_primo"
+        ]
+        assert AGENT_ASSIGNMENTS["FiveHand"].agent_names == (
+            "left_secondo", "center_soloist", "right_primo"
+        )
+
+    def test_action_dims_three_agent_five_hand(self) -> None:
+        # left_secondo (sustain owner) = (lh_b, rh_b) + sustain → 45
+        assert self.env.action_space("left_secondo").shape == (45,)
+        # center_soloist = (rh_c) only → 22 (1-hand, no sustain)
+        assert self.env.action_space("center_soloist").shape == (22,)
+        # right_primo = (lh_t, rh_t) → 44 (no sustain — owned by left_secondo)
+        assert self.env.action_space("right_primo").shape == (44,)
+        for agent in ("left_secondo", "center_soloist", "right_primo"):
+            sp = self.env.action_space(agent)
+            assert float(sp.low.min()) == -1.0
+            assert float(sp.high.max()) == 1.0
+
+    def test_center_soloist_has_two_boundary_hands(self) -> None:
+        """The defining 1C edge case: center_soloist's boundary_hands
+        Dict has 2 keys (left + right neighbors), not 1."""
+        obs_space = self.env.observation_space("center_soloist")
+        boundary_keys = set(obs_space.spaces["boundary_hands"].spaces.keys())
+        # Left neighbor (left_secondo) contributes its rightmost hand `rh_b`.
+        # Right neighbor (right_primo) contributes its leftmost hand `lh_t`.
+        assert boundary_keys == {"rh_b", "lh_t"}, (
+            f"center_soloist boundary_hands should be {{rh_b, lh_t}}, got {boundary_keys}"
+        )
+        # Outer agents see only 1 neighbor (the center) → exactly 1 boundary hand.
+        left_boundary = set(
+            self.env.observation_space("left_secondo").spaces["boundary_hands"].spaces.keys()
+        )
+        right_boundary = set(
+            self.env.observation_space("right_primo").spaces["boundary_hands"].spaces.keys()
+        )
+        assert left_boundary == {"rh_c"}, f"left_secondo boundary = {left_boundary}"
+        assert right_boundary == {"rh_c"}, f"right_primo boundary = {right_boundary}"
+
+    def test_obs_space_structure_five_hand(self) -> None:
+        left_obs = self.env.observation_space("left_secondo")
+        center_obs = self.env.observation_space("center_soloist")
+        right_obs = self.env.observation_space("right_primo")
+        # own_hands per agent
+        assert set(left_obs.spaces["own_hands"].spaces.keys()) == {"lh_b", "rh_b"}
+        assert set(center_obs.spaces["own_hands"].spaces.keys()) == {"rh_c"}
+        assert set(right_obs.spaces["own_hands"].spaces.keys()) == {"lh_t", "rh_t"}
+
+    def test_reach_five_hand_matches_design_doc(self) -> None:
+        """5-hand reach + shared zones match design doc § 5.2 within ±2 keys.
+
+        Design doc:
+          left_secondo   (0, 38)  — lh_b LEFT to rh_b RIGHT
+          center_soloist (28, 55) — rh_c LEFT to rh_c RIGHT
+          right_primo    (50, 87) — lh_t LEFT to rh_t RIGHT
+        Shared zones (intersection of adjacent reaches):
+          left ↔ center: keys 28-38 (~11 keys, both pinkies at boundary)
+          center ↔ right: keys 50-55 (~6 keys, narrow due to pinky-only)
+        """
+        _, infos = self.env.reset(seed=0)
+        L_lo, L_hi = infos["left_secondo"]["agent_key_range"]
+        C_lo, C_hi = infos["center_soloist"]["agent_key_range"]
+        R_lo, R_hi = infos["right_primo"]["agent_key_range"]
+
+        assert abs(L_lo - 0) <= 2,  f"left_secondo reach_lo {L_lo} drift > 2"
+        assert abs(L_hi - 38) <= 2, f"left_secondo reach_hi {L_hi} drift > 2"
+        assert abs(C_lo - 28) <= 2, f"center_soloist reach_lo {C_lo} drift > 2"
+        assert abs(C_hi - 55) <= 2, f"center_soloist reach_hi {C_hi} drift > 2"
+        assert abs(R_lo - 50) <= 2, f"right_primo reach_lo {R_lo} drift > 2"
+        assert abs(R_hi - 87) <= 2, f"right_primo reach_hi {R_hi} drift > 2"
+
+        # Two inter-agent shared zones — both non-empty.
+        sz1_lo = max(L_lo, C_lo); sz1_hi = min(L_hi, C_hi)
+        sz2_lo = max(C_lo, R_lo); sz2_hi = min(C_hi, R_hi)
+        sz1_w = sz1_hi - sz1_lo + 1
+        sz2_w = sz2_hi - sz2_lo + 1
+        # Design: ~11 keys left↔center, ~6 keys center↔right; tolerance ±2.
+        assert 9 <= sz1_w <= 13, f"5-hand left↔center shared zone width {sz1_w} (expect ~11)"
+        assert 4 <= sz2_w <= 8,  f"5-hand center↔right shared zone width {sz2_w} (expect ~6)"
+
+    def test_per_agent_clamp_five_hand(self) -> None:
+        """Plan § 2.2: per-agent clamp under 5-hand — left_secondo and
+        right_primo each have 2 hands sharing one joint.range; center_soloist
+        has its own (single-hand) clamp."""
+        from OmniPiano.multiagent.parallel_env import _find_task
+        from OmniPiano.multiagent._reach_probe import y_to_key_index
+        task = _find_task(self.env._env)
+        ranges_by_hand: Dict[str, tuple] = {}
+        for spec_name, hand in task.hands_by_name.items():
+            fj = next(j for j in hand.mjcf_model.find_all("joint")
+                      if "forearm_tx" in j.name)
+            attach_y = float(hand.root_body.pos[1])
+            lo_key = y_to_key_index(attach_y + float(fj.range[0]))
+            hi_key = y_to_key_index(attach_y + float(fj.range[1]))
+            ranges_by_hand[spec_name] = (lo_key, hi_key)
+        # left_secondo (lh_b, rh_b) share clamp = territory [0, 35]
+        assert ranges_by_hand["lh_b"] == ranges_by_hand["rh_b"], (
+            f"per-agent clamp violated for 5-hand left_secondo: "
+            f"lh_b={ranges_by_hand['lh_b']} rh_b={ranges_by_hand['rh_b']}"
+        )
+        # right_primo (lh_t, rh_t) share clamp = territory [53, 87]
+        assert ranges_by_hand["lh_t"] == ranges_by_hand["rh_t"], (
+            f"per-agent clamp violated for 5-hand right_primo: "
+            f"lh_t={ranges_by_hand['lh_t']} rh_t={ranges_by_hand['rh_t']}"
+        )
+        # rh_c is its own agent (center_soloist), with territory [36, 52]
+        # — different from both neighbors.
+        assert ranges_by_hand["rh_c"] != ranges_by_hand["lh_b"]
+        assert ranges_by_hand["rh_c"] != ranges_by_hand["lh_t"]
+
+
+# ===========================================================================
 # Smoke — 100 random steps, no crashes, finite rewards
 # ===========================================================================
 
 
-@pytest.mark.parametrize("env_id", _FOUR_HAND_MA_ENVS)
+@pytest.mark.parametrize("env_id", _ALL_MA_ENVS)
 def test_smoke_100_random_steps(env_id: str) -> None:
     env = make_parallel(env_id, seed=0)
     try:
@@ -155,9 +399,9 @@ def test_smoke_100_random_steps(env_id: str) -> None:
 # ===========================================================================
 
 
-def test_all_four_hand_envs_registered() -> None:
+def test_all_ma_envs_registered() -> None:
     registered = set(list_parallel_envs())
-    for env_id in _FOUR_HAND_MA_ENVS:
+    for env_id in _ALL_MA_ENVS:
         assert env_id in registered, f"missing MA env: {env_id}"
 
 
