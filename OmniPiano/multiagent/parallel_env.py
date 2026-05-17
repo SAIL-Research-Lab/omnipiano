@@ -78,6 +78,7 @@ class OmniPianoParallelEnv(ParallelEnv):
         obs_visibility: str = "own_plus_boundary",
         reward_mode: str = "shared",
         flatten_obs: bool = False,
+        sustain_owner: Optional[str] = None,
     ) -> None:
         if obs_visibility not in _SUPPORTED_OBS_MODES:
             raise NotImplementedError(
@@ -97,6 +98,22 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._obs_visibility = obs_visibility
         self._reward_mode = reward_mode
         self._flatten_obs = flatten_obs
+
+        # Resolve sustain owner: caller override (e.g. for Bizet/Dvořák
+        # exception pieces or paper ablations) takes precedence over the
+        # morphology default (`is_sustain_owner=True` flag in
+        # AGENT_ASSIGNMENTS; see plan § 4 / § 6 + design doc § 4.3 for
+        # rationale on the default = bass-side agent).
+        if sustain_owner is None:
+            self._sustain_owner_name = assignment.sustain_owner
+        else:
+            if sustain_owner not in {a.name for a in assignment.agents}:
+                raise ValueError(
+                    f"sustain_owner={sustain_owner!r} is not a valid agent "
+                    f"for morphology {assignment.morphology!r}. "
+                    f"Valid: {sorted(a.name for a in assignment.agents)}"
+                )
+            self._sustain_owner_name = sustain_owner
 
         # Derived structures.
         self._territories = compute_agent_territory(
@@ -123,6 +140,14 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._has_oar = (
             "action" in self._dm_obs_spec and "reward" in self._dm_obs_spec
         )
+
+        # Locate the MidiEvaluationWrapper in the dm_env chain — used to
+        # extract episode-end musical F1/precision/recall metrics into
+        # infos["_global_"] (see plan § 8). Cached once at init; not
+        # re-discovered after env_builder rebuilds (the wrapper class is
+        # the same; the instance changes but we walk fresh each time we
+        # need it).
+        self._midi_eval_wrapper_cls = _import_midi_evaluation_wrapper_class()
 
         # Build action-layout map: hand_name → slice(start, end) in flat action.
         self._hand_action_slices = self._build_action_layout()
@@ -164,7 +189,7 @@ class OmniPianoParallelEnv(ParallelEnv):
         ts = self._env.reset()
         self.agents = list(self.possible_agents)
         obs = self._split_observation(ts.observation)
-        infos = {a: {} for a in self.agents}
+        infos = self._build_per_agent_infos()
         return obs, infos
 
     def step(
@@ -201,13 +226,41 @@ class OmniPianoParallelEnv(ParallelEnv):
         terminations = {a: terminated for a in self.agents}
         truncations = {a: truncated for a in self.agents}
 
-        infos = {a: {} for a in self.agents}
+        infos = self._build_per_agent_infos()
+        # On episode-end, attach env-level musical metrics under "_global_"
+        # (PettingZoo permits underscore-prefixed keys for env-level info;
+        # see plan § 8). MidiEvaluationWrapper computes these at last() and
+        # caches them in its deque; get_musical_metrics() raises ValueError
+        # if no episode has finished yet (shouldn't happen here because we
+        # gated on `last`, but guard defensively).
+        if last:
+            try:
+                midi_eval = _find_wrapper(self._env, self._midi_eval_wrapper_cls)
+                metrics = midi_eval.get_musical_metrics()
+                infos["_global_"] = {
+                    "episode_task/musical_f1": float(metrics["f1"]),
+                    "episode_task/musical_precision": float(metrics["precision"]),
+                    "episode_task/musical_recall": float(metrics["recall"]),
+                    "episode_task/sustain_f1": float(metrics["sustain_f1"]),
+                }
+            except (ValueError, RuntimeError):
+                # Metrics not yet available — leave _global_ unpopulated.
+                pass
 
         # Once all agents are done, clear self.agents (PettingZoo convention).
         if last:
             self.agents = []
 
         return obs, rewards, terminations, truncations, infos
+
+    def _build_per_agent_infos(self) -> Dict[str, dict]:
+        """Construct per-agent info dict. Currently includes only `agent_key_range`
+        (constant, used by user code to decode agent-local key indices back to
+        global piano key indices)."""
+        return {
+            a: {"agent_key_range": self._agent_reaches[a]}
+            for a in self.agents
+        }
 
     def close(self) -> None:
         if hasattr(self._env, "close"):
@@ -265,7 +318,7 @@ class OmniPianoParallelEnv(ParallelEnv):
                 size = sl.stop - sl.start
                 flat[sl] = agent_act[cursor : cursor + size]
                 cursor += size
-            if agent.is_sustain_owner:
+            if agent.name == self._sustain_owner_name:
                 # Sustain is the LAST element of the sustain_owner's action.
                 flat[self._sustain_idx] = agent_act[cursor]
                 cursor += 1
@@ -284,7 +337,7 @@ class OmniPianoParallelEnv(ParallelEnv):
                 self._hand_action_slices[h].stop - self._hand_action_slices[h].start
                 for h in agent.hand_names
             )
-            if agent.is_sustain_owner:
+            if agent.name == self._sustain_owner_name:
                 dim += 1
             spaces[agent.name] = gym.spaces.Box(
                 low=-1.0, high=1.0, shape=(dim,), dtype=np.float32
@@ -434,7 +487,7 @@ class OmniPianoParallelEnv(ParallelEnv):
                 for hand_name in agent.hand_names:
                     sl = self._hand_action_slices[hand_name]
                     slices.append(prev_action_flat[sl])
-                if agent.is_sustain_owner:
+                if agent.name == self._sustain_owner_name:
                     slices.append(prev_action_flat[self._sustain_idx : self._sustain_idx + 1])
                 agent_obs["prev_action"] = np.concatenate(slices).astype(np.float32)
                 # prev_reward is a global scalar.
@@ -469,3 +522,24 @@ def _find_task(env: dm_env.Environment):
             raise RuntimeError(
                 f"could not find composer.Task on env chain {type(env).__name__}"
             )
+
+
+def _find_wrapper(env: dm_env.Environment, wrapper_cls):
+    """Walk down dm_env wrappers to find an instance of `wrapper_cls`."""
+    cur = env
+    while True:
+        if isinstance(cur, wrapper_cls):
+            return cur
+        if hasattr(cur, "_environment"):
+            cur = cur._environment
+        else:
+            raise RuntimeError(
+                f"could not find {wrapper_cls.__name__} in dm_env chain "
+                f"starting from {type(env).__name__}"
+            )
+
+
+def _import_midi_evaluation_wrapper_class():
+    """Lazy import so that module-load order doesn't trip over robopianist."""
+    from OmniPiano.envs.robopianist.wrappers import MidiEvaluationWrapper
+    return MidiEvaluationWrapper

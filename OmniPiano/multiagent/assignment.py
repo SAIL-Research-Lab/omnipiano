@@ -242,21 +242,44 @@ def compute_agent_reach(
     assignment: MorphologyAssignment,
     hand_specs: Sequence,  # Sequence[HandSpec]
     *,
-    substeps: int = 500,
+    n_settle_steps: int = 10,
+    control_timestep: float = 0.05,
+    gravity_compensation: bool = True,
+    disable_hand_collisions: bool = False,
 ) -> Dict[str, Tuple[int, int]]:
     """Return {agent_name: (reach_lo_key, reach_hi_key)} via simulator probe.
 
-    For each hand of each agent, drive `forearm_tx` to its clamp extremes
-    (raw ctrl ±5 for the dm_control sliding joint), let physics settle for
-    `substeps`, then read the 5 fingertip world-y coordinates and convert
-    to key indices via `key_index_to_y`'s inverse.
+    For each agent, pin the relevant hand's `forearm_tx` joint qpos to its
+    clamp extreme (bypassing PD dynamics), let fingers settle around the
+    pinned wrist for `n_settle_steps` env.step calls, then read the 5
+    fingertip world-y coordinates and convert to key indices via
+    `key_index_to_y`'s inverse.
 
-    The agent's reach = union over its hands × {forearm extremes} of the
-    set of keys reachable by any fingertip.
+    Args:
+        n_settle_steps: number of env.step() calls between qpos pinning and
+            fingertip readout. Default 10 — empirically sufficient for finger
+            PD to converge to neutral pose. See `_reach_probe.py`.
+        control_timestep / gravity_compensation / disable_hand_collisions:
+            physics-affecting BenchmarkEnvConfig fields. Caller should pass
+            the same values as the runtime env so probe physics align with
+            training physics. Defaults match `BenchmarkEnvConfig` runtime
+            defaults (0.05 / True / False).
 
-    Result is cached at first call per (morphology, hand_specs identity).
+    The agent's reach is the contiguous (min, max) range of keys reachable
+    by any fingertip when the agent's outer hand is at its outer clamp
+    extreme (see `_reach_probe.probe_agent_reach` for the full algorithm).
+
+    Result is cached per (morphology, hand_specs identity, n_settle_steps,
+    control_timestep, gravity_compensation, disable_hand_collisions).
     """
     # Import here to avoid module-load circularity.
     from OmniPiano.multiagent._reach_probe import cached_probe_agent_reach
 
-    return cached_probe_agent_reach(assignment, hand_specs, substeps=substeps)
+    return cached_probe_agent_reach(
+        assignment,
+        hand_specs,
+        n_settle_steps=n_settle_steps,
+        control_timestep=control_timestep,
+        gravity_compensation=gravity_compensation,
+        disable_hand_collisions=disable_hand_collisions,
+    )

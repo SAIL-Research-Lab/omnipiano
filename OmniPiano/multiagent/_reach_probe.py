@@ -1,21 +1,48 @@
 """Per-agent reach probe (precise simulator-based, cached).
 
-Drive each hand's ``forearm_tx`` to its clamp extremes (raw ctrl ±5), let
-physics settle, read fingertip world-y positions, convert to key indices.
-Per-agent reach = union of keys reachable by any fingertip of any of the
-agent's hands across both forearm extremes.
+Algorithm:
+    1. Build a minimal dm_env using the SAME task kwargs as runtime
+       (control_timestep, gravity_compensation, ...) so probe physics
+       match what the agent will actually train on.
+    2. For each agent, probe only the **physically realizable** extreme
+       configurations (skipping infeasible ones under the non-crossing
+       constraint — forearms at the same height can't swap order):
 
-Method mirrors the ad-hoc probe used during shared-zone measurement
-(see ``multi_agent_design.md`` § 5.2 / ``static_partition_design.md`` § 3.1):
-the same procedure validated the 4-hand / 3-hand / 5-hand empirical numbers
-in those design docs. This file codifies the throw-away script into a
-reusable cached tool.
+         * multi-hand agent: pin leftmost-hand's ``forearm_tx`` qpos to
+           the LEFT clamp extreme → fingertip MIN gives agent's leftmost
+           reach. Pin rightmost-hand's qpos to the RIGHT clamp extreme
+           → fingertip MAX gives agent's rightmost reach.
+         * single-hand agent: pin that hand at both extremes; MIN of
+           LEFT-extreme fingertips + MAX of RIGHT-extreme fingertips.
+
+       Inner-hand inner-extreme configurations (e.g. lh_b pushed to
+       the agent's RIGHT under MA Territorial) are physically infeasible
+       and intentionally NOT probed. See ``ma_territorial_impl_plan.md``
+       § 10(c) for the LH/RH thumb-asymmetry argument showing these
+       inner extremes never extend reach beyond outer extremes anyway.
+    3. Use qpos pinning (bypassing actuator PD dynamics) so the joint
+       reaches the clamp extreme deterministically — no convergence
+       time to tune. Fingers receive ctrl=0 and settle to neutral pose
+       via env.step()'s internal physics substeps.
+    4. Read fingertip world-y from MJCF ``fingertip_sites``; convert to
+       nearest key index via the keyboard's MJCF placement formula.
+    5. Report ``(reach_lo, reach_hi)`` per agent — a contiguous closed
+       interval (continuous wrist sliding fills the interior).
+
+Mirrors the ad-hoc probe used during shared-zone measurement
+(``multi_agent_design.md`` § 5.2, ``static_partition_design.md`` § 3.1).
+This file codifies the throw-away script into a reusable cached tool.
+
+Caveat — conservative envelope: fingers are at neutral (ctrl=0) pose.
+Agent trained with active finger extension can press ~2-3 keys beyond
+this envelope per side per hand (mostly thumb extension). Reach reported
+here is therefore a lower bound on what the trained agent can achieve.
 """
 
 from __future__ import annotations
 
 import functools
-from typing import Dict, Sequence, Tuple
+from typing import Any, Dict, Sequence, Tuple
 
 import numpy as np
 from dm_control import composer
@@ -37,9 +64,16 @@ except ImportError:  # pragma: no cover — note_seq is a hard dep of robopianis
 # the typical [−0.5, 0.5] forearm range so the joint pegs against its limit.
 _FOREARM_PUSH_CTRL = 5.0
 
-# Number of physics substeps to let the forearm settle at the clamp limit
-# (matches the 500-step measurement used in design-doc § 5.2).
-_DEFAULT_SUBSTEPS = 500
+# Number of env.step() calls between qpos pinning and reading fingertips —
+# lets the fingers settle around the pinned forearm. Under the default
+# runtime-aligned probe env (control_timestep=0.05, physics_timestep=0.005,
+# i.e. 10:1 ratio), 10 env.steps ≈ 100 physics substeps — empirically
+# sufficient for finger PD to converge to the ctrl=0 neutral pose. If a
+# caller overrides probe `control_timestep` (e.g. to match a non-default
+# `BenchmarkEnvConfig`), the per-env.step physics substep count scales
+# accordingly; settling time in sim seconds is what matters, not raw step
+# count, so this default usually remains adequate.
+_DEFAULT_N_SETTLE_STEPS = 10
 
 
 # ===========================================================================
@@ -72,9 +106,35 @@ def y_to_key_index(y: float) -> int:
 def _build_probe_env(
     hand_specs: Sequence[HandSpec],
     *,
-    control_timestep: float = 0.01,
+    control_timestep: float = 0.05,
+    gravity_compensation: bool = True,
+    disable_hand_collisions: bool = False,
 ) -> composer.Environment:
-    """Construct a minimal dm_env for reach probing — no MIDI scoring needed."""
+    """Construct a minimal dm_env for reach probing.
+
+    Probe physics must match the runtime env's physics so reach numbers
+    reflect what the agent will actually train on. The three kwargs here
+    are the BenchmarkEnvConfig fields that affect physics-step behavior:
+
+      * ``control_timestep``: sets env.step's substep count + finger PD
+        convergence window per step. Default 0.05 matches
+        ``BenchmarkEnvConfig.control_timestep``.
+      * ``gravity_compensation``: if True, gravity on hand bodies is
+        offset by per-joint torques. Affects finger settle pose under
+        ctrl=0 (without compensation, fingers droop). Default True
+        matches ``BenchmarkEnvConfig.gravity_compensation``.
+      * ``disable_hand_collisions``: if True, inter-hand body collisions
+        are disabled (probe rarely hits this, but match runtime).
+        Default False matches runtime.
+
+    Defaults are chosen to align with `BenchmarkEnvConfig` runtime defaults
+    so probe-via-default-args is automatically runtime-aligned. Callers
+    that override `BenchmarkEnvConfig` should pass the same overrides
+    here (see `make_parallel` in `registration.py`).
+
+    Probe does not need MIDI scoring / lookahead / reward / colorization,
+    so those task kwargs are hardcoded to the cheapest values.
+    """
     if music_pb2 is None:
         raise ImportError("note_seq.music_pb2 is required for probe.")
     seq = music_pb2.NoteSequence()
@@ -94,10 +154,12 @@ def _build_probe_env(
     midi = midi_file.MidiFile(seq=seq)
     task = piano_with_shadow_hands.PianoWithShadowHands(
         midi=midi,
-        n_steps_lookahead=0,
-        control_timestep=control_timestep,
-        change_color_on_activation=False,
-        disable_fingering_reward=True,
+        n_steps_lookahead=0,                            # probe doesn't read goal
+        control_timestep=control_timestep,              # runtime-aligned
+        gravity_compensation=gravity_compensation,      # runtime-aligned
+        disable_hand_collisions=disable_hand_collisions,  # runtime-aligned
+        change_color_on_activation=False,               # probe doesn't render
+        disable_fingering_reward=True,                  # probe doesn't compute reward
         hand_specs=list(hand_specs),
     )
     return composer.Environment(task, strip_singleton_obs_buffer_dim=True)
@@ -107,16 +169,23 @@ def _settle_with_forearm_ctrl(
     env: composer.Environment,
     target_hand_name: str,
     forearm_ctrl: float,
-    substeps: int,
+    n_settle_steps: int,
 ) -> np.ndarray:
     """Pin `target_hand_name`'s `forearm_tx` joint at clamp limit, settle, read fingertips.
 
     Bypasses the actuator's PD dynamics — directly writes `qpos` to the clamp
-    extreme on each substep so the joint stays pinned regardless of PD
-    settling time. (The actuator path takes ~100+ control steps to converge
-    from ctrl=±5 to qpos=±0.14 due to position-control gains, which would
-    artificially shrink the measured fingertip envelope.) Other joints
-    receive ctrl=0 so fingers settle to their neutral pose.
+    extreme on each step so the joint stays pinned regardless of PD settling
+    time. Other joints receive ctrl=0 so fingers settle to their neutral pose
+    via env.step()'s internal physics substeps.
+
+    Args:
+        n_settle_steps: number of env.step() calls between qpos pinning and
+            reading fingertips. Under the default runtime-aligned probe env
+            (control_timestep=0.05, physics_timestep=0.005, i.e. 10:1
+            ratio), 10 env.steps ≈ 100 physics substeps — empirically
+            enough for finger PD to converge to neutral pose. Increase only
+            if probe env timesteps are overridden to small values or
+            observed fingers don't converge.
 
     Returns: fingertip world-y, shape (5,).
     """
@@ -150,10 +219,8 @@ def _settle_with_forearm_ctrl(
     # Step several control timesteps to let the fingers / wrist joints
     # settle around the pinned forearm position. We re-pin qpos after each
     # env.step (which advances physics and would otherwise move the joint
-    # off-target if the actuator's ctrl pulls it back). substeps controls
-    # how long we let fingers settle.
-    physics_per_control = max(2, substeps // 50)
-    for _ in range(physics_per_control):
+    # off-target if the actuator's ctrl pulls it back).
+    for _ in range(n_settle_steps):
         # Pin forearm_tx to clamp limit by direct qpos write.
         physics.bind(forearm_joint).qpos = target_qpos
         # Also zero its velocity so it doesn't drift back.
@@ -170,77 +237,144 @@ def _settle_with_forearm_ctrl(
     return fingertip_xpos[:, 1]  # Y-axis only
 
 
-def _probe_hand_reach_keys(
-    env: composer.Environment,
-    hand_name: str,
-    *,
-    substeps: int = _DEFAULT_SUBSTEPS,
-) -> set:
-    """Return the set of key indices any of `hand_name`'s 5 fingertips can reach.
-
-    Probes both forearm_tx extremes; takes the union of reached keys.
-    """
-    reached: set = set()
-    for ctrl in (-_FOREARM_PUSH_CTRL, +_FOREARM_PUSH_CTRL):
-        env.reset()
-        ys = _settle_with_forearm_ctrl(env, hand_name, ctrl, substeps)
-        for y in ys:
-            reached.add(y_to_key_index(float(y)))
-    return reached
-
-
 def probe_agent_reach(
     assignment,
     hand_specs: Sequence[HandSpec],
     *,
-    substeps: int = _DEFAULT_SUBSTEPS,
+    n_settle_steps: int = _DEFAULT_N_SETTLE_STEPS,
+    control_timestep: float = 0.05,
+    gravity_compensation: bool = True,
+    disable_hand_collisions: bool = False,
 ) -> Dict[str, Tuple[int, int]]:
     """Return {agent_name: (reach_lo, reach_hi)} via simulator probe.
 
-    For each agent, probes each of its hands (both forearm_tx extremes,
-    finger pose neutral) and takes the union of fingertip-reachable keys.
-    The reach is reported as the inclusive (min, max) key index of that union.
+    Only probes the **physically realizable** extreme configurations:
+      * single-hand agent: both forearm extremes of that hand
+      * multi-hand agent: leftmost-hand at its LEFT extreme (gives agent's
+        leftmost fingertip reach) + rightmost-hand at its RIGHT extreme
+        (gives agent's rightmost fingertip reach)
+
+    We do NOT probe "inner extremes" like lh_b at the agent's RIGHT extreme
+    or rh_b at the agent's LEFT extreme — those configurations are physically
+    infeasible under the non-crossing constraint (forearms at the same height
+    can't swap order). Per `ma_territorial_impl_plan.md` § 10(c) discussion,
+    the agent's reach BOUNDS are always determined by outer-hand-outer-extreme
+    because LH/RH thumb-direction asymmetry makes inner-extreme fingertip
+    overshoot strictly dominated by outer-extreme overshoot.
+
+    Caller is expected to pass `hand_specs` whose `key_range` reflects the
+    actual physical clamp at runtime — typically the per-agent territory
+    (= union of bucket key_ranges) for the MA Territorial path. See
+    `OmniPiano.multiagent.registration.make_parallel` for the override site.
     """
-    env = _build_probe_env(hand_specs)
+    env = _build_probe_env(
+        hand_specs,
+        control_timestep=control_timestep,
+        gravity_compensation=gravity_compensation,
+        disable_hand_collisions=disable_hand_collisions,
+    )
     try:
         reaches: Dict[str, Tuple[int, int]] = {}
         for agent in assignment.agents:
-            agent_reached: set = set()
-            for hand_name in agent.hand_names:
-                agent_reached |= _probe_hand_reach_keys(
-                    env, hand_name, substeps=substeps
+            if len(agent.hand_names) == 1:
+                # Single-hand agent (e.g. 3-hand treble_soloist, 5-hand
+                # center_soloist). Both extremes of that hand are needed —
+                # there's no "inner" / "outer" distinction with one hand.
+                h = agent.hand_names[0]
+                ys_left = _drive_and_read_fingertips(
+                    env, h, forearm_extreme="LEFT", n_settle_steps=n_settle_steps
                 )
-            if not agent_reached:
+                ys_right = _drive_and_read_fingertips(
+                    env, h, forearm_extreme="RIGHT", n_settle_steps=n_settle_steps
+                )
+                reach_lo = min(y_to_key_index(float(y)) for y in ys_left)
+                reach_hi = max(y_to_key_index(float(y)) for y in ys_right)
+            else:
+                # Multi-hand agent: leftmost-hand LEFT + rightmost-hand RIGHT.
+                # `agent.hand_names` is in spatial L→R order by convention
+                # (see AGENT_ASSIGNMENTS).
+                leftmost = agent.hand_names[0]
+                rightmost = agent.hand_names[-1]
+                ys_left = _drive_and_read_fingertips(
+                    env, leftmost, forearm_extreme="LEFT", n_settle_steps=n_settle_steps
+                )
+                ys_right = _drive_and_read_fingertips(
+                    env, rightmost, forearm_extreme="RIGHT", n_settle_steps=n_settle_steps
+                )
+                reach_lo = min(y_to_key_index(float(y)) for y in ys_left)
+                reach_hi = max(y_to_key_index(float(y)) for y in ys_right)
+            if reach_hi < reach_lo:
                 raise RuntimeError(
-                    f"agent {agent.name!r} reached zero keys — probe failed"
+                    f"agent {agent.name!r}: invalid reach "
+                    f"({reach_lo}, {reach_hi}) — probe failed"
                 )
-            reaches[agent.name] = (min(agent_reached), max(agent_reached))
+            reaches[agent.name] = (reach_lo, reach_hi)
         return reaches
     finally:
         env.close()
 
 
+def _drive_and_read_fingertips(
+    env: composer.Environment,
+    hand_name: str,
+    *,
+    forearm_extreme: str,  # "LEFT" or "RIGHT"
+    n_settle_steps: int,
+) -> np.ndarray:
+    """Reset env, pin hand's forearm_tx to its joint LEFT/RIGHT extreme, return fingertip Ys."""
+    env.reset()
+    sign = -_FOREARM_PUSH_CTRL if forearm_extreme == "LEFT" else +_FOREARM_PUSH_CTRL
+    return _settle_with_forearm_ctrl(env, hand_name, sign, n_settle_steps)
+
+
+
 # ===========================================================================
 # Caching
 # ===========================================================================
-# We cache by morphology name + a hash of the hand_specs. Hand specs are
-# frozen dataclasses, so they're hashable through their tuple of fields.
+# Cache key tuple structure (all parameters that affect probe results):
+#   (morphology: str,
+#    hand_specs: Tuple[HandSpec, ...],
+#    n_settle_steps: int,
+#    control_timestep: float,
+#    gravity_compensation: bool,
+#    disable_hand_collisions: bool)
+# HandSpec is a frozen dataclass — directly hashable. Including all
+# probe-affecting fields prevents stale-result reuse when callers vary
+# settle time or physics config for ablations.
 
-_REACH_CACHE: Dict[Tuple[str, Tuple], Dict[str, Tuple[int, int]]] = {}
+_REACH_CACHE: Dict[Tuple[Any, ...], Dict[str, Tuple[int, int]]] = {}
 
 
 def cached_probe_agent_reach(
     assignment,
     hand_specs: Sequence[HandSpec],
     *,
-    substeps: int = _DEFAULT_SUBSTEPS,
+    n_settle_steps: int = _DEFAULT_N_SETTLE_STEPS,
+    control_timestep: float = 0.05,
+    gravity_compensation: bool = True,
+    disable_hand_collisions: bool = False,
 ) -> Dict[str, Tuple[int, int]]:
     """Cached front-end to :func:`probe_agent_reach`.
 
-    Cache key = (morphology, tuple(hand_specs)). HandSpec is a frozen
-    dataclass — directly hashable.
+    Cache key includes all parameters that affect probe results (morphology
+    + hand_specs + n_settle_steps + physics-config kwargs). Changes to any
+    of these invalidate the cache entry so ablations don't get stale data.
     """
-    key = (assignment.morphology, tuple(hand_specs))
+    key = (
+        assignment.morphology,
+        tuple(hand_specs),
+        n_settle_steps,
+        control_timestep,
+        gravity_compensation,
+        disable_hand_collisions,
+    )
     if key not in _REACH_CACHE:
-        _REACH_CACHE[key] = probe_agent_reach(assignment, hand_specs, substeps=substeps)
+        _REACH_CACHE[key] = probe_agent_reach(
+            assignment,
+            hand_specs,
+            n_settle_steps=n_settle_steps,
+            control_timestep=control_timestep,
+            gravity_compensation=gravity_compensation,
+            disable_hand_collisions=disable_hand_collisions,
+        )
     return _REACH_CACHE[key]

@@ -44,8 +44,9 @@ _MA_RUNTIME_KWARGS = frozenset({
     "obs_visibility",
     "reward_mode",
     "flatten_obs",
-    "sustain_owner",  # currently unused — sustain_owner is fixed by AGENT_ASSIGNMENTS;
-                      # accepted as a placeholder for Phase 2 override capability.
+    "sustain_owner",  # override the morphology default (e.g. for exception
+                      # pieces like Bizet Jeux d'enfants where Primo controls
+                      # the pedal); see plan § 4 / § 6, design doc § 4.3.
 })
 
 
@@ -126,9 +127,13 @@ def make_parallel(
     obs_visibility = kwargs.pop("obs_visibility", "own_plus_boundary")
     reward_mode = kwargs.pop("reward_mode", "shared")
     flatten_obs = kwargs.pop("flatten_obs", False)
-    _ = kwargs.pop("sustain_owner", None)  # placeholder (Phase 2 override)
+    sustain_owner = kwargs.pop("sustain_owner", None)
 
     seed = kwargs.pop("seed", None)
+    record_dir = kwargs.pop("record_dir", None)
+    record_every = kwargs.pop("record_every", 1)
+    record_resolution = kwargs.pop("record_resolution", (480, 640))
+    camera_id = kwargs.pop("camera_id", "piano/back")
 
     # ---- Build the env_builder closure (mirrors SA's _build_dm_env_chain) ----
     # We reuse SA registration's machinery by reaching in for the TaskSpec
@@ -155,6 +160,29 @@ def make_parallel(
             )
         hand_key_ranges[spec.name] = spec.key_range
 
+    # ---------------------------------------------------------------------
+    # Override each hand's key_range with its AGENT TERRITORY for MA Territorial
+    # per-agent clamp semantics. Without this override the MA env would inherit
+    # SA per-hand bucket clamps (e.g. lh_b clamped to [0,21], rh_b to [22,43]),
+    # leaving the internal SA-bucket hard wall between hands of the same agent
+    # in place — that contradicts the Territorial design (per-agent clamp =
+    # union of bucket key_ranges; flexible internal split within agent).
+    # See ma_territorial_impl_plan.md § 2.2.
+    # ---------------------------------------------------------------------
+    import dataclasses
+    from OmniPiano.multiagent.assignment import compute_agent_territory
+    territories = compute_agent_territory(assignment, hand_key_ranges)
+    # territories[agent_name] = (lo, hi) — agent's keyboard territory.
+    ma_clamped_specs = tuple(
+        dataclasses.replace(
+            spec,
+            key_range=territories[assignment.agent_of(spec.name)],
+        )
+        for spec in hand_specs
+    )
+    # Sanity: each agent's hands now share the SAME key_range (= territory).
+    # This is the Territorial-per-agent-clamp invariant.
+
     base_env_name = sa_spec.base_env_name
     robust_config = sa_spec.robust_config or RobustConfig()
     safety_config = sa_spec.safety_config or SafetyConfig()
@@ -162,17 +190,33 @@ def make_parallel(
     env_config = sa_spec.env_config or BenchmarkEnvConfig()
 
     # The env_builder closure — same as SA but stops before ConcatObservationWrapper.
+    # CRITICAL: use ma_clamped_specs (per-agent clamps), not sa_spec.hand_specs
+    # (per-hand SA bucket clamps).
     env_builder = _make_dm_env_chain_builder(
         base_env_name=base_env_name,
         env_config=env_config,
         task_config=task_config,
         robust_config=robust_config,
-        hand_specs=hand_specs,
+        hand_specs=ma_clamped_specs,
+        record_dir=record_dir,
+        record_every=record_every,
+        record_resolution=record_resolution,
+        camera_id=camera_id,
     )
 
-    # Compute precise agent reach (cached).
+    # Compute precise agent reach (cached). Use ma_clamped_specs so the
+    # probe env has the same per-agent forearm_tx joint.range as runtime.
+    # Pass the physics-affecting BenchmarkEnvConfig fields through so probe
+    # env physics match runtime env physics (otherwise probe could give
+    # subtly different reach numbers under gravity_compensation drift).
     from OmniPiano.multiagent.assignment import compute_agent_reach
-    agent_reaches = compute_agent_reach(assignment, hand_specs)
+    agent_reaches = compute_agent_reach(
+        assignment,
+        ma_clamped_specs,
+        control_timestep=env_config.control_timestep,
+        gravity_compensation=env_config.gravity_compensation,
+        disable_hand_collisions=env_config.disable_hand_collisions,
+    )
 
     return OmniPianoParallelEnv(
         env_builder=env_builder,
@@ -183,6 +227,7 @@ def make_parallel(
         obs_visibility=obs_visibility,
         reward_mode=reward_mode,
         flatten_obs=flatten_obs,
+        sustain_owner=sustain_owner,
     )
 
 
@@ -198,6 +243,10 @@ def _make_dm_env_chain_builder(
     task_config: TaskVariantConfig,
     robust_config: RobustConfig,
     hand_specs,
+    record_dir: Optional[str] = None,
+    record_every: int = 1,
+    record_resolution: Tuple[int, int] = (480, 640),
+    camera_id: str = "piano/back",
 ) -> Callable[[Optional[int]], dm_env.Environment]:
     """Return a closure that builds the MA-side dm_env chain (Dict obs preserved).
 
@@ -252,6 +301,18 @@ def _make_dm_env_chain_builder(
             task_kwargs=task_kwargs,
         )
         env = EpisodeStatisticsWrapper(env, deque_size=1)
+
+        if record_dir is not None:
+            from robopianist.wrappers.sound import PianoSoundVideoWrapper
+            env = PianoSoundVideoWrapper(
+                env,
+                record_dir=record_dir,
+                record_every=record_every,
+                camera_id=camera_id,
+                height=record_resolution[0],
+                width=record_resolution[1],
+            )
+
         env = MidiEvaluationWrapper(env, deque_size=1)
 
         if robust_config.obs_noise_std > 0:

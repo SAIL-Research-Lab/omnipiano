@@ -205,7 +205,23 @@ def make(
         ``episode_safety/*``.
     """
     # ------------------------------------------------------------------
-    # 0. Registry lookup — resolve configs from TaskSpec.
+    # 0a. Multi-agent env_id redirect — give a clear error if the user
+    #     accidentally passed a `-MA-` env id to the single-agent factory.
+    #     Per ma_territorial_impl_plan.md § 1: SA and MA are two distinct
+    #     entry points (gymnasium.Env vs PettingZoo ParallelEnv have
+    #     incompatible step signatures); silent failure is unhelpful, so
+    #     fail fast with a specific redirect to OmniPiano.make_parallel().
+    # ------------------------------------------------------------------
+    if "-MA-" in env_name:
+        raise ValueError(
+            f"env_id {env_name!r} is a multi-agent env (contains '-MA-'). "
+            f"OmniPiano.make() returns a gymnasium.Env (single-agent); "
+            f"use OmniPiano.make_parallel({env_name!r}, ...) instead, "
+            f"which returns a PettingZoo ParallelEnv."
+        )
+
+    # ------------------------------------------------------------------
+    # 0b. Registry lookup — resolve configs from TaskSpec.
     #    All 4 configs are registry-only (single source of truth).
     #    Caller-side runtime bypass for env-construction fields like
     #    ``record_dir`` / ``camera_id`` flows through ``**kwargs`` and
