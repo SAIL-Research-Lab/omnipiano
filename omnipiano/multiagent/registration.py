@@ -1,6 +1,6 @@
 """MA env registry + factory.
 
-Mirrors ``OmniPiano/envs/registration.py`` (SA side) but builds a PettingZoo
+Mirrors ``omnipiano/envs/registration.py`` (SA side) but builds a PettingZoo
 ``ParallelEnv`` instead of a Gymnasium ``Env``. Reuses the SA dm_env chain
 1:1 except for ``ConcatObservationWrapper`` (the only wrapper that's
 fundamentally incompatible with Dict obs).
@@ -15,17 +15,17 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import dm_env
 import numpy as np
 
-from OmniPiano.configs import (
+from omnipiano.configs import (
     BenchmarkEnvConfig,
     RobustConfig,
     SafetyConfig,
     TaskVariantConfig,
 )
-from OmniPiano.multiagent.assignment import (
+from omnipiano.multiagent.assignment import (
     AGENT_ASSIGNMENTS,
     MorphologyAssignment,
 )
-from OmniPiano.multiagent.parallel_env import OmniPianoParallelEnv
+from omnipiano.multiagent.parallel_env import OmniPianoParallelEnv
 
 
 # Mirror SA `make()`'s runtime-bypass whitelist (these don't affect training trajectory).
@@ -97,11 +97,11 @@ def make_parallel(
     """
     if env_id not in _ma_registry:
         # Helpful redirect if the user passed an SA env id.
-        from OmniPiano.envs import registration as sa_reg
+        from omnipiano.envs import registration as sa_reg
         if env_id in getattr(sa_reg, "_registry", {}):
             raise ValueError(
                 f"env_id {env_id!r} is a single-agent env. Use "
-                f"OmniPiano.make({env_id!r}) instead, or pick a multi-agent "
+                f"omnipiano.make({env_id!r}) instead, or pick a multi-agent "
                 f"env id (containing '-MA-'). "
                 f"Available MA envs: {sorted(_ma_registry.keys())}"
             )
@@ -138,7 +138,7 @@ def make_parallel(
     # ---- Build the env_builder closure (mirrors SA's _build_dm_env_chain) ----
     # We reuse SA registration's machinery by reaching in for the TaskSpec
     # (registered SA env spec → base_env_name + configs + hand_specs).
-    from OmniPiano.envs.registration import _registry as _sa_registry
+    from omnipiano.envs.registration import _registry as _sa_registry
     if ma_spec.sa_env_id not in _sa_registry:
         raise ValueError(
             f"MA env {env_id!r} references unknown SA env id {ma_spec.sa_env_id!r}."
@@ -170,7 +170,7 @@ def make_parallel(
     # See ma_territorial_impl_plan.md § 2.2.
     # ---------------------------------------------------------------------
     import dataclasses
-    from OmniPiano.multiagent.assignment import compute_agent_territory
+    from omnipiano.multiagent.assignment import compute_agent_territory
     territories = compute_agent_territory(assignment, hand_key_ranges)
     # territories[agent_name] = (lo, hi) — agent's keyboard territory.
     ma_clamped_specs = tuple(
@@ -209,7 +209,7 @@ def make_parallel(
     # Pass the physics-affecting BenchmarkEnvConfig fields through so probe
     # env physics match runtime env physics (otherwise probe could give
     # subtly different reach numbers under gravity_compensation drift).
-    from OmniPiano.multiagent.assignment import compute_agent_reach
+    from omnipiano.multiagent.assignment import compute_agent_reach
     agent_reaches = compute_agent_reach(
         assignment,
         ma_clamped_specs,
@@ -264,15 +264,15 @@ def _make_dm_env_chain_builder(
         ObservationActionRewardWrapper,
         SinglePrecisionWrapper,
     )
-    from OmniPiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
-    from OmniPiano.envs.robopianist.wrappers import (
+    from omnipiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
+    from omnipiano.envs.robopianist.wrappers import (
         MidiEvaluationWrapper,
     )
-    from OmniPiano.tasks.omni_piano_task import OmniPianoTask
+    from omnipiano.tasks.omni_piano_task import OmniPianoTask
     from robopianist.suite import load_with_task as _suite_load_with_task  # noqa: F401
     # `robopianist.suite` here resolves to our vendored copy at
-    # OmniPiano/envs/robopianist/suite/ (priority via sys.path bootstrap in
-    # OmniPiano/__init__.py).
+    # omnipiano/envs/robopianist/suite/ (priority via sys.path bootstrap in
+    # omnipiano/__init__.py).
 
     # Snapshot env_config fields used by the chain.
     cfg = dataclasses.asdict(env_config)

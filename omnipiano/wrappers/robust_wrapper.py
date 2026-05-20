@@ -1,6 +1,6 @@
 """Action-noise injection at the gym layer.
 
-Background — paper-chain refactor (see OmniPiano/envs/registration.py)
+Background — paper-chain refactor (see omnipiano/envs/registration.py)
 ---------------------------------------------------------------------
 
 In the paper chain, observations are flattened into a single Box by
@@ -8,7 +8,7 @@ In the paper chain, observations are flattened into a single Box by
 gym layer. A gym-level wrapper that wants per-key obs noise can no
 longer iterate ``obs.keys()`` (the flat ndarray has no keys). So
 per-key obs noise was moved to the dm_env layer
-(``OmniPiano/envs/dm_env_obs_noise.DmEnvObsNoiseWrapper``), where the
+(``omnipiano/envs/dm_env_obs_noise.DmEnvObsNoiseWrapper``), where the
 observation is still a Dict.
 
 What this wrapper does
@@ -28,8 +28,8 @@ and the info key is reported as 0.0.
 import gymnasium as gym
 import numpy as np
 
-from OmniPiano.configs import RobustConfig
-from OmniPiano.utils.info_keys import InfoKeys
+from omnipiano.configs import RobustConfig
+from omnipiano.utils.info_keys import InfoKeys
 
 
 class RobustWrapper(gym.Wrapper):
@@ -89,8 +89,8 @@ class RobustWrapper(gym.Wrapper):
         chain has 3-4 wrappers, dm_env-side has ~7). Negligible vs
         the policy forward pass.
         """
-        from OmniPiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
-        from OmniPiano.utils.env_unwrap import (
+        from omnipiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
+        from omnipiano.utils.env_unwrap import (
             find_dm_env_wrapper,
             get_dm_env_from_gym,
         )
@@ -101,10 +101,10 @@ class RobustWrapper(gym.Wrapper):
             raise RuntimeError(
                 "RobustConfig.obs_noise_std > 0 but DmEnvObsNoiseWrapper "
                 "is not present in the dm_env chain. Verify "
-                "OmniPiano.envs.registration._build_dm_env_chain inserts "
+                "omnipiano.envs.registration._build_dm_env_chain inserts "
                 "DmEnvObsNoiseWrapper BEFORE ConcatObservationWrapper "
                 "whenever robust_config.obs_noise_std > 0. If you build "
-                "the env outside of OmniPiano.make(), insert it yourself "
+                "the env outside of omnipiano.make(), insert it yourself "
                 "or set obs_noise_std=0."
             )
         return float(wrapper.last_step_noise_l2)

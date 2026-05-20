@@ -1,5 +1,5 @@
 from robopianist.suite.tasks import piano_with_shadow_hands
-from OmniPiano.configs import TaskVariantConfig
+from omnipiano.configs import TaskVariantConfig
 
 
 class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):

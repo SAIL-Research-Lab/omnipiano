@@ -7,7 +7,7 @@ typed config objects instead of many scattered keyword arguments.
 
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
-from OmniPiano.safety.constraints import BaseConstraint
+from omnipiano.safety.constraints import BaseConstraint
 
 
 @dataclass
@@ -67,7 +67,7 @@ class BenchmarkEnvConfig:
       * ``≠ OmniPiano-fixed``  OmniPiano permanently differs from paper
                                (with reason).
 
-    Field consumption split (handled by ``OmniPiano.envs.registration.make``):
+    Field consumption split (handled by ``omnipiano.envs.registration.make``):
       * **Task kwargs** (forwarded to ``OmniPianoTask`` → ``PianoTask``):
         ``n_steps_lookahead``, ``trim_silence``, ``gravity_compensation``,
         ``reduced_action_space``, ``control_timestep``,

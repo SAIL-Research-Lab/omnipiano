@@ -14,7 +14,7 @@ the env for end-to-end paper baselines.
 
 This script is a standalone demo, NOT a pytest test (RLlib initialization
 is expensive — ~15-30s — and creates ray cluster state we don't want in the
-regular test run). Invoke directly: ``python -m OmniPiano.multiagent._rllib_smoke``.
+regular test run). Invoke directly: ``python -m omnipiano.multiagent._rllib_smoke``.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import sys
 
 import gymnasium as gym
 
-from OmniPiano.multiagent import make_parallel
+from omnipiano.multiagent import make_parallel
 
 
 SMOKE_ENV_ID = "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0"

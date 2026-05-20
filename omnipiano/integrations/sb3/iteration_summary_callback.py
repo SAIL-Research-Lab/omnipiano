@@ -15,7 +15,7 @@ from typing import Dict, List, Optional
 import warnings
 
 from stable_baselines3.common.callbacks import BaseCallback
-from OmniPiano.utils.info_keys import EpisodeInfoKeys
+from omnipiano.utils.info_keys import EpisodeInfoKeys
 
 def _parse_finite_float(value: str) -> Optional[float]:
     """Parse a numeric metric field and drop invalid/non-finite values.

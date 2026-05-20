@@ -3,16 +3,16 @@
 from setuptools import setup, find_packages
 import os
 
-omni_pkgs = find_packages(include=["OmniPiano", "OmniPiano.*"])
+omni_pkgs = find_packages(include=["omnipiano", "omnipiano.*"])
 
 rp_pkgs = find_packages(
-    where="OmniPiano/envs",
+    where="omnipiano/envs",
     include=["robopianist", "robopianist.*"],
 )
 
 pkg_dir = {}
 for pkg in rp_pkgs:
-    pkg_dir[pkg] = os.path.join("OmniPiano", "envs", *pkg.split("."))
+    pkg_dir[pkg] = os.path.join("omnipiano", "envs", *pkg.split("."))
 
 setup(
     name="omnipiano",

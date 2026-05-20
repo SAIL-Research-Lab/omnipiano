@@ -2,7 +2,7 @@
 
 Replaces ``shimmy.DmControlCompatibilityV0`` with a focused ~30-line
 adapter targeted at the paper-chain layout used in
-``OmniPiano.envs.registration.make()``.
+``omnipiano.envs.registration.make()``.
 
 Why a custom adapter rather than shimmy
 ---------------------------------------
@@ -39,7 +39,7 @@ Compatibility with OmniPiano helpers
 ------------------------------------
 
 The adapter exposes ``self._env`` as the live dm_env chain top, which
-is the contract that ``OmniPiano.utils.env_unwrap.get_dm_env_from_gym``
+is the contract that ``omnipiano.utils.env_unwrap.get_dm_env_from_gym``
 walks via ``hasattr(env, "env")`` / ``hasattr(env, "_env")``. This means
 ``MetricsWrapper``, ``SafetyWrapper``, and any future wrapper that uses
 ``get_composer_env_from_gym`` continue to work without modification.

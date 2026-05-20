@@ -235,7 +235,7 @@ def compute_boundary_hands(
 # ===========================================================================
 #
 # Imported lazily inside the function to avoid circular import with
-# OmniPiano.envs.* at module load time (the probe needs to build a dm_env).
+# omnipiano.envs.* at module load time (the probe needs to build a dm_env).
 
 
 def compute_agent_reach(
@@ -273,7 +273,7 @@ def compute_agent_reach(
     control_timestep, gravity_compensation, disable_hand_collisions).
     """
     # Import here to avoid module-load circularity.
-    from OmniPiano.multiagent._reach_probe import cached_probe_agent_reach
+    from omnipiano.multiagent._reach_probe import cached_probe_agent_reach
 
     return cached_probe_agent_reach(
         assignment,

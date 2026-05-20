@@ -25,7 +25,7 @@ import gymnasium as gym
 import numpy as np
 from pettingzoo.utils.env import ParallelEnv
 
-from OmniPiano.multiagent.assignment import (
+from omnipiano.multiagent.assignment import (
     MorphologyAssignment,
     compute_agent_territory,
     compute_boundary_hands,
@@ -541,5 +541,5 @@ def _find_wrapper(env: dm_env.Environment, wrapper_cls):
 
 def _import_midi_evaluation_wrapper_class():
     """Lazy import so that module-load order doesn't trip over robopianist."""
-    from OmniPiano.envs.robopianist.wrappers import MidiEvaluationWrapper
+    from omnipiano.envs.robopianist.wrappers import MidiEvaluationWrapper
     return MidiEvaluationWrapper

@@ -14,7 +14,7 @@ from typing import Dict
 import numpy as np
 import pytest
 
-from OmniPiano.multiagent import (
+from omnipiano.multiagent import (
     AGENT_ASSIGNMENTS,
     list_parallel_envs,
     make_parallel,
@@ -204,8 +204,8 @@ class TestThreeHandLayoutRegression:
 
     def test_per_agent_clamp_secondo_hands_share_joint_range_three_hand(self) -> None:
         """Plan § 2.2 under 3-hand: secondo's lh and rh_c must share forearm_tx joint.range."""
-        from OmniPiano.multiagent.parallel_env import _find_task
-        from OmniPiano.multiagent._reach_probe import y_to_key_index
+        from omnipiano.multiagent.parallel_env import _find_task
+        from omnipiano.multiagent._reach_probe import y_to_key_index
         task = _find_task(self.env._env)
         ranges_by_hand: Dict[str, tuple] = {}
         for spec_name, hand in task.hands_by_name.items():
@@ -336,8 +336,8 @@ class TestFiveHandLayoutRegression:
         """Plan § 2.2: per-agent clamp under 5-hand — left_secondo and
         right_primo each have 2 hands sharing one joint.range; center_soloist
         has its own (single-hand) clamp."""
-        from OmniPiano.multiagent.parallel_env import _find_task
-        from OmniPiano.multiagent._reach_probe import y_to_key_index
+        from omnipiano.multiagent.parallel_env import _find_task
+        from omnipiano.multiagent._reach_probe import y_to_key_index
         task = _find_task(self.env._env)
         ranges_by_hand: Dict[str, tuple] = {}
         for spec_name, hand in task.hands_by_name.items():
@@ -499,22 +499,22 @@ class TestPlanInvariant:
         with _pytest.raises(ValueError, match="sustain_owner"):
             make_parallel(self.env_id, sustain_owner="nonexistent_agent", seed=0)
 
-    # --- Plan § 1: OmniPiano.make() rejects MA env_ids ---
+    # --- Plan § 1: omnipiano.make() rejects MA env_ids ---
 
     def test_sa_make_redirects_for_ma_env_id(self) -> None:
-        """Plan § 1: OmniPiano.make(MA env_id) must raise with redirect to make_parallel."""
+        """Plan § 1: omnipiano.make(MA env_id) must raise with redirect to make_parallel."""
         import pytest as _pytest
-        import OmniPiano
+        import omnipiano
         with _pytest.raises(ValueError, match="make_parallel"):
-            OmniPiano.make(self.env_id)
+            omnipiano.make(self.env_id)
 
     # --- Plan § 2: per-agent clamp (hands of same agent share joint.range) ---
 
     def test_per_agent_clamp_secondo_hands_share_joint_range(self) -> None:
         """Plan § 2: under MA Territorial, all hands of one agent share forearm_tx
         joint.range (= agent territory), removing the SA per-hand bucket wall."""
-        from OmniPiano.multiagent.parallel_env import _find_task
-        from OmniPiano.multiagent._reach_probe import y_to_key_index
+        from omnipiano.multiagent.parallel_env import _find_task
+        from omnipiano.multiagent._reach_probe import y_to_key_index
         task = _find_task(self.env._env)
         # Map each spec hand to its forearm_tx joint range (world key range).
         ranges_by_hand: Dict[str, Tuple[int, int]] = {}

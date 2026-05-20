@@ -1,7 +1,7 @@
 import gymnasium as gym
 from robopianist.wrappers.evaluation import MidiEvaluationWrapper
-from OmniPiano.utils.info_keys import InfoKeys, EpisodeInfoKeys
-from OmniPiano.utils.env_unwrap import (
+from omnipiano.utils.info_keys import InfoKeys, EpisodeInfoKeys
+from omnipiano.utils.env_unwrap import (
     get_composer_env_from_gym,
     get_dm_env_from_gym,
     find_dm_env_wrapper,
@@ -29,13 +29,13 @@ class MetricsWrapper(gym.Wrapper):
         # 1. Extract Reward Terms
         # Pipeline reminder (with source files):
         # 1) Unwrap to composer env: `get_composer_env_from_gym(...)`
-        #    - file: OmniPiano/utils/env_unwrap.py
+        #    - file: omnipiano/utils/env_unwrap.py
         # 2) dm_control step calls `task.get_reward(...)`
         #    - file: dm_control/composer/environment.py (in site-packages)
         # 3) Task forwards reward call to `self._reward_fn.compute(physics)`
-        #    - file: OmniPiano/envs/robopianist/suite/tasks/piano_with_shadow_hands.py
+        #    - file: omnipiano/envs/robopianist/suite/tasks/piano_with_shadow_hands.py
         # 4) Composite reward computes each term and updates `reward_terms`
-        #    - file: OmniPiano/envs/robopianist/suite/composite_reward.py
+        #    - file: omnipiano/envs/robopianist/suite/composite_reward.py
         #
         # This wrapper runs right after env.step(...) returns, so we read
         # `composer_env.task.reward_fn.reward_terms` to capture per-step sub-reward values

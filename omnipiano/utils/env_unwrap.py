@@ -2,7 +2,7 @@
 
 Walks ``env.env`` (gym.Wrapper convention) down to the gym↔dm_env
 adapter, then reads its ``_env`` attribute to enter the dm_env chain.
-The adapter is ``OmniPiano.envs.dm_env_adapter.DmEnvToGymnasium``;
+The adapter is ``omnipiano.envs.dm_env_adapter.DmEnvToGymnasium``;
 the same access pattern also works for ``shimmy.DmControlCompatibilityV0``
 since both expose ``_env``.
 """

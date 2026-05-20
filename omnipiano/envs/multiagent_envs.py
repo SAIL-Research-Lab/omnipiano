@@ -1,8 +1,8 @@
 """Multi-agent env registrations (PettingZoo ParallelEnv) — Territorial series.
 
-Mirrors `OmniPiano/envs/__init__.py` structure but for MA envs. Each MA env
+Mirrors `omnipiano/envs/__init__.py` structure but for MA envs. Each MA env
 wraps an existing SA StaticPartition env via the PettingZoo ParallelEnv
-shim in `OmniPiano.multiagent`.
+shim in `omnipiano.multiagent`.
 
 Phase 1 scope (per ma_territorial_impl_plan.md § 11):
   Sub-phase 1A: 4-hand Duet (3 envs)
@@ -12,14 +12,14 @@ Phase 1 scope (per ma_territorial_impl_plan.md § 11):
                               `envs/__init__.py:1055` comment)
 """
 
-from OmniPiano.multiagent import register_parallel
+from omnipiano.multiagent import register_parallel
 
 
 # ===========================================================================
 # Sub-phase 1A: 4-hand Territorial Duet
 # ===========================================================================
 # AgentSetup = "Duet" → agents = (secondo, primo); see
-# `OmniPiano.multiagent.assignment.AGENT_ASSIGNMENTS["FourHand"]`.
+# `omnipiano.multiagent.assignment.AGENT_ASSIGNMENTS["FourHand"]`.
 # Underlying SA envs: OmniPiano-{Piece}-FourHand-StaticPartition-v0.
 
 _FOUR_HAND_PIECES = (
@@ -40,7 +40,7 @@ for _piece in _FOUR_HAND_PIECES:
 # Sub-phase 1B: 3-hand Territorial MainSolo
 # ===========================================================================
 # AgentSetup = "MainSolo" → agents = (secondo, treble_soloist); see
-# `OmniPiano.multiagent.assignment.AGENT_ASSIGNMENTS["ThreeHand"]`.
+# `omnipiano.multiagent.assignment.AGENT_ASSIGNMENTS["ThreeHand"]`.
 #   secondo        (sustain owner): lh + rh_c → action dim 45 (2×22 + 1)
 #   treble_soloist (1-hand agent):  rh        → action dim 22
 # Underlying SA envs: OmniPiano-{Piece}-ThreeHand-StaticPartition-v0.
@@ -68,7 +68,7 @@ for _piece in _THREE_HAND_PIECES:
 # Sub-phase 1C: 5-hand Territorial Trio
 # ===========================================================================
 # AgentSetup = "Trio" → agents = (left_secondo, center_soloist, right_primo);
-# see `OmniPiano.multiagent.assignment.AGENT_ASSIGNMENTS["FiveHand"]`.
+# see `omnipiano.multiagent.assignment.AGENT_ASSIGNMENTS["FiveHand"]`.
 #   left_secondo  (sustain owner): lh_b + rh_b → action dim 45 (2×22 + 1)
 #   center_soloist (1-hand agent): rh_c        → action dim 22
 #   right_primo                  : lh_t + rh_t → action dim 44

@@ -24,7 +24,7 @@ from dm_control import composer
 from mujoco_utils import spec_utils
 from note_seq.protobuf import music_pb2
 
-from OmniPiano.tasks.hand_spec import HandSpec
+from omnipiano.tasks.hand_spec import HandSpec
 from robopianist.models.hands import HandSide
 from robopianist.music import midi_file
 from robopianist.suite.tasks import piano_with_shadow_hands
@@ -467,7 +467,7 @@ class ThreeHandLayoutTest(absltest.TestCase):
 
     def test_default_three_hand_names_match_sides(self):
         """name prefix `lh_` ⇔ HandSide.LEFT, `rh_` ⇔ HandSide.RIGHT."""
-        from OmniPiano.tasks.hand_spec import default_three_hand_specs
+        from omnipiano.tasks.hand_spec import default_three_hand_specs
         for spec in default_three_hand_specs():
             if spec.name.startswith("lh"):
                 self.assertEqual(spec.side, HandSide.LEFT,
@@ -478,7 +478,7 @@ class ThreeHandLayoutTest(absltest.TestCase):
 
     def test_default_three_hand_unique_names(self):
         """All 3 names must be unique (spec list goes into a dict)."""
-        from OmniPiano.tasks.hand_spec import default_three_hand_specs
+        from omnipiano.tasks.hand_spec import default_three_hand_specs
         names = [s.name for s in default_three_hand_specs()]
         self.assertEqual(len(set(names)), len(names),
                          msg=f"duplicate hand names in 3-hand spec: {names}")
@@ -486,7 +486,7 @@ class ThreeHandLayoutTest(absltest.TestCase):
     def test_default_three_hand_spatial_layout(self):
         """Sorted by Y position: lh (bass) → rh_c (middle) → rh (treble),
         with sides [LEFT, RIGHT, RIGHT]."""
-        from OmniPiano.tasks.hand_spec import default_three_hand_specs
+        from omnipiano.tasks.hand_spec import default_three_hand_specs
         specs = default_three_hand_specs()
         ordered = sorted(specs, key=lambda s: s.position[1])
         names = [s.name for s in ordered]
@@ -500,7 +500,7 @@ class ThreeHandLayoutTest(absltest.TestCase):
         """The center hand (rh_c) must be exactly at y=0 — under the
         29/30/29 partition the middle bucket is centered at the keyboard
         midpoint."""
-        from OmniPiano.tasks.hand_spec import default_three_hand_specs
+        from omnipiano.tasks.hand_spec import default_three_hand_specs
         for spec in default_three_hand_specs():
             if spec.name == "rh_c":
                 self.assertAlmostEqual(spec.position[1], 0.0, places=6,
@@ -516,7 +516,7 @@ class ThreeHandPartitionPositionAlignmentTest(absltest.TestCase):
 
     def test_position_matches_bucket_center(self):
         """Each spec.position[1] is within 1 cm of its key_range bucket center."""
-        from OmniPiano.tasks.hand_spec import key_index_to_y
+        from omnipiano.tasks.hand_spec import key_index_to_y
         for spec in _three_hand_partition_specs():
             lo, hi = spec.key_range
             bucket_center = 0.5 * (key_index_to_y(lo) + key_index_to_y(hi))
@@ -529,7 +529,7 @@ class ThreeHandPartitionPositionAlignmentTest(absltest.TestCase):
     def test_forearm_range_symmetric(self):
         """Forearm_tx joint range (post-partition) should have asymmetry < 0.05 m
         around the attach point."""
-        from OmniPiano.tasks.hand_spec import key_range_to_y_range
+        from omnipiano.tasks.hand_spec import key_range_to_y_range
         for spec in _three_hand_partition_specs():
             y_lo, y_hi = key_range_to_y_range(*spec.key_range)
             j_lo = y_lo - spec.position[1]
@@ -588,7 +588,7 @@ class ThreeHandStaticPartitionTest(absltest.TestCase):
 
     def test_forearm_range_overridden_in_compiled_model(self):
         """Each hand's forearm_tx joint range matches its assigned bucket."""
-        from OmniPiano.tasks.hand_spec import key_range_to_y_range
+        from omnipiano.tasks.hand_spec import key_range_to_y_range
         env = _get_three_hand_partition_env()
         env.reset()
         # env.task.hands is in spec order — matches _three_hand_partition_specs:
@@ -662,9 +662,9 @@ def _four_hand_partition_specs():
     Positions = bucket centers of the canonical 4 × 22-key partition
     (N-hand morphology axiom). Must match
     ``default_four_hand_specs`` and the Task 13 registration positions
-    in ``OmniPiano/envs/__init__.py`` exactly.
+    in ``omnipiano/envs/__init__.py`` exactly.
     """
-    from OmniPiano.tasks.hand_spec import HandSpec
+    from omnipiano.tasks.hand_spec import HandSpec
     return (
         HandSpec(name="lh_b", side=HandSide.LEFT,
                  position=(0.4, -0.4521, 0.13), key_range=(0, 21),
@@ -716,7 +716,7 @@ class FourHandStaticPartitionTest(absltest.TestCase):
 
     def test_hand_spec_validation(self):
         """HandSpec enforces y_range XOR key_range and validates ranges."""
-        from OmniPiano.tasks.hand_spec import HandSpec
+        from omnipiano.tasks.hand_spec import HandSpec
         # Both fields → ValueError
         with self.assertRaises(ValueError):
             HandSpec(name="x", side=HandSide.RIGHT, position=(0.4, 0, 0.13),
@@ -746,7 +746,7 @@ class FourHandStaticPartitionTest(absltest.TestCase):
 
     def test_key_index_to_y_matches_piano_mjcf(self):
         """key_index_to_y must match piano_mjcf physics for all 88 keys."""
-        from OmniPiano.tasks.hand_spec import key_index_to_y
+        from omnipiano.tasks.hand_spec import key_index_to_y
         from dm_control import mjcf
         from robopianist.models.piano import piano_mjcf
         root = piano_mjcf.build()
@@ -764,7 +764,7 @@ class FourHandStaticPartitionTest(absltest.TestCase):
     def test_forearm_range_overridden_in_compiled_model(self):
         """Each hand's forearm_tx joint range in the compiled MuJoCo model
         must equal (key_range_to_y_range - hand position[1])."""
-        from OmniPiano.tasks.hand_spec import key_range_to_y_range
+        from omnipiano.tasks.hand_spec import key_range_to_y_range
         env = _get_four_hand_partition_env()
         env.reset()
         # Spec order matches _four_hand_partition_specs: bass → mid_bass →
@@ -827,7 +827,7 @@ class FourHandStaticPartitionTest(absltest.TestCase):
     def test_default_full_keyboard_path_unchanged(self):
         """A spec WITHOUT y_range or key_range must keep the original
         full-keyboard joint range — protects 2-hand and Level-3 baselines."""
-        from OmniPiano.tasks.hand_spec import HandSpec
+        from omnipiano.tasks.hand_spec import HandSpec
         specs = (
             HandSpec(name="rh", side=HandSide.RIGHT, position=(0.4, 0.15, 0.13)),
             HandSpec(name="lh", side=HandSide.LEFT, position=(0.4, -0.15, 0.13)),
@@ -868,7 +868,7 @@ class FourHandPartitionPositionAlignmentTest(absltest.TestCase):
 
     def test_position_matches_bucket_center(self):
         """Each spec.position[1] is within 1 cm of its key_range bucket center."""
-        from OmniPiano.tasks.hand_spec import key_index_to_y
+        from omnipiano.tasks.hand_spec import key_index_to_y
         for spec in _four_hand_partition_specs():
             lo, hi = spec.key_range
             bucket_center = 0.5 * (key_index_to_y(lo) + key_index_to_y(hi))
@@ -881,7 +881,7 @@ class FourHandPartitionPositionAlignmentTest(absltest.TestCase):
     def test_forearm_range_symmetric(self):
         """Forearm_tx joint range (post-partition) should have asymmetry < 0.05 m
         around the attach point. Bucket-center positions deliver ~1e-4 m."""
-        from OmniPiano.tasks.hand_spec import key_range_to_y_range
+        from omnipiano.tasks.hand_spec import key_range_to_y_range
         for spec in _four_hand_partition_specs():
             y_lo, y_hi = key_range_to_y_range(*spec.key_range)
             j_lo = y_lo - spec.position[1]
@@ -945,7 +945,7 @@ class FourHandDuetLayoutTest(absltest.TestCase):
 
     def test_default_four_hand_is_lrlr_alternating(self):
         """Spatial order (sorted by position[1]) must alternate L-R-L-R."""
-        from OmniPiano.tasks.hand_spec import default_four_hand_specs
+        from omnipiano.tasks.hand_spec import default_four_hand_specs
         specs = default_four_hand_specs()
         self.assertEqual(len(specs), 4)
         # Sort by Y position, lowest to highest.
@@ -967,7 +967,7 @@ class FourHandDuetLayoutTest(absltest.TestCase):
         ~0.2994 / 0.3055 / 0.2998 (slight non-uniformity reflects piano
         key geometry); 1 cm tolerance accommodates this.
         """
-        from OmniPiano.tasks.hand_spec import default_four_hand_specs
+        from omnipiano.tasks.hand_spec import default_four_hand_specs
         ordered = sorted(default_four_hand_specs(),
                          key=lambda s: s.position[1])
         # ordered: Secondo-LH, Secondo-RH, Primo-LH, Primo-RH
@@ -984,7 +984,7 @@ class FourHandDuetLayoutTest(absltest.TestCase):
     def test_default_four_hand_names_consistent(self):
         """Hand names must indicate side consistently with their actual side
         attribute (lh_* must be LEFT-side, rh_* must be RIGHT-side)."""
-        from OmniPiano.tasks.hand_spec import default_four_hand_specs
+        from omnipiano.tasks.hand_spec import default_four_hand_specs
         for spec in default_four_hand_specs():
             if spec.name.startswith("lh"):
                 self.assertEqual(spec.side, HandSide.LEFT,
@@ -1010,7 +1010,7 @@ def _five_hand_partition_specs():
       center: (rh_c RIGHT)              — single hand soloist
       right : (lh_t LEFT, rh_t RIGHT)   — standard (LH, RH) duet
     """
-    from OmniPiano.tasks.hand_spec import HandSpec
+    from omnipiano.tasks.hand_spec import HandSpec
     return (
         HandSpec(name="lh_b", side=HandSide.LEFT,
                  position=(0.4, -0.4817, 0.13), key_range=(0, 17),
@@ -1062,7 +1062,7 @@ class FiveHandDuetLayoutTest(absltest.TestCase):
         """Sides sorted by Y position must be [L, R, R, L, R] — gives both
         outer agents a standard (LH, RH) duet pair and the center solo
         as a single RIGHT hand under 3-agent decomposition."""
-        from OmniPiano.tasks.hand_spec import default_five_hand_specs
+        from omnipiano.tasks.hand_spec import default_five_hand_specs
         specs = default_five_hand_specs()
         self.assertEqual(len(specs), 5)
         ordered = sorted(specs, key=lambda s: s.position[1])
@@ -1076,7 +1076,7 @@ class FiveHandDuetLayoutTest(absltest.TestCase):
 
     def test_default_five_hand_names_match_sides(self):
         """name prefix `lh_` ⇔ HandSide.LEFT, `rh_` ⇔ HandSide.RIGHT."""
-        from OmniPiano.tasks.hand_spec import default_five_hand_specs
+        from omnipiano.tasks.hand_spec import default_five_hand_specs
         for spec in default_five_hand_specs():
             if spec.name.startswith("lh"):
                 self.assertEqual(spec.side, HandSide.LEFT,
@@ -1087,7 +1087,7 @@ class FiveHandDuetLayoutTest(absltest.TestCase):
 
     def test_default_five_hand_unique_names(self):
         """All 5 names must be unique (spec list goes into a dict)."""
-        from OmniPiano.tasks.hand_spec import default_five_hand_specs
+        from omnipiano.tasks.hand_spec import default_five_hand_specs
         names = [s.name for s in default_five_hand_specs()]
         self.assertEqual(len(set(names)), len(names),
                          msg=f"duplicate hand names in 5-hand spec: {names}")
@@ -1110,7 +1110,7 @@ class FiveHandPartitionPositionAlignmentTest(absltest.TestCase):
 
     def test_position_matches_bucket_center(self):
         """Each spec.position[1] is within 1 cm of its key_range bucket center."""
-        from OmniPiano.tasks.hand_spec import key_index_to_y
+        from omnipiano.tasks.hand_spec import key_index_to_y
         for spec in _five_hand_partition_specs():
             lo, hi = spec.key_range
             bucket_center = 0.5 * (key_index_to_y(lo) + key_index_to_y(hi))
@@ -1123,7 +1123,7 @@ class FiveHandPartitionPositionAlignmentTest(absltest.TestCase):
     def test_forearm_range_symmetric(self):
         """Forearm_tx joint range (post-partition) should have asymmetry < 0.05 m
         around the attach point."""
-        from OmniPiano.tasks.hand_spec import key_range_to_y_range
+        from omnipiano.tasks.hand_spec import key_range_to_y_range
         for spec in _five_hand_partition_specs():
             y_lo, y_hi = key_range_to_y_range(*spec.key_range)
             j_lo = y_lo - spec.position[1]
@@ -1193,7 +1193,7 @@ class FiveHandStaticPartitionTest(absltest.TestCase):
 
     def test_forearm_range_overridden_in_compiled_model(self):
         """Each hand's forearm_tx joint range matches its assigned bucket."""
-        from OmniPiano.tasks.hand_spec import key_range_to_y_range
+        from omnipiano.tasks.hand_spec import key_range_to_y_range
         env = _get_five_hand_partition_env()
         env.reset()
         for hand, krng in zip(env.task.hands, _FIVE_HAND_BUCKETS):
@@ -1293,11 +1293,11 @@ class FiveHandStaticPartitionTest(absltest.TestCase):
 # ---------------------------------------------------------------------------
 # Registry consistency test — guards against drift between the test
 # helpers (_three/_four/_five_hand_partition_specs) and the actual
-# HandSpecs registered in OmniPiano/envs/__init__.py.
+# HandSpecs registered in omnipiano/envs/__init__.py.
 #
 # Without this test, the helpers can silently diverge from the registered
 # envs: partition tests would pass against the helper specs while users
-# constructing the env via ``OmniPiano.make(env_id)`` would get a
+# constructing the env via ``omnipiano.make(env_id)`` would get a
 # different layout at runtime.
 # ---------------------------------------------------------------------------
 
@@ -1330,7 +1330,7 @@ def _diff_hand_specs(a, b) -> str:
 
 class RegisteredEnvHandSpecConsistencyTest(absltest.TestCase):
     """Asserts that the spec helpers in this test file match the HandSpecs
-    actually registered in ``OmniPiano/envs/__init__.py``.
+    actually registered in ``omnipiano/envs/__init__.py``.
 
     Catches a class of silent bugs where a partition test is updated but
     the corresponding env registration is not (or vice versa) — without
@@ -1339,9 +1339,9 @@ class RegisteredEnvHandSpecConsistencyTest(absltest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Trigger env registration as a side-effect of importing OmniPiano.envs.
-        import OmniPiano.envs  # noqa: F401
-        from OmniPiano.envs.registration import _registry
+        # Trigger env registration as a side-effect of importing omnipiano.envs.
+        import omnipiano.envs  # noqa: F401
+        from omnipiano.envs.registration import _registry
         cls._registry = _registry
 
     def _assert_env_matches_helper(self, env_id, helper_specs):

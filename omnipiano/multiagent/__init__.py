@@ -11,7 +11,7 @@ Public entrypoints:
     AGENT_ASSIGNMENTS                                       → morphology → agent layout
 """
 
-from OmniPiano.multiagent.assignment import (
+from omnipiano.multiagent.assignment import (
     AGENT_ASSIGNMENTS,
     AgentDef,
     MorphologyAssignment,
@@ -19,7 +19,7 @@ from OmniPiano.multiagent.assignment import (
     compute_boundary_hands,
     compute_inter_agent_boundaries,
 )
-from OmniPiano.multiagent.registration import (
+from omnipiano.multiagent.registration import (
     list_parallel_envs,
     make_parallel,
     register_parallel,

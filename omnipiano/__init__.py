@@ -9,7 +9,7 @@ _envs_dir = _os.path.join(_os.path.dirname(__file__), "envs")
 if _envs_dir not in _sys.path:
     _sys.path.insert(0, _envs_dir)
 
-from OmniPiano.envs.registration import make, register  # noqa: E402
+from omnipiano.envs.registration import make, register  # noqa: E402
 
 # Importing envs triggers all register() calls in envs/__init__.py
-from OmniPiano import envs  # noqa: E402, F401
+from omnipiano import envs  # noqa: E402, F401

@@ -52,7 +52,7 @@ See `examples/run_sb3_template.py` for a typical SB3 caller.
 # (b) hand-write replacements (each is < 50 lines).
 #
 # Applied here at registration import time so all callers of
-# OmniPiano.make() benefit without each script re-applying the patch.
+# omnipiano.make() benefit without each script re-applying the patch.
 # Subprocess fork inherits the patched ``np.array`` via COW; spawn
 # subprocesses re-import this module and re-apply.
 # ---------------------------------------------------------------------------
@@ -89,19 +89,19 @@ from dm_env_wrappers import (
 from robopianist import suite
 from robopianist.wrappers.evaluation import MidiEvaluationWrapper
 
-from OmniPiano.configs import (
+from omnipiano.configs import (
     BenchmarkEnvConfig,
     RobustConfig,
     SafetyConfig,
     TaskVariantConfig,
 )
-from OmniPiano.envs.dm_env_adapter import DmEnvToGymnasium
-from OmniPiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
-from OmniPiano.tasks.hand_spec import HandSpec
-from OmniPiano.tasks.omni_piano_task import OmniPianoTask
-from OmniPiano.wrappers.metrics_wrapper import MetricsWrapper
-from OmniPiano.wrappers.robust_wrapper import RobustWrapper
-from OmniPiano.wrappers.safety_wrapper import SafetyWrapper
+from omnipiano.envs.dm_env_adapter import DmEnvToGymnasium
+from omnipiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
+from omnipiano.tasks.hand_spec import HandSpec
+from omnipiano.tasks.omni_piano_task import OmniPianoTask
+from omnipiano.wrappers.metrics_wrapper import MetricsWrapper
+from omnipiano.wrappers.robust_wrapper import RobustWrapper
+from omnipiano.wrappers.safety_wrapper import SafetyWrapper
 
 
 # ---------------------------------------------------------------------------
@@ -210,13 +210,13 @@ def make(
     #     Per ma_territorial_impl_plan.md § 1: SA and MA are two distinct
     #     entry points (gymnasium.Env vs PettingZoo ParallelEnv have
     #     incompatible step signatures); silent failure is unhelpful, so
-    #     fail fast with a specific redirect to OmniPiano.make_parallel().
+    #     fail fast with a specific redirect to omnipiano.make_parallel().
     # ------------------------------------------------------------------
     if "-MA-" in env_name:
         raise ValueError(
             f"env_id {env_name!r} is a multi-agent env (contains '-MA-'). "
-            f"OmniPiano.make() returns a gymnasium.Env (single-agent); "
-            f"use OmniPiano.make_parallel({env_name!r}, ...) instead, "
+            f"omnipiano.make() returns a gymnasium.Env (single-agent); "
+            f"use omnipiano.make_parallel({env_name!r}, ...) instead, "
             f"which returns a PettingZoo ParallelEnv."
         )
 
@@ -234,7 +234,7 @@ def make(
         # of the OmniPiano-* ids), masking typos in the OmniPiano id.
         raise ValueError(
             f"Unknown OmniPiano env id: {env_name!r}. "
-            f"Register it first in OmniPiano/envs/__init__.py via "
+            f"Register it first in omnipiano/envs/__init__.py via "
             f"register(id=..., base_env_name='RoboPianist-...'). "
             f"Currently registered ({len(_registry)}): "
             f"{sorted(_registry.keys())}"
@@ -249,7 +249,7 @@ def make(
             f"make(**kwargs) only accepts runtime-bypass fields "
             f"{sorted(_RUNTIME_BYPASS_FIELDS)}. Got illegal overrides: "
             f"{sorted(illegal)}. To vary these, register a new task id "
-            f"in OmniPiano/envs/__init__.py."
+            f"in omnipiano/envs/__init__.py."
         )
 
     task_spec = _registry[env_name]
@@ -398,7 +398,7 @@ def make(
     # 5. Optional eval CSV logger
     # ------------------------------------------------------------------
     if log_dir is not None and log_split == "eval":
-        from OmniPiano.utils.logger_wrapper import SafeRecordEpisodeStatistics
+        from omnipiano.utils.logger_wrapper import SafeRecordEpisodeStatistics
         env = SafeRecordEpisodeStatistics(
             env,
             log_dir=log_dir,

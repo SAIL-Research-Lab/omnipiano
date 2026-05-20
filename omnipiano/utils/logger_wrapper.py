@@ -3,7 +3,7 @@ import csv
 import os
 import time
 import uuid
-from OmniPiano.utils.info_keys import EpisodeInfoKeys
+from omnipiano.utils.info_keys import EpisodeInfoKeys
 
 
 class SafeRecordEpisodeStatistics(gym.Wrapper):

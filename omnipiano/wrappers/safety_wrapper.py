@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
-from OmniPiano.configs import SafetyConfig
-from OmniPiano.utils.info_keys import InfoKeys, EpisodeInfoKeys
+from omnipiano.configs import SafetyConfig
+from omnipiano.utils.info_keys import InfoKeys, EpisodeInfoKeys
 
 class SafetyWrapper(gym.Wrapper):
     """Calculates safety costs and violations using modular constraints."""

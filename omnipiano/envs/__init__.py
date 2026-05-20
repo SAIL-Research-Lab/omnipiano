@@ -11,9 +11,9 @@ Debug pieces (TwinkleTwinkleLittleStar, etc.) are NOT registered here;
 they exist only for installation verification (see README Quick Start).
 """
 
-from OmniPiano.envs.registration import register
-from OmniPiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig, BenchmarkEnvConfig
-from OmniPiano.safety.constraints import (
+from omnipiano.envs.registration import register
+from omnipiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig, BenchmarkEnvConfig
+from omnipiano.safety.constraints import (
     JointMagnitudeConstraint,
     MultiJointSharedMagnitudeConstraint,
     MultiJointSummedMagnitudeConstraint,
@@ -22,7 +22,7 @@ from OmniPiano.safety.constraints import (
     TotalActuatorPowerConstraint,
     InjuredJointPowerConstraint,
 )
-from OmniPiano.tasks.hand_spec import (
+from omnipiano.tasks.hand_spec import (
     HandSpec,
     default_three_hand_specs,
     default_four_hand_specs,
@@ -822,7 +822,7 @@ register(
 # B0 = 0% under the canonical partition; ``lh_b`` would be permanently
 # idle, masking policy quality). All dropped.
 #
-# See ``OmniPiano.tasks.hand_spec.default_four_hand_specs`` for the exact
+# See ``omnipiano.tasks.hand_spec.default_four_hand_specs`` for the exact
 # layout (positions, groups, naming).
 # ===========================================================================
 
@@ -913,7 +913,7 @@ register(
 # key 30, leaving B0 (keys 0-17) completely empty → the leftmost 5-hand
 # slot would be permanently idle, masking policy quality.
 #
-# See ``OmniPiano.tasks.hand_spec.default_five_hand_specs`` for the exact
+# See ``omnipiano.tasks.hand_spec.default_five_hand_specs`` for the exact
 # layout (positions, groups, naming).
 # ===========================================================================
 
@@ -1084,4 +1084,4 @@ register(
 # Multi-agent (PettingZoo ParallelEnv) registrations.
 # Side-effect import: triggers register_parallel() calls in multiagent_envs.py.
 # ===========================================================================
-from OmniPiano.envs import multiagent_envs  # noqa: F401, E402
+from omnipiano.envs import multiagent_envs  # noqa: F401, E402

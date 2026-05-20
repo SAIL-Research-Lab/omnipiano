@@ -21,7 +21,7 @@ import numpy as np
 from dm_control import composer
 from mujoco_utils import composer_utils, physics_utils
 
-from OmniPiano.tasks.hand_spec import HandSpec, default_two_hand_specs
+from omnipiano.tasks.hand_spec import HandSpec, default_two_hand_specs
 from robopianist.models.hands import HandSide, shadow_hand
 from robopianist.models.piano import piano
 

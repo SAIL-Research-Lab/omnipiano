@@ -12,8 +12,8 @@
 # reward formulas, and the wrapper stack — NOT a particular way to
 # train it. Users adopting OmniPiano are expected to wire their own
 # trainer (RLlib, CleanRL, Mava, or SB3 — their choice) using the
-# minimal ``OmniPiano.make(env_id)`` snippet shown in the README.
-!/OmniPiano/
+# minimal ``omnipiano.make(env_id)`` snippet shown in the README.
+!/omnipiano/
 !/demos/
 !/setup.py
 !/README.md
@@ -22,7 +22,7 @@
 __pycache__/
 
 # PIG dataset preprocessing artifacts (users run `robopianist preprocess` to generate)
-OmniPiano/envs/robopianist/music/data/pig_single_finger/
+omnipiano/envs/robopianist/music/data/pig_single_finger/
 
 # Whitelist .gitignore itself
 !.gitignore

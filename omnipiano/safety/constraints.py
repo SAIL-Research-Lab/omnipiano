@@ -2,7 +2,7 @@ import mujoco
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Tuple
-from OmniPiano.utils.env_unwrap import get_composer_env_from_gym
+from omnipiano.utils.env_unwrap import get_composer_env_from_gym
 
 _COLLISION_MARGIN: float = 1e-8
 

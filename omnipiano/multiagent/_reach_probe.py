@@ -47,9 +47,9 @@ from typing import Any, Dict, Sequence, Tuple
 import numpy as np
 from dm_control import composer
 
-from OmniPiano.envs.robopianist.suite.tasks import piano_with_shadow_hands
-from OmniPiano.envs.robopianist.music import midi_file
-from OmniPiano.tasks.hand_spec import HandSpec, key_index_to_y
+from omnipiano.envs.robopianist.suite.tasks import piano_with_shadow_hands
+from omnipiano.envs.robopianist.music import midi_file
+from omnipiano.tasks.hand_spec import HandSpec, key_index_to_y
 from robopianist.models.piano import piano_constants as piano_consts
 
 # Imported here only — avoid pulling heavy proto at module load if probe never runs.
@@ -265,7 +265,7 @@ def probe_agent_reach(
     Caller is expected to pass `hand_specs` whose `key_range` reflects the
     actual physical clamp at runtime — typically the per-agent territory
     (= union of bucket key_ranges) for the MA Territorial path. See
-    `OmniPiano.multiagent.registration.make_parallel` for the override site.
+    `omnipiano.multiagent.registration.make_parallel` for the override site.
     """
     env = _build_probe_env(
         hand_specs,
