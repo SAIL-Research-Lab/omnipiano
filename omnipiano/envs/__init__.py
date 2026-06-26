@@ -66,10 +66,36 @@ register(
 # ---------------------------------------------------------------------------
 # ForElise: RH A3-E7 (35 unique keys, 399 steps).  The wide right-hand range
 # spanning over 4 octaves makes wrist constraint highly restrictive.
+#
+# Fingering variants (2026-06-25):
+#   -v0   (annotation fingering, kept for now; SCHEDULED FOR REMOVAL once the
+#          -OT-v0 variant baseline is verified. Reason for removal:
+#          structural HARD CONFLICT between a specific-joint constraint
+#          (WRJ2 magnitude ≤ 0.8) and annotation-locked fingering — same
+#          conflict family as Group A (InjuredJointPower constraints, all
+#          use OT) and Group B (-OT suffixed magnitude/budget tasks): the
+#          constraint penalizes the exact joint that fingering choice
+#          modulates, so annotation reward and cost penalty oppose each
+#          other on the same DoF. By our "硬冲突标准" the -v0 variant is
+#          inconsistent with the rest of the safety-task family.)
+#   -OT-v0 (OT fingering, the design intent per the comment above. Lets
+#           the agent reassign keys to fingers that minimize wrist usage,
+#           resolving the hard conflict. Whether the constraint actually
+#           binds under OT is an empirical question — to be verified.)
 # ===========================================================================
 register(
     id="OmniPiano-ForElise-WristLimit-v0",
     base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+    safety_config=SafetyConfig(
+        constraints=[
+            JointMagnitudeConstraint(index=1, max_magnitude=0.8, penalty_coef=5.0),
+        ]
+    ),
+)
+register(
+    id="OmniPiano-ForElise-WristLimitOT-v0",
+    base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[
             JointMagnitudeConstraint(index=1, max_magnitude=0.8, penalty_coef=5.0),
@@ -313,6 +339,50 @@ register(
 register(
     id="OmniPiano-FantaisieImpromptu-ForearmInjury-v0",
     base_env_name="RoboPianist-repertoire-150-FantaisieImpromptu-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            InjuredJointPowerConstraint(
+                hand="right",
+                joint_names=("forearm_tx", "forearm_ty"),
+                penalty_coef=1.0,
+            ),
+        ]
+    ),
+)
+
+# ===========================================================================
+# 8d. Thumb Injury / Forearm Injury on ClairDeLune (shorter-song variants)
+#
+# Identical constraint config to 8b (Thumb) and 8c (Forearm) above; only
+# the song changes — ClairDeLune is 588 steps vs Nocturne 769 / Fantaisie
+# 800. Added 2026-06-25 after observing that PPO and PPOLag both plateau
+# at F1 ≈ 0.01-0.05 on Nocturne / FantaisieImpromptu within a 5M env-step
+# budget. The lazy-policy local optimum (don't press → max reward from
+# constant-floor terms forearm/sustain/key_press) traps both algos on
+# long-song tasks. ClairDeLune-based variants of the same constraint give
+# a short-song baseline where on-policy methods reach F1 0.25-0.37
+# (verified on CollisionSafe + BimanualMiddleFingerLimitOT), so the
+# Lagrangian-vs-vanilla-PPO comparison can be made meaningfully without
+# being confounded by song difficulty.
+# ===========================================================================
+register(
+    id="OmniPiano-ClairDeLune-ThumbInjury-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            InjuredJointPowerConstraint(
+                hand="right",
+                joint_names=("THJ1", "THJ2", "THJ3", "THJ4", "THJ5"),
+                penalty_coef=1.0,
+            ),
+        ]
+    ),
+)
+register(
+    id="OmniPiano-ClairDeLune-ForearmInjury-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     safety_config=SafetyConfig(
         constraints=[

@@ -19,7 +19,19 @@ class InfoKeys:
     ROBUST_NOISE_ACTION_L2 = "robust/noise_action_l2"
     ROBUST_NOISE_OBS_L2 = "robust/noise_obs_l2"
     
-    # Task (Musical Metrics)
+    # Task (Musical Metrics) — per-step
+    # TODO: not yet emitted by any wrapper. Reserved placeholders for
+    # future per-step F1/P/R logging. The values are well-defined
+    # mathematically (this-step sklearn binary precision_recall_fscore_support
+    # over the ground-truth vs played key set, identical to what
+    # ``MidiEvaluationWrapper._compute_key_press_metrics`` computes per-step
+    # before averaging into the episode metric), but the upstream wrapper
+    # keeps them as local variables and only exposes the mean via
+    # ``get_musical_metrics()``. To enable, MetricsWrapper would need to
+    # recompute them per step from ``task.piano.activation`` + ``task._notes``
+    # — useful for per-step F1 curves within an episode (where in the song
+    # is the policy weakest?). Do NOT read these keys from info today —
+    # they are never present.
     TASK_F1 = "task/f1"
     TASK_KEY_PRECISION = "task/key_precision"
     TASK_KEY_RECALL = "task/key_recall"

@@ -202,11 +202,48 @@ class BenchmarkProtocolConfig:
                       seed 0 unless overridden.
         We set seed explicitly so reproducibility is identical across
         frameworks rather than relying on framework-specific defaults.
-      - ``num_eval_eps``:    episodes for the final benchmark eval. Passed
-        to SB3 via the template's inline rollout loop and to OmniSafe via
-        ``Evaluator.evaluate(num_episodes=...)``. 10 matches OmniSafe /
-        D4RL eval defaults (the paper's own 1 episode is too noisy for
-        mean ± std reporting).
+      - ``num_eval_eps``:    episodes per eval call. Default 1 matches the
+        RoboPianist paper convention ("we evaluate the F1 every 10K
+        training steps for 1 episode (no stochasticity in the
+        environment)"). Verified empirically: OmniPiano leaves
+        ``_randomize_hand_positions=False`` and ``RobustConfig.*_noise_std=0.0``
+        by default, and mujoco physics is deterministic given fixed init
+        state + actions. The ~0.05% per-episode variance we observe is a
+        numerical-noise floor (mujoco SIMD + torch threading reductions
+        not order-stable), much smaller than algorithm-level effects.
+        Cross-RUN variance (3 training seeds) is where paper-level
+        confidence intervals come from, not within-run multi-episode
+        eval. SB3 path reads this via the template's argparse default;
+        OmniSafe path passes it to our custom eval loop in
+        ``run_omnisafe_template._final_eval`` (we bypass
+        ``Evaluator.evaluate`` to add seed control + surface
+        ``episode_task/f1`` from the terminal info dict).
+      - ``eval_freq_env_steps``: periodic-evaluation cadence in env-steps,
+        unified across all algorithm backends so learning curves overlay
+        cleanly. SB3 EvalCallback consumes this directly as ``--eval-freq``.
+        OmniSafe (whose ckpt frequency is in *epochs*, not env-steps)
+        derives ``save_model_freq = ceil(eval_freq_env_steps /
+        steps_per_epoch)``. Each framework snaps to its natural rollout/
+        epoch boundary, so the realized interval is ≥ this value:
+        SB3 PPO @ n_envs=16, n_steps=2048 → effective ~65,536 env-steps;
+        OmniSafe PPOLag @ steps_per_epoch=20,000, save_model_freq=3
+        → 60,000 env-steps. Within ±10K of each other — well inside
+        plotting tolerance.
+      - ``gamma``:           discount factor unified across ALL algorithms.
+        Treated as a *task property*, not an algorithm hparam: piano control
+        has empirically short effective horizon (~5 steps) and gamma encodes
+        "how many steps to credit-assign". RoboPianist (2023) sets
+        ``--discount 0.8`` in ``robopianist-rl/run.sh``; OmniPiano adopts the
+        same value uniformly for SAC, PPO, TQC and all future baselines.
+        Independently validated on 3-hand PicturesGreatKiev Prototype:
+        SAC peak F1 0.235 → 0.422 (+18.7 pts) and PPO mean peak F1 0.195
+        → 0.401 (+20.6 pts) at gamma 0.99 → 0.8, single-variable ablation.
+        Off-policy and on-policy methods both benefit, supporting the
+        task-property framing. Following D4RL / dm_control convention,
+        task-specific hparams are unified across algorithms while algo-
+        specific hparams (``batch_size``, ``learning_starts``,
+        ``target_entropy``, ...) stay at each library's default for
+        defensibility to reviewers.
 
     A single training budget is used across *all* algorithm families
     (off-policy and on-policy alike) — on-policy methods like PPO/TRPO
@@ -225,13 +262,18 @@ class BenchmarkProtocolConfig:
     -----
     This class is **algorithm-agnostic by design** — every field here
     must be meaningful across SAC / PPO / DroQ / TRPO / OmniSafe-PPOLag
-    alike. Algorithm-specific hparams (``batch_size``, ``discount``,
-    ``replay_capacity``, ``warmstart_steps``, etc.) live in each
-    trainer's argparse defaults (``examples/run_sb3_*_template.py``)
-    and are dumped to ``eval_summary.json["hparams"]`` for audit. They
-    do not belong here because, e.g., ``replay_capacity`` /
-    ``warmstart_steps`` are off-policy-only and ``discount=0.8`` (SAC)
-    vs ``0.9`` (PPO) makes a single-value default meaningless.
+    alike. Algorithm-specific hparams (``batch_size``,
+    ``replay_capacity``, ``warmstart_steps``, ``target_entropy``, ...)
+    live in each trainer's argparse defaults
+    (``examples/run_sb3_*_template.py``) and are dumped to
+    ``eval_summary.json["hparams"]`` for audit. They do not belong here
+    because they are either off-policy-only (``replay_capacity``,
+    ``warmstart_steps``) or SAC-family-only (``target_entropy``) with no
+    cross-algorithm equivalent.
+
+    ``gamma`` is the one historical exception: although it is a standard
+    algorithm hparam, in OmniPiano it is treated as a *task* property
+    (see the ``gamma`` field doc above) and therefore lives here.
 
     Env-construction parameters (``n_steps_lookahead``, ``trim_silence``,
     ``gravity_compensation``, ``control_timestep``, ...) are mirrored
@@ -240,6 +282,8 @@ class BenchmarkProtocolConfig:
     """
     total_env_steps: int = 5_000_000
     seed: int = 42
-    num_eval_eps: int = 10
+    num_eval_eps: int = 1
+    gamma: float = 0.8
+    eval_freq_env_steps: int = 50_000
     protocol_version: str = "1.0"
     # TODO: Add perturbation_levels for robustness evaluation

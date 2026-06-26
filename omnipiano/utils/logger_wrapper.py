@@ -7,12 +7,47 @@ from omnipiano.utils.info_keys import EpisodeInfoKeys
 
 
 class SafeRecordEpisodeStatistics(gym.Wrapper):
-    """
-    A Gymnasium wrapper that automatically logs episode statistics (returns, lengths, 
-    safety costs, and musical metrics) to a CSV file.
-    
-    This makes the logging completely algorithm-agnostic. It works with Stable Baselines 3, 
-    CleanRL, or any custom training loop.
+    """Episode-level CSV logger for OmniPiano eval rollouts.
+
+    Writes one CSV row per completed episode (env_step_count, episode index,
+    ep_return, ep_length, ep_cost, ep_violations, F1 / precision / recall,
+    sustain_*, and reward decomposition) to
+    ``<log_dir>/<split>_episode_metrics_<env_id>.csv``. Schema is locked
+    to ``tools/checkpoint_replay_eval.py``'s ``_CSV_HEADER`` so SB3 +
+    OmniSafe eval data plot with the same downstream code.
+
+    NOT a drop-in for ``gymnasium.wrappers.RecordEpisodeStatistics``
+    --------------------------------------------------------------------
+    Despite the similar name, this wrapper does NOT populate
+    ``info["episode"] = {"r", "l", "t"}`` — it only writes the CSV file
+    as a side effect. Consumers that read ``info["episode"]`` (SB3's
+    ``EvalCallback`` for ``ep_rew_mean`` / ``ep_len_mean`` tensorboard
+    scalars, CleanRL's logging hooks, etc.) still need a separate
+    ``Monitor`` / ``VecMonitor`` wrapper.
+
+    Today this is invisible to users because ``stable_baselines3.common
+    .env_util.make_vec_env`` auto-wraps each sub-env in ``Monitor``
+    before we attach this wrapper, so both signals coexist. But any
+    handwritten training loop that does ``omnipiano.make(env_id,
+    log_dir=..., log_split="eval")`` and skips ``Monitor`` will get a
+    CSV but no ``info["episode"]``, silently breaking downstream
+    ``EvalCallback``-style code.
+
+    Activation
+    ----------
+    Attached only when ``omnipiano.make()`` is called with
+    ``log_split == "eval"`` (see ``omnipiano/envs/registration.py``).
+    Used by the SB3 baseline templates' eval_env construction; not
+    attached on training envs or on OmniSafe runs (OmniSafe eval CSVs
+    are produced post-hoc by ``tools/checkpoint_replay_eval.py``).
+
+    Required upstream wrapper order (set in ``registration.py``)
+    -----------------------------------------------------------
+    ``... → MetricsWrapper → SafetyWrapper → RobustWrapper →
+    SafeRecordEpisodeStatistics``. By the time ``step()`` runs here,
+    ``info`` already contains ``episode_task/*`` (from MetricsWrapper at
+    terminal step) and ``episode_safety/*`` (from SafetyWrapper) so this
+    wrapper just reads them out.
     """
     def __init__(self, env, log_dir, env_id=None, split="train"):
         super().__init__(env)
@@ -42,7 +77,17 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
                 'env_step_count', 'episode', 'time_elapsed', 'ep_return', 'ep_length',
                 'ep_cost', 'ep_violations', 'ep_f1', 'ep_precision', 'ep_recall',
                 'ep_sustain_f1', 'ep_sustain_precision', 'ep_sustain_recall',
-                'energy_reward', 'fingering_reward', 'forearm_reward', 'key_press_reward', 'sustain_reward'
+                # Reward decomposition. ``fingering_reward`` and
+                # ``ot_fingering_reward`` are mutually exclusive per env
+                # (controlled by ``disable_fingering_reward``); each row
+                # populates exactly one and leaves the other blank. Keep
+                # them in separate columns so they're never confused at
+                # paper-writing time — the two functions have different
+                # mathematical definitions (annotation-pair distance vs.
+                # Hungarian-matched K-to-K distance) and are not directly
+                # comparable.
+                'energy_reward', 'fingering_reward', 'ot_fingering_reward',
+                'forearm_reward', 'key_press_reward', 'sustain_reward'
             ])
 
     def reset(self, **kwargs):
@@ -78,10 +123,11 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
             
             energy_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_ENERGY_REWARD, "")
             fingering_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_FINGERING_REWARD, "")
+            ot_fingering_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_OT_FINGERING_REWARD, "")
             forearm_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_FOREARM_REWARD, "")
             key_press_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_KEY_PRESS_REWARD, "")
             sustain_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_REWARD, "")
-            
+
             with open(self.csv_path, mode='a', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow([
@@ -94,7 +140,8 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
                     ep_violations,
                     ep_f1, ep_precision, ep_recall,
                     ep_sus_f1, ep_sus_prec, ep_sus_rec,
-                    energy_rew, fingering_rew, forearm_rew, key_press_rew, sustain_rew
+                    energy_rew, fingering_rew, ot_fingering_rew,
+                    forearm_rew, key_press_rew, sustain_rew
                 ])
                 
         return obs, reward, terminated, truncated, info
