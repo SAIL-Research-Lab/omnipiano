@@ -80,7 +80,7 @@
 | # | 位置 | 问题 | 严重度 |
 |---|---|---|---|
 | 1 | RobustConfig | 没有 eval 时噪声开关 —— 无法跑"对一个噪声训练的 policy 做净 eval"或"在 eval 时扫不同噪声级别" | **CRITICAL**（paper-blocking） |
-| 2 | `logger_wrapper.py:75-91` + `checkpoint_replay_eval.py` | RobustWrapper 已 emit 每 step `ROBUST_NOISE_*`，但两个 eval CSV 都没聚合，且缺 `eval_scale` 列（sweep 无法定位曲线点）。完整规格见 §0.6 | **CRITICAL**（reproducibility + sweep-blocking） |
+| 2 | `logger_wrapper.py:75-91` + `checkpoint_replay_eval.py` | RobustWrapper 已 emit 每 step `ROBUST_NOISE_*`，但两个 eval CSV 都没聚合，且缺 `eval_noise_scale` 列（sweep 无法定位曲线点）。完整规格见 §0.6 | **CRITICAL**（reproducibility + sweep-blocking） |
 | 3 | `envs/registration.py:347` 和 `multiagent/registration.py:319` | `master_seed + 31415` 是 hardcoded magic，且 MA registration 有**重复副本**；无注释、无命名常量。风险：重构一处会悄悄漏掉另一处 → 同一 master seed 下 MA 和 SA env 会得到不同的 obs-noise seed。 | **MODERATE**（可读性 + 可维护性） |
 | 4 | `RobustConfig` docstring | 有 dynamics randomization 的 TODO 占位符 —— 既然 v1 明确延期，应该删掉 | **MINOR**（清理） |
 | 5 | `dm_env_obs_noise.py` | 没有 `eval_mode` 开关；只要 `noise_std > 0` 就总是注入 | **CRITICAL**（与 #1 相同问题，但在 dm_env 层那侧） |
@@ -146,15 +146,15 @@ class RobustConfig:
                              `*_noise_uniform_high`    (3 channels × 2 fields = 6)
       - Shift constant:      `*_noise_shift`           (3 channels × 1 field = 3)
       - Distribution knob:   `noise_dist`              (1)
-      - Eval scale:          `eval_scale`              (1)
+      - Eval scale:          `eval_noise_scale`              (1)
     Total: 14 fields.
 
     At training time, RobustWrapper reads (channel, noise_dist) → picks
     the corresponding field(s). At evaluation time (via
     omnipiano.make(env_name, log_split="eval")), all magnitude fields
-    are multiplied by `eval_scale`:
-      - eval_scale=0.0 (default) → clean evaluation (post-training protocol)
-      - eval_scale=1.0           → same as training (in-training protocol)
+    are multiplied by `eval_noise_scale`:
+      - eval_noise_scale=0.0 (default) → clean evaluation (post-training protocol)
+      - eval_noise_scale=1.0           → same as training (in-training protocol)
       - Values in between        → robustness curve sweep
 
     Uniform bounds are user-configurable:
@@ -187,8 +187,13 @@ class RobustConfig:
     # === Distribution selector ===
     noise_dist: Literal["gaussian", "uniform", "shift"] = "gaussian"
 
-    # === Eval-time scaling factor (applied to ALL magnitude fields) ===
-    eval_scale: float = 0.0
+    # === Eval-time noise multiplier (applied to ALL magnitude fields) ===
+    # effective eval noise = registered training noise × eval_noise_scale.
+    # 0.0 = clean eval; 1.0 = same as training; >1 = stress test.
+    # (Named eval_noise_scale, not eval_scale, to make explicit that it
+    #  scales the *noise* and is a multiplier relative to the training
+    #  level — see §0.6.2 for why it must also be logged per eval episode.)
+    eval_noise_scale: float = 0.0
 
     def __post_init__(self):
         """Validate:
@@ -249,7 +254,7 @@ class RobustConfig:
 | Gaussian σ | `{action,obs,reward}_noise_std` | 3 |
 | Uniform bounds | `{action,obs,reward}_noise_uniform_{low,high}` | 6 |
 | Shift 常数 | `{action,obs,reward}_noise_shift` | 3 |
-| Meta | `noise_dist`, `eval_scale` | 2 |
+| Meta | `noise_dist`, `eval_noise_scale` | 2 |
 | **合计** | | **14** |
 
 **为什么选 Option C.3（per-distribution 独立字段）**：
@@ -273,7 +278,7 @@ cfg.action_noise_uniform_high = +a
 
 **为什么删除 `# TODO: Add dynamics randomization configs`**：根据范围，dynamics 是 v2；v1 代码中不留 TODO 标记。
 
-**0.2 — `eval_scale` 在 make() 中的接线**（`omnipiano/envs/registration.py`）
+**0.2 — `eval_noise_scale` 在 make() 中的接线**（`omnipiano/envs/registration.py`）
 
 `omnipiano.make()` 用 `log_split="train"` 或 `log_split="eval"` 调用。我们让 `log_split` 影响 `RobustConfig` 如何被消费。**因为 Option C.3 有 3 种独立分布字段（12 个 magnitude 字段），`replace()` 需要覆盖所有 12 个**：
 
@@ -284,7 +289,7 @@ def make(env_name, log_split="train", **kwargs):
 
     # 根据 log_split 决定 scale
     if log_split == "eval":
-        scale = robust_config.eval_scale
+        scale = robust_config.eval_noise_scale
     else:
         scale = 1.0
 
@@ -326,7 +331,7 @@ def make(env_name, log_split="train", **kwargs):
 
 `replace()` 来自 `dataclasses`（廉价不可变拷贝）。原始 `robust_config`（来自 registry）保持未修改，以便 reproducibility tracing。
 
-**Reviewer 待决问题**：是否在 `make(...)` 的 kwargs 中暴露 `eval_scale_override`（这样用户可以不用注册新 env 就请求 "scale=0.5"）？我的建议：v1 **不**做 —— 遵循与 `safety_config` 一样的"只在 registry 配置"哲学。Sweep 通过 `tools/robust_eval_sweep.py` 完成，它用不同 std 的注册 env 构造，而不是在单个 env 上运行时修改 std。
+**Reviewer 待决问题**：是否在 `make(...)` 的 kwargs 中暴露 `eval_noise_scale_override`（这样用户可以不用注册新 env 就请求 "scale=0.5"）？我的建议：v1 **不**做 —— 遵循与 `safety_config` 一样的"只在 registry 配置"哲学。Sweep 通过 `tools/robust_eval_sweep.py` 完成，它用不同 std 的注册 env 构造，而不是在单个 env 上运行时修改 std。
 
 **0.3 — RobustWrapper 中加 reward noise 注入**（`omnipiano/wrappers/robust_wrapper.py`）
 
@@ -536,7 +541,7 @@ wrapper 数据流(已代码核对):
 
 | 列 | 含义 | 用途 |
 |---|---|---|
-| `eval_scale` | 该 eval 实际跑的噪声缩放因子(0=clean, 1=training-level, sweep 用其它值) | **sweep 命脉** —— 没它无法判断一行属于 robustness 曲线的哪个点 |
+| `eval_noise_scale` | 该 eval 实际跑的噪声缩放因子(0=clean, 1=training-level, sweep 用其它值) | **sweep 命脉** —— 没它无法判断一行属于 robustness 曲线的哪个点 |
 | `ep_noise_action_l2` | episode 内 `info[robust/noise_action_l2]` 求和 | 审计"实际噪声水平是否符合配置",抓 config bug |
 | `ep_noise_obs_l2` | episode 内 `info[robust/noise_obs_l2]` 求和 | 同上 |
 | `ep_noise_reward` | episode 内 `info[robust/noise_reward]` 求和(§0.3 新增 key,可为负) | 同上 |
@@ -547,7 +552,7 @@ wrapper 数据流(已代码核对):
 
 - **`ep_true_return`(clean reward 单位下的真性能)**:**不加**。原因:
   1. clean total reward = 现有 reward 分解列之和(`energy + key_press + sustain + ot_fingering + forearm`,composite reward 就是各 term 相加),**已可从现有列算出**,无需新列;
-  2. 更根本:**reward channel 在 eval(固定策略)下,reward 噪声是 no-op** —— eval 时 `π(obs)→action` 不看 reward(无学习),噪声只污染返回标量、不改 action,所以轨迹与 clean env 逐字节相同,F1、ep_return 都不受影响(ep_return 只是被"事后污染",轨迹不变)。**推论:reward channel 的 robustness 完全是训练期现象**,eval 天然该 clean(eval_scale=0),observed-vs-true 区分无意义。
+  2. 更根本:**reward channel 在 eval(固定策略)下,reward 噪声是 no-op** —— eval 时 `π(obs)→action` 不看 reward(无学习),噪声只污染返回标量、不改 action,所以轨迹与 clean env 逐字节相同,F1、ep_return 都不受影响(ep_return 只是被"事后污染",轨迹不变)。**推论:reward channel 的 robustness 完全是训练期现象**,eval 天然该 clean(eval_noise_scale=0),observed-vs-true 区分无意义。
 - **per-step 全量 obs / action / noise 向量 trace(原 Tier 3 `noise_trace.npz`)**:**v1 不做**(用户 2026-07-03 确认)。固定 seed 下可重建;需要时再单独设计,不进 v1 scope。
 - **a_exec(执行的噪声 action)向量**:**不记**。它的*结果*已被 F1/reward 捕获;向量本身固定 seed 可重建。
 
@@ -561,7 +566,7 @@ wrapper 数据流(已代码核对):
 
 ```python
 def test_robust_v1_noise_sequences_unchanged():
-    """Phase 0 changes the RobustConfig surface (adds eval_scale,
+    """Phase 0 changes the RobustConfig surface (adds eval_noise_scale,
     reward_noise_std, noise_dist, and per-distribution independent
     fields) but MUST NOT change the noise sequence for the 2 existing
     robust envs at the same master seed (they use Gaussian by default,
@@ -622,7 +627,7 @@ def test_robust_v1_noise_sequences_unchanged():
 ### 实操建议：跨 channel 比较时怎么办
 
 Paper 的 robustness curve **不跨 channel 比较绝对 std 值**：
-- 每个 channel **独立**画曲线（x = eval_scale，y = F1）
+- 每个 channel **独立**画曲线（x = eval_noise_scale，y = F1）
 - **不**画"同一 std 下 3 个 channel 的对比条形图" —— 这个图会误导读者以为 std 可比
 - 若要跨 channel 定性对比"哪个 channel 更 fragile"，用 **"F1 掉 50% 时的 std 值"** 作为 metric，这样每个 channel 各自的 std scale 隐去了
 
@@ -914,7 +919,7 @@ env 实例，每个 test 自行 `reset(seed=...)` 隔离。
 **Phase 0 需追加的测试**（当对应代码路径存在后）：
 - dist parametrize：uniform / shift 复用 A5/A6 断言（同一 a_cmd-save/override 代码路径）
 - reward-channel gate：`obs[reward_slice] == float32(r_obs)` 每 step
-- eval_scale=0 env 与 Clean env 全 obs bit-exact
+- eval_noise_scale=0 env 与 Clean env 全 obs bit-exact
 - §0.7 noise-sequence equivalence（2 个 legacy robust env）
 
 
@@ -931,9 +936,9 @@ env 实例，每个 test 自行 `reset(seed=...)` 隔离。
 
 **Step 2: 完整 Phase 0**（待启动）
 - 分支：`feat/robust-phase0`
-- 按 §0.1-0.7 逐项做（14 字段 RobustConfig / eval_scale / reward noise / OBS_NOISE_SEED_OFFSET / CSV logging）
+- 按 §0.1-0.7 逐项做（14 字段 RobustConfig / eval_noise_scale / reward noise / OBS_NOISE_SEED_OFFSET / CSV logging）
 - 方案 6 逻辑已在 mainline（Step 1 merge 后），§0.3 只需：(a) reward slot override（`obs[reward_slice] = float32(r_obs)`，仅 reward channel 激活时）；(b) `_channel_active` / `_sample_noise` 适配 14 字段 config —— a_cmd-save/override 机制不变
-- 跑 §"完整测试清单" 的 Phase 0 追加项（dist parametrize / reward gate / eval_scale / §0.7 equivalence）
+- 跑 §"完整测试清单" 的 Phase 0 追加项（dist parametrize / reward gate / eval_noise_scale / §0.7 equivalence）
 - 全绿才 merge
 
 **Step 3: Phase 1（如果 Phase 0 全绿）**
@@ -993,7 +998,7 @@ v1 所有注册的 robust task 都是 **single-channel** —— 每个 env id �
 
 def _make_cfg_for_task(channel_lower: str, dist_key: str, level_value: float):
     """Given (channel, dist, level), build a single-channel RobustConfig
-    with only the fields for `dist` set (and eval_scale=0.0 default).
+    with only the fields for `dist` set (and eval_noise_scale=0.0 default).
 
     Each distribution's parameter is set to `level_value` DIRECTLY
     (no cross-distribution normalization — Option 4a decision):
@@ -1007,7 +1012,7 @@ def _make_cfg_for_task(channel_lower: str, dist_key: str, level_value: float):
     that `level_value` is each distribution's natural parameter, not
     the empirical std. See §5.1.5 for asymmetric uniform extension.
     """
-    kwargs = {"noise_dist": dist_key, "eval_scale": 0.0}
+    kwargs = {"noise_dist": dist_key, "eval_noise_scale": 0.0}
     if dist_key == "gaussian":
         kwargs[f"{channel_lower}_noise_std"] = level_value
     elif dist_key == "uniform":
@@ -1157,20 +1162,20 @@ register(
 
 现有 `tools/checkpoint_replay_eval.py` 的姊妹。给定：
 - 一个训练好的 ckpt（来自 27 个注册 env 之一 OR 净训练的 ckpt）
-- 噪声 grid：`eval_scale` 值列表（例如 `[0.0, 0.5, 1.0, 2.0, 4.0]`）
+- 噪声 grid：`eval_noise_scale` 值列表（例如 `[0.0, 0.5, 1.0, 2.0, 4.0]`）
 
 它循环：
 ```python
 for scale in noise_grid:
-    eval_env = omnipiano.make(env_id, log_split="eval", _eval_scale_override=scale)
+    eval_env = omnipiano.make(env_id, log_split="eval", _eval_noise_scale_override=scale)
     # 或者通过已经把 scale baked-in 的注册 task id 来创建 per-scale env
     metrics = replay_ckpt(ckpt, eval_env, n_episodes=N)
     write_csv_row(env_id, scale, metrics)
 ```
 
-输出：列为 `(env_id, ckpt_epoch, eval_scale, eval_seed, ep_return, ep_cost, ep_f1, ep_noise_*)` 的 CSV —— 喂给 robustness 曲线绘图。
+输出：列为 `(env_id, ckpt_epoch, eval_noise_scale, eval_seed, ep_return, ep_cost, ep_f1, ep_noise_*)` 的 CSV —— 喂给 robustness 曲线绘图。
 
-**Reviewer 待决问题**：你要单独的"eval override"路径（在 make-time 传 `eval_scale`，而不是从 registry 取），还是严格 registry-pinned？严格 registry-pinned 意味着要给每个 `(channel, dist, std, scale)` 四元组注册一个 env，scale grid 有 5 个值就会膨胀到约 135 个 env。**我的选择：允许通过 `make()` 上的私有 kwarg `_eval_scale_override=` 做运行时覆盖，仅供这个 sweep tool 使用，不暴露给一般用户。**
+**Reviewer 待决问题**：你要单独的"eval override"路径（在 make-time 传 `eval_noise_scale`，而不是从 registry 取），还是严格 registry-pinned？严格 registry-pinned 意味着要给每个 `(channel, dist, std, scale)` 四元组注册一个 env，scale grid 有 5 个值就会膨胀到约 135 个 env。**我的选择：允许通过 `make()` 上的私有 kwarg `_eval_noise_scale_override=` 做运行时覆盖，仅供这个 sweep tool 使用，不暴露给一般用户。**
 
 ### 5.3 Phase 1 交付物
 
@@ -1239,13 +1244,13 @@ paper 要报告的**两种协议**：
 
 | 协议 | 训练 env | 评估 env | 测的是什么 |
 |---|---|---|---|
-| **In-training robustness** | `OmniPiano-ClairDeLune-A-Gauss-P05-v0`（噪声开） | 同 env，`eval_scale=1.0`（噪声开） | 给定训练时噪声，policy 是否学到鲁棒性 |
-| **Post-training robustness** | `OmniPiano-ClairDeLune-A-Gauss-P05-v0`（噪声开） | 同 env，`eval_scale=0.0`（净 eval） | 噪声训练的 policy 在净 eval 上是否退化（有时会） |
-| **对未见噪声的泛化** | `OmniPiano-ClairDeLune-Clean-v0`（无噪声） | `OmniPiano-ClairDeLune-A-Gauss-P05-v0` 配 `eval_scale=1.0`（噪声开） | 净训练的 policy 在测试时面对噪声能否撑住 |
+| **In-training robustness** | `OmniPiano-ClairDeLune-A-Gauss-P05-v0`（噪声开） | 同 env，`eval_noise_scale=1.0`（噪声开） | 给定训练时噪声，policy 是否学到鲁棒性 |
+| **Post-training robustness** | `OmniPiano-ClairDeLune-A-Gauss-P05-v0`（噪声开） | 同 env，`eval_noise_scale=0.0`（净 eval） | 噪声训练的 policy 在净 eval 上是否退化（有时会） |
+| **对未见噪声的泛化** | `OmniPiano-ClairDeLune-Clean-v0`（无噪声） | `OmniPiano-ClairDeLune-A-Gauss-P05-v0` 配 `eval_noise_scale=1.0`（噪声开） | 净训练的 policy 在测试时面对噪声能否撑住 |
 
 Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（泛化）是 bonus，一旦 eval sweep 存在就是一行代码的事。
 
-**报告指标**：F1（per-step）和 EpRet，画成 **robustness 曲线**（x = `eval_scale`，y = F1），针对一个或多个 checkpoint。
+**报告指标**：F1（per-step）和 EpRet，画成 **robustness 曲线**（x = `eval_noise_scale`，y = F1），针对一个或多个 checkpoint。
 
 ---
 
@@ -1256,9 +1261,9 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 | `omnipiano/configs/__init__.py` | 0 | 修改（扩展 RobustConfig） |
 | `omnipiano/wrappers/robust_wrapper.py` | 0 | 修改（加 reward noise + 分布开关） |
 | `omnipiano/envs/dm_env_obs_noise.py` | 0 | 修改（抽出 OBS_NOISE_SEED_OFFSET 常量 + 加分布支持以匹配） |
-| `omnipiano/envs/registration.py` | 0 | 修改（eval_scale 接线，使用来自 dm_env_obs_noise.OBS_NOISE_SEED_OFFSET 的命名常量） |
+| `omnipiano/envs/registration.py` | 0 | 修改（eval_noise_scale 接线，使用来自 dm_env_obs_noise.OBS_NOISE_SEED_OFFSET 的命名常量） |
 | `omnipiano/multiagent/registration.py` | 0 | 修改（使用同样的命名常量；去重 line 319 的 `+31415` 第二份副本） |
-| `omnipiano/utils/logger_wrapper.py` | 0 | 修改（eval CSV 加 4 列：`eval_scale` + `ep_noise_{action,obs,reward}`，见 §0.6.2） |
+| `omnipiano/utils/logger_wrapper.py` | 0 | 修改（eval CSV 加 4 列：`eval_noise_scale` + `ep_noise_{action,obs,reward}`，见 §0.6.2） |
 | `tools/checkpoint_replay_eval.py` | 0 | 修改（`_CSV_HEADER` + 写入同步加同样 4 列，schema 与 logger_wrapper 锁定，见 §0.6.1） |
 | `omnipiano/utils/info_keys.py` | 0 | 修改（加 ROBUST_NOISE_REWARD） |
 | `omnipiano/tests/test_robust_v1_equivalence.py` | 0 | 新建（bit-exact 回归测试） |
@@ -1276,7 +1281,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 | `test_robust_v1_equivalence.py`（上文 §0.7） | 0 | 在 2 个现有 robust env 上 bit-exact 回归（除掉 seed offset 从 31415 → 20000 的有意 bump 之外） |
 | `test_obs_noise_seed_consistency.py`（§0.5） | 0 | SA env 和 MA env 在同 master seed 下首个 obs-noise 样本必须一致 |
 | Smoke test：`omnipiano.make("OmniPiano-ClairDeLune-A-Gauss-P05-v0").reset()` 能跑 | 0/1 | smoke |
-| Smoke test：`log_split="eval"` 配 eval_scale=0.5 → info 上的有效 std = 原值 × 0.5 | 0 | unit |
+| Smoke test：`log_split="eval"` 配 eval_noise_scale=0.5 → info 上的有效 std = 原值 × 0.5 | 0 | unit |
 | 分布合理性：symmetric std-matched uniform (`low=-0.1·√3, high=+0.1·√3`) 采 10000 样本 → empirical std ≈ 0.1 ± 1% | 0 | unit |
 | Uniform 非对称支持：`uniform_low=-0.02, uniform_high=+0.10` 采 10000 样本 → mean ≈ 0.04, std ≈ 0.035 | 0 | unit |
 | `__post_init__` 校验：设 `noise_dist='gaussian'` 但 `action_noise_shift=0.05` → 抛 `ValueError` | 0 | unit |
@@ -1297,7 +1302,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 ### Phase 1 跑完后要填的数字
 - 每 channel：PPO 在 `ClairDeLune` 上 std=0.05 时的 净 vs 扰 F1 跌幅
 - 每 channel：PPOLag 在 `ClairDeLune` 上 std=0.05 时的 净 vs 扰 F1 跌幅
-- 每 channel 的 robustness 曲线斜率（ΔF1 / Δeval_scale）
+- 每 channel 的 robustness 曲线斜率（ΔF1 / Δeval_noise_scale）
 - "shift" 分布的曲线是否与 Gaussian 在质上不同（YES 有意思，NO 在预期内）
 
 ### 值得记录的负结果（预期可能出现）
@@ -1325,7 +1330,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 ## 12. 给 reviewer 的 open questions（汇总）
 
-**架构基础决议 ✅（2026-06-27）**：**Option C.3 —— per-distribution 独立字段**（RobustConfig 14 字段：3 std + 6 uniform_low/high + 3 shift + noise_dist + eval_scale）。理由：字段名严格对应数学参数，严格模仿 Robust-Gymnasium 术语（`--noise-sigma` / `--uniform-low/high` / `--noise-shift`），允许非对称 uniform（用户可注册有偏 sensor drift 类任务），`__post_init__` 校验捕获错配。详见 §0.1。
+**架构基础决议 ✅（2026-06-27）**：**Option C.3 —— per-distribution 独立字段**（RobustConfig 14 字段：3 std + 6 uniform_low/high + 3 shift + noise_dist + eval_noise_scale）。理由：字段名严格对应数学参数，严格模仿 Robust-Gymnasium 术语（`--noise-sigma` / `--uniform-low/high` / `--noise-shift`），允许非对称 uniform（用户可注册有偏 sensor drift 类任务），`__post_init__` 校验捕获错配。详见 §0.1。
 
 **v1 sweep 参数化决议 ✅（2026-06-27，Option 4a）**：**Uniform 使用其自然参数**（`low` 和 `high` 独立设置），**不做 std-matching 转换**。v1 default sweep 用**对称 uniform** (`low = -level_value, high = +level_value`)。跨 3 种分布共用 numerical value `level_value ∈ {0.01, 0.05, 0.10}`，但每分布对应**不同**自然参数（Gaussian σ、Uniform half-range、Shift constant），且**empirical std 不同**（Gaussian=σ, Uniform=σ/√3, Shift=0）。非对称 uniform 由 infrastructure 支持但 v1 不默认注册，详见 §5.1.5。
 
@@ -1353,8 +1358,8 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
    **v1 总 task 数 = 27 robust + 1 clean = 28**（已经反映在 §6 任务清单表里）。
 6. **§5.1(c)（包含 Shift 分布）**：v1 包含 "Shift" 分布（27 个 task 而不是 18 个）—— OK 还是砍掉？
    ✅ **已决定（2026-06-27）**：**保留** Shift 分布，v1 = 27 task（+ 1 Clean = 28）。语义采用 **program-run-level 恒定 `+shift_value`**（与 Q2 决议一致），其中 `shift_value` 是 `RobustConfig.*_noise_shift` 字段（Option C.3 独立字段，**与 `*_noise_std` 无关**）。加入的成本极低（无 RNG，无 reset 逻辑），且给 paper 提供 3-way 分布 sweep 与 Robust-Gymnasium 的直接对照（RG `noise_shift` 直接对齐），值得纳入。**注**：v1 registered shift tasks 用**正值**（`shift = +level_value`），符合 RG paper 惯例；非对称/负值 shift 由 infrastructure 支持但 v1 不默认注册。
-7. **§5.2（eval scale 覆盖路径）**：允许 sweep tool 通过 `_eval_scale_override=` 私有 kwarg 在 make() 时覆盖，而不是为每个 `(env × scale)` 对注册一个 env —— OK 吗？
-   ✅ **已决定（2026-06-27）**：**采用 `_eval_scale_override=` 私有 kwarg** 方案（B1）。仅 `tools/robust_eval_sweep.py` 使用，不暴露给一般用户。理由：
+7. **§5.2（eval scale 覆盖路径）**：允许 sweep tool 通过 `_eval_noise_scale_override=` 私有 kwarg 在 make() 时覆盖，而不是为每个 `(env × scale)` 对注册一个 env —— OK 吗？
+   ✅ **已决定（2026-06-27）**：**采用 `_eval_noise_scale_override=` 私有 kwarg** 方案（B1）。仅 `tools/robust_eval_sweep.py` 使用，不暴露给一般用户。理由：
    - **避免 env 数爆炸**：不这样做则要注册 28 × 5 scale = 140 env
    - **eval scale 是"评估行为"**：概念上不属于"env 属性"（同一策略在不同 scale 下应有不同表现）
    - **`_` 前缀清晰标示"内部 API"**：普通用户不会误用
@@ -1363,15 +1368,15 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
    
    实现细节（在 `omnipiano.make()` 里）：
    ```python
-   def make(env_name, log_split="train", *, _eval_scale_override=None, **kwargs):
+   def make(env_name, log_split="train", *, _eval_noise_scale_override=None, **kwargs):
        ...
-       if _eval_scale_override is not None:
+       if _eval_noise_scale_override is not None:
            assert log_split == "eval", (
-               "_eval_scale_override only allowed when log_split='eval'"
+               "_eval_noise_scale_override only allowed when log_split='eval'"
            )
-           scale = _eval_scale_override
+           scale = _eval_noise_scale_override
        elif log_split == "eval":
-           scale = robust_config.eval_scale
+           scale = robust_config.eval_noise_scale
        else:
            scale = 1.0
        # ...继续用 scale 计算 effective_robust_config
