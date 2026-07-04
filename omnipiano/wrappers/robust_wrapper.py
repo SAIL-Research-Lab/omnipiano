@@ -20,10 +20,62 @@ What this wrapper does
   (via the cached ``DmEnvObsNoiseWrapper`` reference) and reports it
   through ``info["robust/noise_obs_l2"]``.
 * Logs ``info["robust/noise_action_l2"]`` for action noise.
+* **Method 6 (Option B)** — when action noise is active, overrides the
+  ``action`` slot of the flat observation with the *clean commanded*
+  action (in physical actuator units), fixing the noise-information
+  leak described in ``omnipiano/docs/robust_task_design.md`` §4.7.
 
 If the chain doesn't contain a ``DmEnvObsNoiseWrapper`` (e.g.,
 ``robust_config.obs_noise_std == 0``), the obs-noise lookup returns 0
 and the info key is reported as 0.0.
+
+Method 6 (Option B) — obs["action"] principled-semantics fix
+------------------------------------------------------------
+
+Problem: ``ObservationActionRewardWrapper`` sits *below*
+``CanonicalSpecWrapper`` in the dm_env chain, so the value it records
+into the flat obs "action" slot is the **noised executed** action
+(``a_exec``) after canonical→physical rescaling. Under the standard
+robust-RL threat model (Disrupted-MDP, Gu et al. 2025), the policy's
+own action memory must be the **clean commanded** action (``a_cmd``);
+exposing ``a_exec`` leaks the injected noise to the policy, which can
+then trivially learn to counteract it.
+
+Fix: after the inner ``env.step`` returns, overwrite the "action"
+slot of the flat obs with ``physical(a_cmd)``, computed by replaying
+the *exact* transform pipeline the executed action goes through:
+
+    DmEnvToGymnasium.step:       np.asarray(action, dtype=np.float32)
+    SinglePrecisionWrapper.step: passes the action through unchanged
+    CanonicalSpecWrapper.step:   _scale_nested_action(action, spec, clip)
+
+We call dm_env_wrappers' own ``_scale_nested_action`` with the *same*
+spec object and clip flag cached from the chain's
+``CanonicalSpecWrapper``, so the computed value is bit-identical to
+what the executed path would produce for the same input. Importing
+from ``dm_env_wrappers._src`` is deliberate: reimplementing the
+formula risks 1-ulp dtype-promotion differences that the A6 gate test
+(``omnipiano/tests/test_robust_v1_method6.py``) would flag.
+
+The override only runs when action noise is actually injected
+(``action_noise_std > 0``); non-robust envs take a code path that
+never touches (or copies) the observation, so all existing baselines
+are *structurally* unaffected — not merely numerically.
+
+Layout caching is rebuild-safe: ``DmEnvToGymnasium.reset(seed=X)``
+rebuilds the dm_env chain, but the obs-key structure, physical action
+spec values, and clip flag are all derived from the static env config
+(same MJCF model, same wrapper kwargs), so values cached at
+``__init__`` remain valid across rebuilds. (Contrast with
+``last_step_noise_l2`` below, which lives on a *wrapper instance* and
+must be re-walked every call.)
+
+Limitations (fail-fast guarded):
+* ``frame_stack > 1`` is not supported — the flat layout becomes
+  per-frame interleaved and only the newest frame's slot could be
+  fixed. All OmniPiano / RoboPianist protocols use ``frame_stack=1``.
+* If the obs Dict has no "action" key (``action_reward_observation=
+  False``), there is nothing to fix and the override is skipped.
 """
 import gymnasium as gym
 import numpy as np
@@ -38,12 +90,125 @@ class RobustWrapper(gym.Wrapper):
     def __init__(self, env, config: RobustConfig):
         super().__init__(env)
         self.config = config
+        # Method 6 layout — computed once; rebuild-safe (see module docstring).
+        (
+            self._action_slice,
+            self._reward_slice,
+            self._physical_action_spec,
+            self._canonical_clip,
+        ) = self._compute_override_layout()
 
+    # ------------------------------------------------------------------
+    # Method 6 — construction-time layout computation
+    # ------------------------------------------------------------------
+    def _compute_override_layout(self):
+        """Locate the "action" / "reward" slots in the flat obs vector.
+
+        Returns ``(action_slice, reward_slice, physical_action_spec, clip)``.
+        Either slice may be None (key absent from the obs Dict); the
+        spec/clip pair is (None, False) if the chain has no
+        ``CanonicalSpecWrapper`` (then commanded == executed coordinates
+        and the override degenerates to a float32 cast).
+        """
+        from dm_env_wrappers import (
+            CanonicalSpecWrapper,
+            ConcatObservationWrapper,
+            FrameStackingWrapper,
+        )
+
+        from omnipiano.utils.env_unwrap import (
+            find_dm_env_wrapper,
+            get_dm_env_from_gym,
+        )
+
+        dm_env = get_dm_env_from_gym(self.env)
+
+        # Guard: frame stacking interleaves frames in the flat obs; the
+        # slot positions below would only address one frame. v1 protocols
+        # are all frame_stack=1 (paper-same), so fail fast instead of
+        # silently overriding the wrong slice.
+        if find_dm_env_wrapper(dm_env, FrameStackingWrapper) is not None:
+            if self.config.action_noise_std > 0:
+                raise NotImplementedError(
+                    "RobustWrapper's obs['action'] override (Method 6) does "
+                    "not support frame_stack > 1. All OmniPiano / "
+                    "RoboPianist protocols use frame_stack=1; see "
+                    "omnipiano/docs/robust_task_design.md §4.7 before "
+                    "enabling stacking on a robust task."
+                )
+            return None, None, None, False
+
+        concat = find_dm_env_wrapper(dm_env, ConcatObservationWrapper)
+        if concat is None:
+            # Non-paper chain (Dict obs all the way up) — no flat slots
+            # to override. Action noise still applies to physics.
+            return None, None, None, False
+
+        # ConcatObservationWrapper flattens {k: obs[k] for k in _obs_names}
+        # via tree.flatten, which iterates dict keys in SORTED (alphabetical)
+        # order — see its class docstring ("fields ... in sorted order by
+        # their names"). Scalars are promoted to 1-d by np.atleast_1d, so a
+        # shape-() spec contributes one element.
+        inner_spec = concat._environment.observation_spec()
+        offset = 0
+        action_slice = None
+        reward_slice = None
+        for key in sorted(concat._obs_names):
+            dim = int(np.prod(inner_spec[key].shape)) if inner_spec[key].shape else 1
+            if key == "action":
+                action_slice = slice(offset, offset + dim)
+            elif key == "reward":
+                reward_slice = slice(offset, offset + dim)
+            offset += dim
+
+        expected_dim = int(np.prod(self.env.observation_space.shape))
+        if offset != expected_dim:
+            raise RuntimeError(
+                f"RobustWrapper: flat-obs layout mismatch — alphabetical "
+                f"concat of the dm_env Dict spec gives {offset} dims but "
+                f"observation_space has {expected_dim}. The ConcatObs "
+                f"ordering assumption may have changed upstream; do NOT "
+                f"trust the computed slots. Keys: {sorted(concat._obs_names)}"
+            )
+
+        canonical = find_dm_env_wrapper(dm_env, CanonicalSpecWrapper)
+        if canonical is not None:
+            # The wrapper's stored spec is the *physical* action spec of the
+            # chain below it — exactly what _scale_nested_action rescales to.
+            physical_spec = canonical._action_spec
+            clip = canonical._clip
+        else:
+            physical_spec = None
+            clip = False
+
+        return action_slice, reward_slice, physical_spec, clip
+
+    def _clean_physical(self, a_cmd: np.ndarray) -> np.ndarray:
+        """physical(a_cmd): what the executed path would have stored for a
+        noise-free command. Replays the exact transform pipeline (see
+        module docstring) using dm_env_wrappers' own scaling function and
+        the cached spec/clip, guaranteeing bit-identical arithmetic."""
+        a = np.asarray(a_cmd, dtype=np.float32)  # DmEnvToGymnasium's cast
+        if self._physical_action_spec is None:
+            return a
+        from dm_env_wrappers._src.canonical_spec import _scale_nested_action
+
+        return _scale_nested_action(
+            a, self._physical_action_spec, self._canonical_clip
+        )
+
+    # ------------------------------------------------------------------
+    # Step
+    # ------------------------------------------------------------------
     def step(self, action):
         # 1. Action noise — operates on flat action vector,
         #    completely independent of obs format.
         action_noise_l2 = 0.0
+        a_cmd = None
         if self.config.action_noise_std > 0:
+            # Save the clean commanded action BEFORE noise (Method 6).
+            # .copy() guards against callers reusing the same buffer.
+            a_cmd = np.asarray(action).copy()
             noise = self.np_random.normal(
                 0, self.config.action_noise_std, size=action.shape
             )
@@ -60,6 +225,17 @@ class RobustWrapper(gym.Wrapper):
         obs_noise_l2 = 0.0
         if self.config.obs_noise_std > 0:
             obs_noise_l2 = self._read_obs_noise_l2()
+
+        # 3. Method 6 (Option B): expose the clean commanded action to the
+        #    policy instead of the noised executed one. Only runs when
+        #    action noise was actually injected — non-robust envs return
+        #    the inner obs object untouched (no copy), so existing
+        #    baselines are structurally unaffected.
+        if a_cmd is not None and self._action_slice is not None:
+            obs = obs.copy()
+            obs[self._action_slice] = np.asarray(
+                self._clean_physical(a_cmd), dtype=obs.dtype
+            )
 
         info[InfoKeys.ROBUST_NOISE_ACTION_L2] = action_noise_l2
         info[InfoKeys.ROBUST_NOISE_OBS_L2] = obs_noise_l2
