@@ -141,6 +141,31 @@ register(
     ),
 )
 
+# ---------------------------------------------------------------------------
+# TEMPORARY ABLATION ENV — may be removed after analysis (2026-06-27).
+#
+# OmniPiano-ClairDeLune-CollisionSafe-v1: identical to v0 except
+# disable_forearm_reward=True. Tests whether the forearm_reward subset
+# (0.5/step bonus for no forearm-vs-forearm contact) creates a meaningful
+# asymmetry vs HandCollisionConstraint (which covers the entire hand
+# subtree). See memory `project_forearm_reward_handcollision_overlap`.
+# Two runs scheduled: PPOLag (cl=5) seed=0 + PPO (unconstrained) seed=0.
+# Compare against existing v0 runs at the same algo/seed/cl.
+# If no meaningful difference → revert v1 and keep v0.
+# If v1 cleanly separates reward/cost → promote disable_forearm_reward=True
+# to the other 3 collision-family envs (Maple-Safe / Maple-Force / Etude-Force).
+# ---------------------------------------------------------------------------
+register(
+    id="OmniPiano-ClairDeLune-CollisionSafe-v1",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    env_config=BenchmarkEnvConfig(disable_forearm_reward=True),
+    safety_config=SafetyConfig(
+        constraints=[
+            HandCollisionConstraint(penalty_coef=1.0),
+        ]
+    ),
+)
+
 register(
     id="OmniPiano-MapleLeafRag-CollisionSafe-v0",
     base_env_name="RoboPianist-repertoire-150-MapleLeafRag-v0",
