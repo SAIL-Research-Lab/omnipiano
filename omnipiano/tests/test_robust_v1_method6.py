@@ -292,3 +292,127 @@ def test_no_action_reward_obs_skips_override():
         assert info[InfoKeys.ROBUST_NOISE_ACTION_L2] > 0.0
     finally:
         env.close()
+
+
+# ==========================================================================
+# Extended gates G1-G6, G11 — episode boundaries, rebuilds, dtypes,
+# out-of-range actions, vec-env, reward-slot consistency
+# ==========================================================================
+
+
+def test_G1_invariant_across_episode_reset(clean_env, noise_env):
+    """Action-slot invariant must survive a reset() WITHOUT seed (no chain
+    rebuild; ObservationActionReward re-zeroes its slots). Note the
+    assertion is state-independent: the slot depends only on a_cmd, so it
+    must hold even if the two envs' physics have long diverged."""
+    rw_c = _find_robust_wrapper(clean_env)
+    sl = rw_c._action_slice
+    clean_env.reset(seed=21)
+    noise_env.reset(seed=21)
+    dim = clean_env.action_space.shape[0]
+    actions = _fixed_actions(60, dim, seed=555)
+
+    for a in actions[:30]:
+        obs_c, *_ = clean_env.step(a)
+        obs_n, *_ = noise_env.step(a)
+        assert np.array_equal(obs_c[sl], obs_n[sl])
+
+    # Mid-episode reset without seed — no dm_env rebuild.
+    obs_c0, _ = clean_env.reset()
+    obs_n0, _ = noise_env.reset()
+    # OAR re-zeroes the action slot on reset in both envs.
+    assert np.array_equal(obs_c0[sl], obs_n0[sl])
+
+    for a in actions[30:]:
+        obs_c, *_ = clean_env.step(a)
+        obs_n, *_ = noise_env.step(a)
+        assert np.array_equal(obs_c[sl], obs_n[sl])
+
+
+def test_G2_invariant_after_seed_rebuild(clean_env, noise_env):
+    """reset(seed=X) rebuilds the dm_env chain. Layout/spec were cached at
+    __init__ from the ORIGINAL chain — this test proves the cached values
+    remain valid against a rebuilt chain (static-config determinism)."""
+    rw_n = _find_robust_wrapper(noise_env)
+    sl = rw_n._action_slice
+    dim = clean_env.action_space.shape[0]
+
+    for rebuild_seed in (101, 202):
+        clean_env.reset(seed=rebuild_seed)
+        noise_env.reset(seed=rebuild_seed)
+        for a in _fixed_actions(5, dim, seed=rebuild_seed):
+            obs_c, *_ = clean_env.step(a)
+            obs_n, *_ = noise_env.step(a)
+            assert np.array_equal(obs_c[sl], obs_n[sl]), (
+                f"cached layout stale after reset(seed={rebuild_seed}) rebuild"
+            )
+
+
+def test_G3_out_of_range_caller_actions(clean_env, noise_env):
+    """Callers (e.g. unsquashed Gaussian PPO actors) may emit |a| > 1.
+    Both paths clip inside the SAME shared function (CanonicalSpec's
+    clip=True), so the slot must stay bit-identical."""
+    rw_c = _find_robust_wrapper(clean_env)
+    sl = rw_c._action_slice
+    clean_env.reset(seed=31)
+    noise_env.reset(seed=31)
+    dim = clean_env.action_space.shape[0]
+    rng = np.random.default_rng(31)
+    for _ in range(10):
+        a = rng.uniform(-1.7, 1.7, size=dim)  # deliberately out of range
+        obs_c, *_ = clean_env.step(a)
+        obs_n, *_ = noise_env.step(a)
+        assert np.array_equal(obs_c[sl], obs_n[sl])
+
+
+def test_G4_float32_caller_dtype(noise_env):
+    """SB3 passes float32 actions (OmniSafe float64 — covered by A5/A6).
+    The float32→float32 asarray is a no-op; override must stay exact."""
+    rw = _find_robust_wrapper(noise_env)
+    noise_env.reset(seed=41)
+    a = _fixed_actions(1, noise_env.action_space.shape[0], seed=41)[0]
+    a32 = a.astype(np.float32)
+    obs, *_rest = noise_env.step(a32)
+    expected = np.asarray(rw._clean_physical(a32), dtype=np.float32)
+    np.testing.assert_array_equal(obs[rw._action_slice], expected)
+
+
+def test_G5_sb3_dummy_vecenv_smoke():
+    """DummyVecEnv copies/stacks obs — ensure the override survives SB3's
+    vec plumbing (no aliasing surprises, info keys intact)."""
+    from stable_baselines3.common.vec_env import DummyVecEnv
+
+    def _mk():
+        return registration.make("OmniPianoTest-M6-ActionNoise-v0")
+
+    vec = DummyVecEnv([_mk, _mk])
+    try:
+        vec.seed(7)
+        vec.reset()
+        dim = vec.action_space.shape[0]
+        rng = np.random.default_rng(7)
+        for _ in range(5):
+            acts = rng.uniform(-1, 1, size=(2, dim)).astype(np.float32)
+            obs, rewards, dones, infos = vec.step(acts)
+            assert obs.shape[0] == 2
+            for info in infos:
+                assert info[InfoKeys.ROBUST_NOISE_ACTION_L2] > 0.0
+    finally:
+        vec.close()
+
+
+def test_G6_reward_slot_consistent_under_action_noise(noise_env):
+    """Action-channel tasks must NOT create a reward inconsistency: the
+    obs 'reward' slot (recorded by OAR from raw physics reward) must equal
+    the reward returned to the policy (float32 round-trip exact)."""
+    rw = _find_robust_wrapper(noise_env)
+    noise_env.reset(seed=51)
+    a = _fixed_actions(1, noise_env.action_space.shape[0], seed=51)[0]
+    obs, reward, *_ = noise_env.step(a)
+    assert obs[rw._reward_slice][0] == np.float32(reward)
+
+
+def test_G11_slices_disjoint(clean_env):
+    rw = _find_robust_wrapper(clean_env)
+    a, r = rw._action_slice, rw._reward_slice
+    assert a.stop <= r.start or r.stop <= a.start
