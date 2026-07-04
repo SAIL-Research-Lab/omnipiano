@@ -773,7 +773,7 @@ Option B 的关键性质：**对 non-robust env bit-exact no-op**。
 
 ### 需要通过 prototype 阶段的实验验证的假设
 
-⚠️ **在方案 6 正式进入 Phase 0 之前，必须先在 prototype 分支上验证以下 5 条**：
+⚠️ **在方案 6 正式进入 Phase 0 之前，必须先在 prototype 分支上验证以下 6 条**：
 
 | # | 假设 | 验证方法 | Gate 条件 |
 |---|---|---|---|
@@ -782,8 +782,15 @@ Option B 的关键性质：**对 non-robust env bit-exact no-op**。
 | A3 | dm_env 层 action_spec 可通过 unwrap 拿到 | 走 wrapper chain 找 action_spec | 拿到并且 minimum/maximum 是 physical range |
 | A4 | 对现有 env（noise=0）obs bit-exact 不变 | 跑同 seed 100 step，比较 obs 数值 | 100/100 step obs bit-exact 一致 |
 | A5 | Robust env（noise>0）obs["action"] 变为 clean physical | 用固定 seed 跑，比较 obs[action_slice] 与手工算 physical(a_cmd) | 数值一致 (float32 精度内) |
+| **A6** ★★★ | **`obs[action_slice]` 与 noise 强度无关**（cross-condition 一致性） | 同 fixed action 序列，clean env vs noised env，比较 `obs[action_slice]` | **100/100 step bit-exact 相同**（其他 slots 应该分岔，作为 sanity check） |
 
-若 A1-A5 全部通过 → 方案 6 正式进入 Phase 0（合并进 §0.3）
+**A6 是最强的 gate**：直接验证 "我们复用 `CanonicalSpec._scale_action` 的公式" 与"CanonicalSpec 内部实际计算" 是否 bit-exact 一致。任何 float 精度不匹配、字段读错、顺序颠倒都会被 A6 捕捉到。
+
+**Gate 通过条件**：
+- **Prototype gate**: A1-A6 **全部**通过 → 可以进 Phase 0 整合
+- **A6 是核心 gate**：因为它同时验证 override 是"发生了"且"formula 正确"
+
+若 A1-A6 全部通过 → 方案 6 正式进入 Phase 0（合并进 §0.3）
 若任一失败 → 回头重新设计（不 commit 到 Phase 0）
 
 ### 完整测试清单（`omnipiano/tests/test_robust_v1_method6.py`）
@@ -866,6 +873,97 @@ def test_A5_action_slot_is_clean_physical_under_noise():
     assert np.allclose(obs[action_slice], expected_physical, atol=1e-6), (
         f"obs[action_slice] = {obs[action_slice]}, "
         f"expected clean physical {expected_physical}"
+    )
+
+
+def test_A6_action_slot_invariant_across_noise_levels():
+    """[GATE 3 ★★★] 极其强的方案 6 formula-consistency 验证：
+    
+    核心 invariant: obs[action_slice] 只由 clean a_cmd 决定，
+    **与 action_noise_std 完全无关**。
+    
+    如果方案 6 (Option B) 实施正确：
+      - env_clean (no noise):    obs[action_slice] = CanonicalSpec 算出的 physical(a_cmd)
+      - env_noised (with noise): obs[action_slice] = 我们 override 算出的 physical(a_cmd)
+    
+    如果我们复用的 canonical→physical 公式与 CanonicalSpec._scale_action
+    严格一致（bit-exact），则**两种场景下 obs[action_slice] 应完全相同**。
+    
+    这个测试比 A4 (bit-exact no-op) 更严格：
+      - A4 在 non-robust 场景下，两个 code path 恰好算出相同值（a_cmd=a_exec 的巧合）
+      - A6 在 robust 场景下强制走 override 路径，直接对比公式一致性
+    
+    NOTE: 其他 obs slots (joints_pos, piano/state 等) 会因 physics 分岔而不同，
+    这是预期的（robust env 的 physics 用 noised a_exec，物理状态确实分岔）。
+    只有 action_slice 应该 invariant."""
+    seed = 42
+    # 完全相同的 fixed action 序列（不是 policy 决定，避免间接依赖）
+    fixed_actions = [
+        np.array([0.5, -0.3, 0.7, ..., 0.1], dtype=np.float32)
+        for _ in range(100)
+    ]
+    
+    # Setup A: 无 action noise
+    env_clean = omnipiano.make("OmniPiano-ClairDeLune-v0")
+    # Setup B: 有 action noise
+    env_noised = omnipiano.make("OmniPiano-ClairDeLune-A-Gauss-P05-v0")
+    
+    obs_c, _ = env_clean.reset(seed=seed)
+    obs_n, _ = env_noised.reset(seed=seed)
+    
+    # Reset 后的 obs[action_slice] 应该都是 zero（由 ObservationActionReward 
+    # 的 generate_value 生成），可以先 sanity check
+    action_slice = env_clean.unwrapped._robust_wrapper._action_slice
+    assert np.array_equal(obs_c[action_slice], obs_n[action_slice]), (
+        "reset 后 obs[action_slice] 应该都是 zero-init"
+    )
+    
+    diffs_action_slot = []
+    diffs_other_slots = []
+    
+    for i, a_cmd in enumerate(fixed_actions):
+        obs_c, _, done_c, _, _ = env_clean.step(a_cmd)
+        obs_n, _, done_n, _, _ = env_noised.step(a_cmd)
+        
+        # ★ 核心断言：obs[action_slice] 必须 bit-exact 相同
+        if not np.array_equal(obs_c[action_slice], obs_n[action_slice]):
+            diffs_action_slot.append(
+                f"step {i}: clean={obs_c[action_slice][:3]}, "
+                f"noised={obs_n[action_slice][:3]}, "
+                f"max_diff={np.max(np.abs(obs_c[action_slice] - obs_n[action_slice]))}"
+            )
+        
+        # 检查其他 slot 是否分岔（预期会分岔）
+        mask = np.ones_like(obs_c, dtype=bool)
+        mask[action_slice] = False
+        # 因为 physics 分岔，其他 slots 迟早会 diverge
+        # 这里只统计 diverge 的比例，用于诊断（不作为 fail 条件）
+        if not np.array_equal(obs_c[mask], obs_n[mask]):
+            diffs_other_slots.append(i)
+        
+        if done_c or done_n:
+            break
+    
+    # Assertion: action slot 必须 100/100 step 完全一致
+    assert not diffs_action_slot, (
+        f"[A6 FAILED] obs[action_slice] should be invariant to action noise "
+        f"(both should equal physical(a_cmd)), but found differences:\n"
+        + "\n".join(diffs_action_slot[:5])  # 前 5 个 diff 用于诊断
+        + "\n\n"
+        f"This means our _canonical_to_physical formula does NOT exactly "
+        f"match CanonicalSpec._scale_action. Possible causes:\n"
+        f"  1. Float precision mismatch (check dtype)\n"
+        f"  2. Clip semantics differ (with/without clip)\n"
+        f"  3. Wrong phys_low/phys_high cached\n"
+        f"  4. Slice indices wrong\n"
+    )
+    
+    # 诊断信息：其他 slot 应该会分岔（否则 physics 没受 noise 影响，可能 noise 没生效）
+    print(f"[A6 info] Other slots diverged in {len(diffs_other_slots)}/100 steps "
+          f"(expected: many, since physics diverges due to a_exec differing)")
+    assert len(diffs_other_slots) > 10, (
+        "[A6 warning] Other slots diverged very rarely — action noise may not be "
+        "actually taking effect on physics. Check noise config."
     )
 
 
