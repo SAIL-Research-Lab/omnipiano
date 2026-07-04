@@ -63,7 +63,9 @@
 
 **这些设计决策是好的，我们把它们作为 v1 的基线保留。** Reviewer 应特别确认这些应被保留再开始 Phase 0：
 
-1. **双层噪声注入**（obs 在 dm_env 层、action 在 gym 层）。必要性：`ConcatObservationWrapper` 在到达 gym 层之前把 Dict obs 拍平成 ndarray；per-key 选择性只能在 dm_env 层实现。action 注入在 gym 层是正确的，因为 action 一直是 flat ndarray。
+1. **双层噪声注入**（obs 在 dm_env 层、action 在 gym 层）。原因：`ConcatObservationWrapper` 在到达 gym 层之前把 Dict obs 拍平成 ndarray；在 dm_env 层 obs 仍是 Dict，per-key 选择(白名单跳过 goal/fingering 等)**最自然**。
+
+   **准确说法(不是"只能")**：per-key 选择性**并非只能**在 dm_env 层实现。§4.7 的方案 6 已经证明,gym 层代码可以从 dm_env Dict spec 反推出每个 key 在 flat obs 里的 slice(字母序累加 dim),所以理论上 obs 噪声**也可以**在 gym 层按 slice 注入。我们**刻意保留在 dm_env 层**是权衡后的设计选择,不是硬性必要：(a) 在 Dict 上按 key 名注入,无需 slice 记账,也不依赖字母序假设(那个假设只有方案 6 的 override 路径才承担);(b) 与既有 2 个 ObservationRobust task 的实现零变动、bit-exact 兼容;(c) 独立的 dm_env RNG stream 已就位(§4)。action 注入放 gym 层是正确的,因为 action 一直是 flat ndarray。
 
 2. **Per-dim 独立采样**：`numpy_rng.normal(0, std, size=action.shape)`（`robust_wrapper.py:47-49`）和 `self._rng.normal(0.0, noise_std, size=value.shape)`（`dm_env_obs_noise.py:118`）。每个 action 维度和每个 obs 标量都得到独立的噪声样本。
 
