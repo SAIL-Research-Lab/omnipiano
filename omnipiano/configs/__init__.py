@@ -5,8 +5,9 @@ Keep environment construction code (make, wrappers, registry) clean by passing
 typed config objects instead of many scattered keyword arguments.
 """
 
+import numpy as np
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 from omnipiano.safety.constraints import BaseConstraint
 
 
@@ -25,10 +26,117 @@ class SafetyConfig:
 
 @dataclass
 class RobustConfig:
-    """Configuration for robustness perturbations."""
+    """Configuration for robustness perturbations (v1: obs / action / reward).
+
+    Per-distribution independent fields (Option C.3):
+      - Gaussian σ:          ``{action,obs,reward}_noise_std``               (3)
+      - Uniform [low, high]: ``{action,obs,reward}_noise_uniform_{low,high}``(6)
+      - Shift constant:      ``{action,obs,reward}_noise_shift``             (3)
+      - Distribution knob:   ``noise_dist``                                  (1)
+      - Eval scale:          ``eval_noise_scale``                           (1)
+    Total: 14 fields. Each field name maps strictly to its distribution's
+    mathematical parameter, mirroring Robust-Gymnasium's ``--noise-sigma`` /
+    ``--uniform-low/high`` / ``--noise-shift`` parameterization.
+
+    At training time, ``RobustWrapper`` reads (channel, noise_dist) → picks
+    the corresponding field(s). At evaluation time (via
+    ``omnipiano.make(env_name, mode="eval")``), all magnitude fields are
+    multiplied by ``eval_noise_scale``:
+      - ``eval_noise_scale=0.0`` (default) → clean eval (post-training)
+      - ``eval_noise_scale=1.0``           → same as training (in-training)
+      - values in between / >1             → robustness-curve sweep / stress
+    (Reward noise is additionally force-zeroed at eval regardless of scale —
+    see ``registration.make()``; reward perturbation is training-only.)
+
+    Uniform bounds use their NATURAL parameters (Option 4a) — **no**
+    std-matching conversion:
+      - Symmetric (v1 default registrations): ``low = -level, high = +level``.
+      - Asymmetric (advanced users may register): e.g.
+        ``low=-0.02, high=+0.10`` to model biased sensor drift.
+    ``noise_dist`` is a single scalar shared across channels (one noise type
+    per registered env, mirroring RG's ``--noise-type``); per-channel distinct
+    distributions are not supported in v1.
+
+    ``__post_init__`` validates uniform bounds (finite, low <= high) and
+    raises if a channel sets fields inconsistent with ``noise_dist``.
+    """
+
+    # === Gaussian σ (per channel) ===
     action_noise_std: float = 0.0
     obs_noise_std: float = 0.0
-    # TODO: Add dynamics randomization configs
+    reward_noise_std: float = 0.0
+
+    # === Uniform [low, high] (per channel, allows asymmetric) ===
+    action_noise_uniform_low: float = 0.0
+    action_noise_uniform_high: float = 0.0
+    obs_noise_uniform_low: float = 0.0
+    obs_noise_uniform_high: float = 0.0
+    reward_noise_uniform_low: float = 0.0
+    reward_noise_uniform_high: float = 0.0
+
+    # === Shift constant offset (per channel) ===
+    action_noise_shift: float = 0.0
+    obs_noise_shift: float = 0.0
+    reward_noise_shift: float = 0.0
+
+    # === Distribution selector (shared across channels) ===
+    noise_dist: Literal["gaussian", "uniform", "shift"] = "gaussian"
+
+    # === Eval-time noise multiplier (applied to ALL magnitude fields) ===
+    # effective eval noise = registered training noise × eval_noise_scale.
+    # 0.0 = clean eval; 1.0 = same as training; >1 = stress test.
+    eval_noise_scale: float = 0.0
+
+    def __post_init__(self):
+        """Validate config integrity (raises ``ValueError`` on violation):
+
+        1. Uniform bounds are finite and ordered (``low <= high``).
+        2. A channel does not set fields inconsistent with ``noise_dist``
+           (e.g. ``noise_dist='gaussian'`` but a ``*_noise_shift`` is
+           nonzero) — catches accidental mis-registration at construction
+           time rather than letting it silently drift.
+        """
+        for ch in ("action", "obs", "reward"):
+            lo = getattr(self, f"{ch}_noise_uniform_low")
+            hi = getattr(self, f"{ch}_noise_uniform_high")
+            if not (np.isfinite(lo) and np.isfinite(hi)):
+                raise ValueError(
+                    f"RobustConfig: {ch}_noise_uniform bounds must be finite, "
+                    f"got low={lo}, high={hi}"
+                )
+            if lo > hi:
+                raise ValueError(
+                    f"RobustConfig: {ch}_noise_uniform_low ({lo}) must be "
+                    f"<= high ({hi})"
+                )
+
+        active_dist = self.noise_dist
+        for ch in ("action", "obs", "reward"):
+            std_set = getattr(self, f"{ch}_noise_std") != 0.0
+            unif_set = (
+                getattr(self, f"{ch}_noise_uniform_low") != 0.0
+                or getattr(self, f"{ch}_noise_uniform_high") != 0.0
+            )
+            shift_set = getattr(self, f"{ch}_noise_shift") != 0.0
+
+            if active_dist == "gaussian" and (unif_set or shift_set):
+                raise ValueError(
+                    f"RobustConfig: noise_dist='gaussian' but "
+                    f"{ch}_noise_uniform_* or {ch}_noise_shift is nonzero. "
+                    f"Use {ch}_noise_std instead, or set noise_dist to match."
+                )
+            if active_dist == "uniform" and (std_set or shift_set):
+                raise ValueError(
+                    f"RobustConfig: noise_dist='uniform' but "
+                    f"{ch}_noise_std or {ch}_noise_shift is nonzero. "
+                    f"Use {ch}_noise_uniform_low/high instead."
+                )
+            if active_dist == "shift" and (std_set or unif_set):
+                raise ValueError(
+                    f"RobustConfig: noise_dist='shift' but "
+                    f"{ch}_noise_std or {ch}_noise_uniform_* is nonzero. "
+                    f"Use {ch}_noise_shift instead."
+                )
 
 @dataclass
 class TaskVariantConfig:
