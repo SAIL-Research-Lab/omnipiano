@@ -80,7 +80,7 @@
 | # | 位置 | 问题 | 严重度 |
 |---|---|---|---|
 | 1 | RobustConfig | 没有 eval 时噪声开关 —— 无法跑"对一个噪声训练的 policy 做净 eval"或"在 eval 时扫不同噪声级别" | **CRITICAL**（paper-blocking） |
-| 2 | `logger_wrapper.py:75-91` | RobustWrapper 已 emit 了每 step 的 `ROBUST_NOISE_*` info key，但 CSV 没有按 episode 聚合或记录 | **CRITICAL**（reproducibility-blocking） |
+| 2 | `logger_wrapper.py:75-91` + `checkpoint_replay_eval.py` | RobustWrapper 已 emit 每 step `ROBUST_NOISE_*`，但两个 eval CSV 都没聚合，且缺 `eval_scale` 列（sweep 无法定位曲线点）。完整规格见 §0.6 | **CRITICAL**（reproducibility + sweep-blocking） |
 | 3 | `envs/registration.py:347` 和 `multiagent/registration.py:319` | `master_seed + 31415` 是 hardcoded magic，且 MA registration 有**重复副本**；无注释、无命名常量。风险：重构一处会悄悄漏掉另一处 → 同一 master seed 下 MA 和 SA env 会得到不同的 obs-noise seed。 | **MODERATE**（可读性 + 可维护性） |
 | 4 | `RobustConfig` docstring | 有 dynamics randomization 的 TODO 占位符 —— 既然 v1 明确延期，应该删掉 | **MINOR**（清理） |
 | 5 | `dm_env_obs_noise.py` | 没有 `eval_mode` 开关；只要 `noise_std > 0` 就总是注入 | **CRITICAL**（与 #1 相同问题，但在 dm_env 层那侧） |
@@ -499,18 +499,61 @@ obs_noise_seed = (_seed + OBS_NOISE_SEED_OFFSET) if _seed is not None else None
 
 **Reviewer 待决问题**：是否要写一个单独的 `tests/test_obs_noise_seed_consistency.py`，构造 SA env 和 MA env 在同 master seed 下，断言它们的 `DmEnvObsNoiseWrapper._rng` 首个样本一致？这固化了 SA/MA 一致性这个 invariant。我的建议：**要**，约 20 LOC，维护成本低。
 
-**0.6 — Noise 写入 CSV**（`omnipiano/utils/logger_wrapper.py`）
+**0.6 — Robust eval 数据记录规格**（`omnipiano/utils/logger_wrapper.py` + `tools/checkpoint_replay_eval.py`）
 
-向 `SafeRecordEpisodeStatistics` 加 3 列：
-- `ep_noise_action_l2_sum`：整 episode 内每 step `info[robust/noise_action_l2]` 的求和
-- `ep_noise_obs_l2_sum`：整 episode 内 `info[robust/noise_obs_l2]` 求和
-- `ep_noise_reward_sum`：整 episode 内 `info[robust/noise_reward]` 求和（§0.3 新增 info key，可为负）
+> 本节由 2026-07-03 的一轮"RG logging 深度调研 + OmniPiano wrapper 数据流逐层核对"重写。核对了 RG 全仓库(结论:RG 极简,不记噪声、不记 clean-vs-perturbed、eval 只报 perturbed reward、无 CVaR/worst-case)与 OmniPiano 的 3 个 wrapper 数据源,确认了下面的"F1 天然 clean"结构性优势。
 
-`__init__` 中加 accumulator，`reset()` 重置，`step()` 中从 `info` key 读取并累加，episode 结束时写入 CSV。与现有 `episode_return` accumulator 同模式（`logger_wrapper.py:102-110`）。
+### 0.6.0 核心事实:我们的主指标 F1 天然免疫噪声(比 RG 更干净)
 
-理由：没有这 3 列，事后无法回答"eval episode 42 时实际噪声水平是多少？"。这是任何 robust RL benchmark 都要的标准 reproducibility 追溯能力。
+wrapper 数据流(已代码核对):
+- dm_env 层(内→外):`task(physics) → EpisodeStats → MidiEvaluationWrapper → [DmEnvObsNoise] → OAR → ConcatObs → CanonicalSpec → SinglePrec`
+- gym 层(内→外):`MetricsWrapper → SafetyWrapper → RobustWrapper → [SafeRecordEpisodeStatistics]`
 
-**Reviewer 注**：sum-of-L2 是把每 step 的 L2 在整 episode 内累加；对 Gaussian noise 来说大致随 episode 长度线性增长。我们**不**记录 per-step 值，以保持 CSV 一行对应一个 episode（与现有 schema 一致）。如果将来需要 per-step 轨迹，那是单独的 `noise_trace.npz` artifact，**不是** CSV 的扩展。
+两个关键位置事实:
+1. **`MidiEvaluationWrapper.step` 读的是 `task.piano.activation`(physics 状态),不是 obs dict**(`robopianist/wrappers/evaluation.py:70`)。DmEnvObsNoise 只污染返回的 obs 字典数值,**不碰 physics**。所以 F1 永远从 ground-truth 按键算。
+2. **`MetricsWrapper`(内层)在 RobustWrapper 加 reward 噪声之前**读 `task.reward_fn.reward_terms`(`metrics_wrapper.py:48`)。所以 reward 分解永远 clean。
+
+| Channel | physics 执行 | F1 / reward 分解 |
+|---|---|---|
+| action noise | **a_exec(噪声后)** —— `RobustWrapper` 在 `step` 里把 `action` 重赋值为 `clip(a_cmd+noise)`(robust_wrapper.py:216)再传下去 | F1 从 a_exec 的**实际按键**算 = 加噪轨迹的真实性能(clean 测量) |
+| obs noise | clean action(obs 噪声不碰 action) | F1 从**实际 piano state** 算,不是 noised obs |
+| reward noise | clean physics | reward 分解在加噪**之前**算完 |
+
+**术语澄清**:"clean" 指**从 ground-truth physics 测量,不经噪声通道**,**不是**"不受扰动影响"。action/obs noise 下轨迹确实退化(F1 会掉),但**测量**是干净的。这把 *性能退化*(策略真的弹得更差)和 *测量污染*(reward 读数被加噪)分开了 —— RG 的 perturbed-reward 指标把两者混成一个数,我们不。
+
+**Paper claim(可 cite)**:
+> "OmniPiano reports F1 measured from ground-truth key presses, invariant to the observation/reward corruption channels — it captures the policy's *true* task performance under perturbation, separating performance degradation from measurement corruption, a distinction Robust-Gymnasium's perturbed-reward metric collapses."
+
+### 0.6.1 记录范围决策
+
+**只改 eval CSV(两个,schema 锁定要同步)**:
+- `<split>_episode_metrics_<id>.csv`(`SafeRecordEpisodeStatistics`,SB3 eval env)
+- `eval_episode_metrics_<uuid>.csv`(`tools/checkpoint_replay_eval.py`,OmniSafe post-hoc eval)
+
+**训练 rollout CSV 不动**:OmniSafe `progress.csv` / SB3 native 由各自库原生记录;训练噪声配置由 env_id 固定、可反推,不需要 per-episode 噪声记录。要 hook 它们的 logger 成本高、收益低。
+
+### 0.6.2 新增列(Tier 1,必做)
+
+| 列 | 含义 | 用途 |
+|---|---|---|
+| `eval_scale` | 该 eval 实际跑的噪声缩放因子(0=clean, 1=training-level, sweep 用其它值) | **sweep 命脉** —— 没它无法判断一行属于 robustness 曲线的哪个点 |
+| `ep_noise_action_l2` | episode 内 `info[robust/noise_action_l2]` 求和 | 审计"实际噪声水平是否符合配置",抓 config bug |
+| `ep_noise_obs_l2` | episode 内 `info[robust/noise_obs_l2]` 求和 | 同上 |
+| `ep_noise_reward` | episode 内 `info[robust/noise_reward]` 求和(§0.3 新增 key,可为负) | 同上 |
+
+`__init__` 加 accumulator,`reset()` 重置,`step()` 从 info key 累加,episode 结束写入。与现有 `episode_return` accumulator 同模式(`logger_wrapper.py:102-110`)。`checkpoint_replay_eval.py` 的 `_CSV_HEADER` + 写入逻辑同步加同样 4 列。
+
+### 0.6.3 明确**不新增**的列(核对后砍掉)
+
+- **`ep_true_return`(clean reward 单位下的真性能)**:**不加**。原因:
+  1. clean total reward = 现有 reward 分解列之和(`energy + key_press + sustain + ot_fingering + forearm`,composite reward 就是各 term 相加),**已可从现有列算出**,无需新列;
+  2. 更根本:**reward channel 在 eval(固定策略)下,reward 噪声是 no-op** —— eval 时 `π(obs)→action` 不看 reward(无学习),噪声只污染返回标量、不改 action,所以轨迹与 clean env 逐字节相同,F1、ep_return 都不受影响(ep_return 只是被"事后污染",轨迹不变)。**推论:reward channel 的 robustness 完全是训练期现象**,eval 天然该 clean(eval_scale=0),observed-vs-true 区分无意义。
+- **per-step 全量 obs / action / noise 向量 trace(原 Tier 3 `noise_trace.npz`)**:**v1 不做**(用户 2026-07-03 确认)。固定 seed 下可重建;需要时再单独设计,不进 v1 scope。
+- **a_exec(执行的噪声 action)向量**:**不记**。它的*结果*已被 F1/reward 捕获;向量本身固定 seed 可重建。
+
+### 0.6.4 CVaR / worst-case / drop% —— 分析层,不是 logging 层
+
+这些是 **post-hoc 从 per-episode F1/return 算的**(在 `tools/plot_robustness_curves.py`,Phase 1)。只要每 episode 记了 F1 和 return(现有列已有),分析工具就能算出 CVaR、worst-case-over-seeds、clean-vs-noised drop%。**不需要任何额外 per-step 记录**。RG 连这些都没算(只画 mean-return 曲线的 gap),我们在分析层补上即可。
 
 **0.7 — Equivalence test**（新文件 `omnipiano/tests/test_robust_v1_equivalence.py`）
 
@@ -1215,7 +1258,8 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 | `omnipiano/envs/dm_env_obs_noise.py` | 0 | 修改（抽出 OBS_NOISE_SEED_OFFSET 常量 + 加分布支持以匹配） |
 | `omnipiano/envs/registration.py` | 0 | 修改（eval_scale 接线，使用来自 dm_env_obs_noise.OBS_NOISE_SEED_OFFSET 的命名常量） |
 | `omnipiano/multiagent/registration.py` | 0 | 修改（使用同样的命名常量；去重 line 319 的 `+31415` 第二份副本） |
-| `omnipiano/utils/logger_wrapper.py` | 0 | 修改（CSV 加 3 个 noise 列） |
+| `omnipiano/utils/logger_wrapper.py` | 0 | 修改（eval CSV 加 4 列：`eval_scale` + `ep_noise_{action,obs,reward}`，见 §0.6.2） |
+| `tools/checkpoint_replay_eval.py` | 0 | 修改（`_CSV_HEADER` + 写入同步加同样 4 列，schema 与 logger_wrapper 锁定，见 §0.6.1） |
 | `omnipiano/utils/info_keys.py` | 0 | 修改（加 ROBUST_NOISE_REWARD） |
 | `omnipiano/tests/test_robust_v1_equivalence.py` | 0 | 新建（bit-exact 回归测试） |
 | `omnipiano/envs/__init__.py` | 1 | 修改（追加约 28 个 robust task 注册） |
