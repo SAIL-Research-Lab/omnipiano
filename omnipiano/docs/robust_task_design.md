@@ -22,15 +22,17 @@
 - **曲目**：ClairDeLune 作为首曲
 - **首批 task 注册**：1 曲 × 3 channel × 3 分布 × 约 3 噪声级别 = 约 27 个 task id（具体清单见 §6）
 
-**延期到 v2+（v1 明确 NOT 包含）**：
-- Dynamics / environment 扰动（mass / friction / actuator gain / spring stiffness 等）
+**明确不做（out of scope，非延期）**：
+- **Dynamics / environment 扰动**（mass / friction / actuator gain / spring stiffness 等）—— **从 plan 中移除**（2026-07-03 决定）。理由:dynamics randomization 的核心动机是 sim-to-real transfer,而 OmniPiano 是纯仿真、无真实硬件目标的 benchmark,该动机不成立;且改物理参数容易纠缠 F1 测量的语义(如 key spring 改变力→键激活映射),破坏"robustness vs 换任务"的边界;工程上还需 MJCF composer surgery(数百可改参数 + MidiEval 缓存风险)换取薄弱收益。覆盖 obs/action/reward 三个 disruptor family 已是干净可辩护的 scope。详见 §11。
+
+**延期到 v2+（v1 不包含,但保留未来做的可能）**：
 - 任何形式的对抗扰动（LLM-prompted、gradient-based、worst-case ball、单独训练的对抗 policy）
 - Episode 级噪声频率（每个 reset 采一个噪声，整 episode 固定）
 - Per-dimension 噪声 std（每个 action 维度或 obs key 不同 std）
 - N-hand 单 agent robust 变体（3/4/5-hand Prototype/StaticPartition）
 - 多 agent（PettingZoo ParallelEnv）robust 变体
 
-**延期理由**：见 §11 "为什么这些延期"。
+**理由**：见 §11 "为什么这些不做 / 延期"。
 
 ---
 
@@ -276,7 +278,7 @@ cfg.action_noise_uniform_high = +a
 
 这让 3 种分布在 robustness 曲线上共用同一 magnitude x 轴（Gaussian σ、Uniform empirical std、Shift 常数值 都是同一数字）。**非对称 uniform 是基础设施保留能力**，用户可自定义 task 注册非对称配置（例如 `uniform_low=-0.02, uniform_high=+0.10` 建模有偏 sensor drift）。
 
-**为什么删除 `# TODO: Add dynamics randomization configs`**：根据范围，dynamics 是 v2；v1 代码中不留 TODO 标记。
+**为什么删除 `# TODO: Add dynamics randomization configs`**：dynamics randomization 已 out of scope（见 §0 / §11），不是待办;v1 代码中不留会误导的 TODO 标记。
 
 **0.2 — `eval_noise_scale` 在 make() 中的接线**（`omnipiano/envs/registration.py`）
 
@@ -1309,7 +1311,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 ### 我们预期会写的 claim
 - "OmniPiano supports the random-perturbation subset of the disruptor taxonomy from Robust-Gymnasium [Gu et al. 2025], covering state, action, and reward channels under Gaussian / Uniform / Shift distributions, with strict separation between training-time and evaluation-time noise levels."
-- "We deliberately exclude adversarial perturbations and dynamics randomization from v1 of OmniPiano-Robust: the former requires per-paper-method infrastructure not shared across baselines (LLM API, gradient access to the policy, separately trained adversary), and the latter requires nontrivial MuJoCo composer model surgery for the Shadow Hand + Piano scene that we defer to v2."
+- "OmniPiano-Robust covers the observation, action, and reward disruptor families of Robust-Gymnasium [Gu et al. 2025]. We deliberately exclude adversarial perturbations (which require per-paper-method infrastructure not shared across baselines — LLM API, gradient access to the policy, or a separately trained adversary) and environment/dynamics randomization. The latter is out of scope by design: dynamics randomization is motivated by sim-to-real transfer, which does not apply to a fixed-repertoire pure-simulation music benchmark, and perturbing physical parameters (e.g. piano-key spring stiffness) entangles the robustness axis with the definition of correct play (the force-to-key-activation mapping the F1 metric depends on), unlike observation/action/reward noise which leaves the ground-truth F1 measurement intact."
 
 ### Phase 1 跑完后要填的数字
 - 每 channel：PPO 在 `ClairDeLune` 上 std=0.05 时的 净 vs 扰 F1 跌幅
@@ -1323,15 +1325,15 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 ---
 
-## 11. 为什么这些延期（理由）
+## 11. 为什么这些不做 / 延期（理由）
 
 供 reviewer / paper 写作参考：
 
 | 特性 | 为什么不在 v1 | 何时重新审视 |
 |---|---|---|
-| **Dynamics randomization** | OmniPiano 的 hand+piano MuJoCo 模型有几百个可改参数；选哪些来随机化本身就是一个独立的设计研究。Composer 级模型修改还需要小心，以免破坏 MidiEvaluationWrapper 内部的 piano-state 缓存。值得 Phase 2 单独写一份 design doc。 | Phase 2，等 v1 paper 草稿见到 reviewer 需求后。 |
+| **Dynamics randomization（out of scope，非延期）** | **已从 plan 移除（2026-07-03）**。四点理由:(1) **动机缺失**——dynamics randomization 的经典正当理由是 sim-to-real transfer(随机化因为不知真实机器人参数),OmniPiano 是纯仿真、无真实硬件目标,该动机不成立;obs/action/reward 噪声则有自洽动机(传感器/执行器噪声、reward 污染)。(2) **纠缠任务定义**——改物理参数易改变"弹对了"的定义(key spring 改变力→键激活映射 → F1 语义漂移),破坏 robustness 边界;而三 channel 噪声不碰 F1 的 ground-truth 测量。(3) **工程成本失衡**——hand+piano MJCF 数百可改参数 + MidiEval 缓存破坏风险,换薄弱收益。(4) **逐轴看无一值得**:mass/friction 边缘;actuator gain 有 positioning 故事但与 action noise 概念重叠;key-weight 是唯一 piano-native("不同键重的钢琴")但纠缠 F1 且小众。 | **不做**。若 reviewer 坚持要一个 dynamics 轴,`key-weight` 是唯一 piano-native 候选,但需单独评估其对 F1 语义的影响,**不预先承诺建基建**。 |
 | **对抗扰动** | Robust-Gymnasium 唯一的对抗实现是 LLM-prompted 的，需要 per-step API call（约 700 小时跑 5M-step 训练）。非 LLM 对抗方法（gradient FGSM、RARL、ATLA、SA-PPO）是单独 paper 的贡献 —— 每个都要修改 baseline 算法（PPO/SAC），不仅仅是 env。横跨我们的跨库（SB3 + OmniSafe）设计。 | v2 paper 后若 reviewer 要求。 |
-| **Episode 级频率（仅对 Shift 有意义）** | v1 中 Gaussian 和 Uniform **已经是 step-level**（每 step 独立采），只有 Shift 是 program-run-level（全程恒定 `+shift_value`）。Phase 2 想加的 episode-level 特指 **shift 的 episode 级随机化**（每 reset 采一次符号或 magnitude，episode 内固定）—— 让 shift 从确定性 calibration error 变成"随机 domain 偏移"。加入它需要在 RobustConfig 加 `shift_frequency` 字段（`constant` / `episode` / 未来 `random_interval`），并在 `reset()` 里采样。**Phase 2 的 episode-level shift 是新增变体**（作为 `shift_frequency="episode"` 的选项），**不替换** v1 的 `constant` 语义（program-run-level `+shift_value`），保证 v1 baselines 可复现。对 Gaussian/Uniform 强行加 episode-level 变体（每 reset 采一次然后整 episode 固定）与 domain randomization 概念重合，独立价值不高，暂不在计划中。 | Phase 2 与 dynamics randomization 一起做。 |
+| **Episode 级频率（仅对 Shift 有意义）** | v1 中 Gaussian 和 Uniform **已经是 step-level**（每 step 独立采），只有 Shift 是 program-run-level（全程恒定 `+shift_value`）。Phase 2 想加的 episode-level 特指 **shift 的 episode 级随机化**（每 reset 采一次符号或 magnitude，episode 内固定）—— 让 shift 从确定性 calibration error 变成"随机 domain 偏移"。加入它需要在 RobustConfig 加 `shift_frequency` 字段（`constant` / `episode` / 未来 `random_interval`），并在 `reset()` 里采样。**Phase 2 的 episode-level shift 是新增变体**（作为 `shift_frequency="episode"` 的选项），**不替换** v1 的 `constant` 语义（program-run-level `+shift_value`），保证 v1 baselines 可复现。对 Gaussian/Uniform 强行加 episode-level 变体（每 reset 采一次然后整 episode 固定）与 domain randomization 概念重合，独立价值不高，暂不在计划中。 | Phase 2（若 shift episode-level 有需求）。 |
 | **Per-dim 噪声 std / per-channel dist** | 给 RobustConfig 和 per-key obs filter 加组合复杂度。Scalar-std v1 已经做的是 per-dim 独立噪声（只是每 dim 上同样 std）。异质 std 是大多数 paper 不需要的精细化。**注**：Option C.3 的 Uniform bounds（low/high）已经允许**每 channel 独立控制非对称性**（用户可注册 `action_noise_uniform_low=-0.02, high=+0.10` 的任务），是"per-channel 精细化"的一种局部实现。但真正的"per-dim std"（每个 action 维度或每个 obs key 不同 std）仍需 dict-typed 字段替换 scalar，Phase 1.5+ 才做。 | Phase 1.5 如果 reviewer 明确要求。 |
 | **Per-key obs σ 校准** | 一个 σ 应用到所有 obs key 上（`joints_pos` in rad、`joints_vel` in rad/s、`piano/state` in [0,1]）意味着不同 key 感受的相对扰动强度不同。理论上可给每 key 独立 σ 让"相对扰动强度对齐"，但：(1) **RG 完全不做这个**（全仓库无 per-key sigma、无 sigma dict），OmniPiano 保持不做保证与 RG 直接可比；(2) 校准需要对每 key 手工估计典型 range 或做统计校准，增加实验工程复杂度；(3) 现状"joint-angle 主导"是可解释的诊断信号（读者能直接把"σ=0.05 → F1 下降 20%" 归因到"关节角 2.9° 扰动"）。v1 paper 明确 disclose 这个 caveat 即可。 | v2+ 如果 reviewer 要求 per-key 精细化。 |
 | **Obs 归一化 wrapper** | 加 `VecNormalize` 或类似 wrapper 让 obs → N(0,1) 后再注 σ 会让"跨 key 相对扰动强度对齐"，但破坏与 RG paper 的 baseline 一致性（RG 直接加到 raw obs 上），也需要重跑所有现有 baseline。RG 完全不做这个，v1 保持不做。 | 明确**不计划**（除非重构整个 baseline 生态）。 |
