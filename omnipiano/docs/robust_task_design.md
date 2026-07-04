@@ -646,9 +646,27 @@ Paper 的 Methods 里可以简洁描述：
 
 ## 4.7 obs["action"] / obs["reward"] 的 principled semantics 修正（方案 6）
 
-### ⚠️ 高风险高价值改动 —— 需要 prototype gate 验证后再进 Phase 0
+### ✅ Step 1 Prototype 已完成 —— 15/15 gate 全绿（2026-07-03）
 
-**决议时间**：2026-06-27（由用户完成深度研究后确认）
+| 项 | 状态 |
+|---|---|
+| 分支 | `feat/robust-method6-prototype`（main 未动） |
+| 实现 commit | `f8510b1`（RobustWrapper override + A1-A6）+ `f7b8a5b`（扩展 gates G1-G6, G11） |
+| 测试 | **15/15 全部通过**（A1-A6 一次通过；G1-G6+G11 一次通过），`omnipiano/tests/test_robust_v1_method6.py` |
+| 生产 env smoke | `FantaisieImpromptu-ActionRobust-v0`（override bit-exact ✓）、`ClairDeLune-ObservationRobust-v0`、`ClairDeLune-CollisionSafe-v0` 全部正常构造 + step |
+| 运行环境 | pianist conda env（pytest 9.0.2, numpy 2.2.6, MUJOCO_GL=egl），repo root 运行 |
+| 范围 | 仅 action channel（当前 2 字段 RobustConfig, gaussian）；**reward slot override 留待 Phase 0 §0.3**（需要 `reward_noise_std` 字段先存在） |
+| 下一步 | 等 reviewer sign-off → merge 回 main → 开 Phase 0 |
+
+**As-built 实现要点（比原 pseudocode 更强的三个决策）**：
+
+1. **不重写映射公式** —— `_clean_physical` 直接 `from dm_env_wrappers._src.canonical_spec import _scale_nested_action`，配上从 chain 里 `CanonicalSpecWrapper` 缓存的**原 spec 对象**和 clip flag，输入侧只复刻 adapter 的 `np.asarray(action, dtype=np.float32)` 转换（已验证 `SinglePrecisionWrapper.step` 不动 action）。两条路径跑的是**同一段 upstream 代码**，bit-exact 是构造性保证，不是碰运气。这就是 A1/A5/A6 一次全绿的原因，也顺带消解了原设计里的 "Issue C"（a_cmd 预 clip）—— clip 在共享函数内部用同一 flag 处理，无需单独预 clip（G3 用 |a|>1.7 的越界 action 验证过）。
+2. **Override 只在 action noise 实际激活时运行**（而非无条件覆写）—— 零噪声 env 返回**内层 obs 同一个对象**（A4 用对象 identity 断言，连 copy 都没发生），"对现有 baseline 零影响"是**结构性**保证而非数值巧合。副作用：A6 因此成为真正的 cross-implementation 对比（clean env 走 CanonicalSpec 原生算术，noised env 走 override 算术）。
+3. **缓存 rebuild-safe** —— `reset(seed=X)` 会重建整条 dm_env chain，但 slice 布局 / physical spec 值 / clip flag 都由静态 env 配置决定，`__init__` 缓存的值对重建后的 chain 仍有效（G2 用两次不同 seed 的 rebuild 验证）。对比：`last_step_noise_l2` 依附于 wrapper **实例**，必须每次 re-walk（既有逻辑，未动）。
+
+**重要事实澄清**：本方案**未改动 `ObservationActionRewardWrapper` 的任何一行代码**（upstream 原样）。全部改动集中在 `RobustWrapper` 内部（slice 计算 + 一次对 upstream 原函数的调用），风险面是"包含的"而非"扩散的"。
+
+**决议时间**：2026-06-27（由用户完成深度研究后确认）；prototype 完成 2026-07-03。
 
 **核心问题**：当 `action_reward_observation=True`（OmniPiano 默认，全部 registered env 都是），`ObservationActionRewardWrapper` 记录到 `obs["action"]` 和 `obs["reward"]` slot 里的**默认值不是 principled robust semantics 想要的**：
 - **`obs["action"]`** 记录的是 **noised executed action** 的 physical 版本，泄露 noise 信息给 policy（policy 能反推出 noise）
@@ -771,269 +789,108 @@ Option B 的关键性质：**对 non-robust env bit-exact no-op**。
 4. **Slice 计算按字母序**（`tree.flatten` 行为），dm_env observation_spec Dict keys 是稳定的
 5. **frame_stack=1 是 v1 唯一 supported case**，v2+ 需要额外设计
 
-### 需要通过 prototype 阶段的实验验证的假设
+### Prototype gate 假设 —— 验证结果（2026-07-03，全部通过 ✅）
 
-⚠️ **在方案 6 正式进入 Phase 0 之前，必须先在 prototype 分支上验证以下 6 条**：
-
-| # | 假设 | 验证方法 | Gate 条件 |
+| # | 假设 | 验证方法（as-built） | 结果 |
 |---|---|---|---|
-| A1 | ObservationActionReward 存的确实是 physical 值 | 打印 obs["action"] slot 和 policy 输入的 canonical 值，验证 CanonicalSpec 映射后一致 | 实测数值差 ≤ 1e-6 |
-| A2 | tree.flatten 字母序稳定 | 构造多个 Dict 输入，验证输出顺序 | 100% 字母序 |
-| A3 | dm_env 层 action_spec 可通过 unwrap 拿到 | 走 wrapper chain 找 action_spec | 拿到并且 minimum/maximum 是 physical range |
-| A4 | 对现有 env（noise=0）obs bit-exact 不变 | 跑同 seed 100 step，比较 obs 数值 | 100/100 step obs bit-exact 一致 |
-| A5 | Robust env（noise>0）obs["action"] 变为 clean physical | 用固定 seed 跑，比较 obs[action_slice] 与手工算 physical(a_cmd) | 数值一致 (float32 精度内) |
-| **A6** ★★★ | **`obs[action_slice]` 与 noise 强度无关**（cross-condition 一致性） | 同 fixed action 序列，clean env vs noised env，比较 `obs[action_slice]` | **100/100 step bit-exact 相同**（其他 slots 应该分岔，作为 sanity check） |
+| A1 | ObservationActionReward 存的确实是 physical 值，且我们的 `_clean_physical` bit-exact 复现 | clean env 上 step 固定 action，`np.testing.assert_array_equal(obs[action_slice], _clean_physical(a))`；另断言 slot ≠ raw canonical（证明 rescale 真的发生了） | ✅ **bit-exact**（比原计划的 1e-6 更强） |
+| A2 | tree.flatten 字母序稳定 | 构造乱序 Dict，断言展平顺序 = 字母序 | ✅ |
+| A3 | dm_env 层 physical action_spec 可拿到且与 live chain 一致 | 缓存的 spec minimum/maximum 与 chain 里 `CanonicalSpecWrapper._action_spec` 逐元素相等；clip flag 相等；slice 宽度 = action_dim / 1 | ✅ |
+| A4 | 对现有 env（noise=0）obs 不变 | **升级为对象 identity 断言**：monkeypatch 内层 step 捕获 obs 对象，断言 RobustWrapper 返回的 `obs is inner_obs`（连 copy 都没发生 → 结构性 no-op，不依赖公式正确性） | ✅ **强于原计划**（identity ⊃ bit-exact） |
+| A5 | Robust env（noise>0）obs["action"] 变为 clean physical | 固定 action，断言 `obs[action_slice] == physical(a_cmd)` bit-exact + `info[noise_action_l2] > 0` | ✅ **bit-exact** |
+| **A6** ★★★ | **`obs[action_slice]` 与 noise 强度无关**（cross-condition 一致性） | 同 100 个 fixed float64 action 依次喂 clean env 和 noised env（同 seed reset），逐 step 断言 action slot `np.array_equal`；同时统计其他 slot 分岔步数（断言 >10，证明噪声真的作用于 physics） | ✅ **100/100 step bit-exact**，其他 slot 正常分岔 |
 
-**A6 是最强的 gate**：直接验证 "我们复用 `CanonicalSpec._scale_action` 的公式" 与"CanonicalSpec 内部实际计算" 是否 bit-exact 一致。任何 float 精度不匹配、字段读错、顺序颠倒都会被 A6 捕捉到。
+**A6 是最强的 gate**：直接验证 override 路径的算术与 CanonicalSpec 原生算术是 bit-exact 双胞胎。一次通过的根本原因是 as-built 决策 1（复用 upstream 原函数 + 原 spec 对象，两条路径跑同一段代码）。
 
-**Gate 通过条件**：
-- **Prototype gate**: A1-A6 **全部**通过 → 可以进 Phase 0 整合
-- **A6 是核心 gate**：因为它同时验证 override 是"发生了"且"formula 正确"
+### 扩展 gate G1-G6, G11 —— 验证结果（2026-07-03，全部通过 ✅）
 
-若 A1-A6 全部通过 → 方案 6 正式进入 Phase 0（合并进 §0.3）
-若任一失败 → 回头重新设计（不 commit 到 Phase 0）
+针对 reviewer 关心的"各场景下 ObservationActionRewardWrapper 配合是否出错"，追加 7 个 gate：
 
-### 完整测试清单（`omnipiano/tests/test_robust_v1_method6.py`）
+| # | 覆盖的潜在 bug | 结果 |
+|---|---|---|
+| G1 | **episode 边界**：mid-episode `reset()`（无 seed，不重建 chain）后 OAR slot 归零、继续 step，invariant 是否仍成立。断言设计为 state-independent（slot 只依赖 a_cmd），即使两 env physics 已分岔也必须成立 | ✅ |
+| G2 | **seed rebuild 缓存失效**：`reset(seed=X)` 重建整条 dm_env chain 后，`__init__` 缓存的 slice/spec 是否 stale（两次不同 seed 各验 5 步） | ✅ 缓存 rebuild-safe |
+| G3 | **越界 caller action**（\|a\|≤1.7，模拟未 tanh 的 Gaussian actor）：clip 在两条路径共享的同一函数内处理，slot 仍需 bit-exact | ✅ |
+| G4 | **float32 caller dtype**（SB3 风格；float64 OmniSafe 风格已被 A5/A6 覆盖） | ✅ |
+| G5 | **SB3 DummyVecEnv**：vec 层 obs copy/stack 不破坏 override，info key 完整 | ✅ |
+| G6 | **action 噪声下 reward slot 一致性**：`obs[reward_slice][0] == np.float32(returned_reward)` —— 钉死"action-channel task 不产生 reward 不一致，reward override 只有 reward-channel task 才需要" | ✅ |
+| G11 | action_slice 与 reward_slice 不重叠 | ✅ |
 
-要求 **8 个 test 全部通过** 才算方案 6 成功：
+### 全场景覆盖矩阵（channel × 频率 的正确性论证）
 
-```python
-# ==========================================
-# GATE TESTS (must pass before Phase 0 integration)
-# ==========================================
+| 场景 | obs["action"] slot | obs["reward"] slot | 保证方式 |
+|---|---|---|---|
+| 无噪声 | physical(a_cmd)（a_exec=a_cmd，slot 天然正确）| r_true = r_obs | **A4 结构性 identity**（override 分支不进入，连 copy 都没有）|
+| Obs channel | 同上（action 未被扰动）| r_true = r_obs | override 不触发且无需触发；production smoke 验证 |
+| Action gauss（step 级）| **override → physical(a_cmd)** | r_true = r_obs（action 噪声不产生 reward 不一致，policy 训练用的就是 noised physics 产生的 r_true）| A5/A6 + G1-G5；reward slot 由 G6 钉死 |
+| Action uniform / shift（Phase 0 才存在）| 同一条代码路径（a_cmd 在采样**前**保存，与分布/频率无关）| 同上 | Phase 0 加 parametrized 测试复用 A5/A6 断言 |
+| Reward channel（Phase 0 才存在）| 无 action 噪声 → slot 天然正确 | r_true ≠ r_obs → **需要 reward slot override**（Phase 0 §0.3 唯一新增逻辑）| Phase 0 gate：`obs[reward_slice] == float32(r_obs)` |
 
-def test_A1_obs_action_slot_is_physical_by_upstream_convention():
-    """Verify obs["action"] slot contains physical values (post-CanonicalSpec),
-    matching the RoboPianist upstream convention that OmniPiano inherits.
-    This is the assumption Method 6 preserves via Option B."""
-    # 构造 env without any noise
-    # policy 输出 canonical = 0.5
-    # 手动通过 CanonicalSpec._scale_action 算出 physical
-    # 检查 obs[action_slice] == physical
-    # assert np.allclose(obs[action_slice], expected_physical, atol=1e-6)
+关键结构性事实：v1 **single-channel per task**（§5.1.0）→ 每个 env 最多一个 slot 需要修，由激活的 channel 唯一决定。
 
+### 替代架构评估（已考虑并否决，记录设计依据）
 
-def test_A2_tree_flatten_alphabetical_order():
-    """Verify ConcatObs / tree.flatten uses alphabetical order over Dict keys.
-    Method 6's slice computation depends on this."""
-    import tree
-    d = {'reward': 1.0, 'action': 2.0, 'goal': 3.0, 'joints_pos': 4.0}
-    assert tree.flatten(d) == [2.0, 3.0, 4.0, 1.0]  # 字母序 a→g→j→r
+**Alt-2：在 OAR 之下插 dm_env 层 `DmEnvActionNoiseWrapper`** —— "从零设计"时的更优解（OAR 在噪声注入点之上，天然记录 a_cmd，零 override）。对当前 codebase 有三个致命伤，故否决：
 
+1. 噪声会注入在 **physical 空间**（OAR 之下已过 CanonicalSpec）。单一 σ 对每个 actuator 物理意义不同（forearm 是米、关节是弧度），要维持 §4.5 的 canonical 噪声语义（RG 对齐）必须 per-dim rescale σ —— 把公式复刻的风险从"logged slot"转移进**实际注入的噪声本身**（错了 override 只错一个 log slot 且测试立刻抓到；错了 Alt-2 会错实际训练噪声）
+2. 打破现有 2 个 registered robust env 的噪声序列 equivalence（§0.7 要求）
+3. 需要 dm_env 层新 RNG stream + 新 seed offset 管理
 
-def test_A3_dm_env_action_spec_accessible():
-    """Verify RobustWrapper can walk to dm_env action_spec to get physical bounds."""
-    env = omnipiano.make("OmniPiano-ClairDeLune-v0")
-    rw = env.unwrapped  # find RobustWrapper
-    assert rw._phys_low is not None
-    assert rw._phys_high is not None
-    assert rw._phys_high.shape == env.action_space.shape
+**Alt-1（移 OAR 到 gym 层）**已在下方 "为什么用 Option B" 一节否决（坐标系 + 布局 + checkpoint 兼容性三重破坏）。
 
+**结论**：override 方案的风险是"包含的"（slice 计算 + 一次 upstream 函数调用，均被直接 gate），替代方案的风险是"扩散的"。维持方案 6。
 
-def test_A4_bit_exact_no_op_non_robust():
-    """[GATE 1] 关键测试：对现有 non-robust env，方案 6 override 是 bit-exact
-    数值 no-op。跑 100 step 同 seed，obs 数值必须完全一致。"""
-    seed = 42
-    # 版本 1: RobustWrapper 不含方案 6 逻辑（简化：mock override 为 identity）
-    env_baseline = _make_env_without_method6("OmniPiano-ClairDeLune-v0", seed=seed)
-    # 版本 2: RobustWrapper 含方案 6 逻辑（RobustConfig all zeros）
-    env_method6 = omnipiano.make("OmniPiano-ClairDeLune-v0")
-    
-    obs_baseline, _ = env_baseline.reset(seed=seed)
-    obs_method6, _ = env_method6.reset(seed=seed)
-    assert np.array_equal(obs_baseline, obs_method6), "reset obs mismatch"
-    
-    for step_i in range(100):
-        action = np.random.default_rng(seed + step_i).uniform(-1, 1, env_baseline.action_space.shape)
-        obs_b, r_b, _, _, _ = env_baseline.step(action)
-        obs_m, r_m, _, _, _ = env_method6.step(action)
-        assert np.array_equal(obs_b, obs_m), f"step {step_i}: obs bit mismatch"
-        assert r_b == r_m, f"step {step_i}: reward mismatch"
+### 完整测试清单（as-built，`omnipiano/tests/test_robust_v1_method6.py`）
 
+> 原计划稿的 8-test pseudocode 已被实际实现取代（commit `f8510b1` + `f7b8a5b`）。
+> **实际 15 个测试，2026-07-03 全部通过**。测试代码本身即规范 —— 本节只列清单，
+> 细节直接读测试文件（每个 test 有完整 docstring 说明其覆盖的失效模式）。
 
-def test_A5_action_slot_is_clean_physical_under_noise():
-    """[GATE 2] Robust env 语义验证：action_noise_std > 0 时,
-    obs[action_slice] 必须等于 clean commanded action 的 physical 版本
-    （不是 noised executed action 的 physical 版本）。"""
-    seed = 42
-    env = omnipiano.make("OmniPiano-ClairDeLune-A-Gauss-P05-v0")
-    obs, _ = env.reset(seed=seed)
-    
-    # 固定 action
-    a_cmd_canonical = np.array([0.5, 0.3, ...], dtype=np.float32)
-    obs, r_obs, _, _, _ = env.step(a_cmd_canonical)
-    
-    # 手工算期望 clean physical:
-    expected_physical = _canonical_to_physical(
-        np.clip(a_cmd_canonical, -1, 1),
-        phys_low, phys_high
-    )
-    
-    action_slice = env.unwrapped._robust_wrapper._action_slice
-    assert np.allclose(obs[action_slice], expected_physical, atol=1e-6), (
-        f"obs[action_slice] = {obs[action_slice]}, "
-        f"expected clean physical {expected_physical}"
-    )
+| Test | 类型 | 断言强度 |
+|---|---|---|
+| `test_A1_action_slot_is_physical_and_formula_matches` | gate | bit-exact（`assert_array_equal`）+ 非退化 sanity |
+| `test_A2_tree_flatten_alphabetical_order` | gate | 精确顺序 |
+| `test_A3_layout_and_physical_spec` | gate | spec 逐元素相等 + clip flag + slice 宽度 |
+| `test_A4_non_robust_obs_object_untouched` | gate | **对象 identity**（`obs is inner_obs`） |
+| `test_A5_action_slot_clean_physical_under_noise` | gate | bit-exact + noise l2 > 0 |
+| `test_A6_action_slot_invariant_across_noise_levels` ★ | gate | 100 step bit-exact + 其他 slot 分岔 sanity |
+| `test_frame_stack_gt1_raises` | fail-fast | `NotImplementedError` |
+| `test_no_action_reward_obs_skips_override` | fallback | slices None + noise 仍生效 |
+| `test_G1_invariant_across_episode_reset` | 扩展 gate | 跨 reset()（无 seed）60 step bit-exact |
+| `test_G2_invariant_after_seed_rebuild` | 扩展 gate | 两次 seed rebuild 后缓存仍有效 |
+| `test_G3_out_of_range_caller_actions` | 扩展 gate | \|a\|≤1.7 越界输入 bit-exact |
+| `test_G4_float32_caller_dtype` | 扩展 gate | SB3 风格 float32 caller |
+| `test_G5_sb3_dummy_vecenv_smoke` | 扩展 gate | DummyVecEnv 2×5 step + info key |
+| `test_G6_reward_slot_consistent_under_action_noise` | 扩展 gate | `obs[reward_slice] == float32(returned_reward)` |
+| `test_G11_slices_disjoint` | 防御 | slice 区间不重叠 |
+
+**测试基建**：4 个 test-only env 在测试文件里 `register()`（ForElise 底座，最短曲）：
+`OmniPianoTest-M6-{Clean, ActionNoise, NoAR, FrameStack}-v0`。module-scoped fixture 复用
+env 实例，每个 test 自行 `reset(seed=...)` 隔离。
+
+**Phase 0 需追加的测试**（当对应代码路径存在后）：
+- dist parametrize：uniform / shift 复用 A5/A6 断言（同一 a_cmd-save/override 代码路径）
+- reward-channel gate：`obs[reward_slice] == float32(r_obs)` 每 step
+- eval_scale=0 env 与 Clean env 全 obs bit-exact
+- §0.7 noise-sequence equivalence（2 个 legacy robust env）
 
 
-def test_A6_action_slot_invariant_across_noise_levels():
-    """[GATE 3 ★★★] 极其强的方案 6 formula-consistency 验证：
-    
-    核心 invariant: obs[action_slice] 只由 clean a_cmd 决定，
-    **与 action_noise_std 完全无关**。
-    
-    如果方案 6 (Option B) 实施正确：
-      - env_clean (no noise):    obs[action_slice] = CanonicalSpec 算出的 physical(a_cmd)
-      - env_noised (with noise): obs[action_slice] = 我们 override 算出的 physical(a_cmd)
-    
-    如果我们复用的 canonical→physical 公式与 CanonicalSpec._scale_action
-    严格一致（bit-exact），则**两种场景下 obs[action_slice] 应完全相同**。
-    
-    这个测试比 A4 (bit-exact no-op) 更严格：
-      - A4 在 non-robust 场景下，两个 code path 恰好算出相同值（a_cmd=a_exec 的巧合）
-      - A6 在 robust 场景下强制走 override 路径，直接对比公式一致性
-    
-    NOTE: 其他 obs slots (joints_pos, piano/state 等) 会因 physics 分岔而不同，
-    这是预期的（robust env 的 physics 用 noised a_exec，物理状态确实分岔）。
-    只有 action_slice 应该 invariant."""
-    seed = 42
-    # 完全相同的 fixed action 序列（不是 policy 决定，避免间接依赖）
-    fixed_actions = [
-        np.array([0.5, -0.3, 0.7, ..., 0.1], dtype=np.float32)
-        for _ in range(100)
-    ]
-    
-    # Setup A: 无 action noise
-    env_clean = omnipiano.make("OmniPiano-ClairDeLune-v0")
-    # Setup B: 有 action noise
-    env_noised = omnipiano.make("OmniPiano-ClairDeLune-A-Gauss-P05-v0")
-    
-    obs_c, _ = env_clean.reset(seed=seed)
-    obs_n, _ = env_noised.reset(seed=seed)
-    
-    # Reset 后的 obs[action_slice] 应该都是 zero（由 ObservationActionReward 
-    # 的 generate_value 生成），可以先 sanity check
-    action_slice = env_clean.unwrapped._robust_wrapper._action_slice
-    assert np.array_equal(obs_c[action_slice], obs_n[action_slice]), (
-        "reset 后 obs[action_slice] 应该都是 zero-init"
-    )
-    
-    diffs_action_slot = []
-    diffs_other_slots = []
-    
-    for i, a_cmd in enumerate(fixed_actions):
-        obs_c, _, done_c, _, _ = env_clean.step(a_cmd)
-        obs_n, _, done_n, _, _ = env_noised.step(a_cmd)
-        
-        # ★ 核心断言：obs[action_slice] 必须 bit-exact 相同
-        if not np.array_equal(obs_c[action_slice], obs_n[action_slice]):
-            diffs_action_slot.append(
-                f"step {i}: clean={obs_c[action_slice][:3]}, "
-                f"noised={obs_n[action_slice][:3]}, "
-                f"max_diff={np.max(np.abs(obs_c[action_slice] - obs_n[action_slice]))}"
-            )
-        
-        # 检查其他 slot 是否分岔（预期会分岔）
-        mask = np.ones_like(obs_c, dtype=bool)
-        mask[action_slice] = False
-        # 因为 physics 分岔，其他 slots 迟早会 diverge
-        # 这里只统计 diverge 的比例，用于诊断（不作为 fail 条件）
-        if not np.array_equal(obs_c[mask], obs_n[mask]):
-            diffs_other_slots.append(i)
-        
-        if done_c or done_n:
-            break
-    
-    # Assertion: action slot 必须 100/100 step 完全一致
-    assert not diffs_action_slot, (
-        f"[A6 FAILED] obs[action_slice] should be invariant to action noise "
-        f"(both should equal physical(a_cmd)), but found differences:\n"
-        + "\n".join(diffs_action_slot[:5])  # 前 5 个 diff 用于诊断
-        + "\n\n"
-        f"This means our _canonical_to_physical formula does NOT exactly "
-        f"match CanonicalSpec._scale_action. Possible causes:\n"
-        f"  1. Float precision mismatch (check dtype)\n"
-        f"  2. Clip semantics differ (with/without clip)\n"
-        f"  3. Wrong phys_low/phys_high cached\n"
-        f"  4. Slice indices wrong\n"
-    )
-    
-    # 诊断信息：其他 slot 应该会分岔（否则 physics 没受 noise 影响，可能 noise 没生效）
-    print(f"[A6 info] Other slots diverged in {len(diffs_other_slots)}/100 steps "
-          f"(expected: many, since physics diverges due to a_exec differing)")
-    assert len(diffs_other_slots) > 10, (
-        "[A6 warning] Other slots diverged very rarely — action noise may not be "
-        "actually taking effect on physics. Check noise config."
-    )
+### Implementation strategy（prototype-first）
 
+**Step 1: Prototype** ✅ **已完成（2026-07-03）**
+- 分支：`feat/robust-method6-prototype`（commits `f8510b1` + `f7b8a5b`）
+- 基于当前 codebase（未改 RobustConfig）
+- `RobustWrapper.__init__`：`_compute_override_layout()`（slice 计算 + physical spec/clip 缓存 + frame_stack/ConcatObs 守卫）
+- `RobustWrapper.step`：a_cmd 采样前保存 + POST 阶段 override（仅 action noise 激活时）
+- `_clean_physical()`：复用 upstream `_scale_nested_action` + 缓存 spec（bit-exact 关键决策）
+- **15/15 测试通过**（A1-A6 + fail-fast/fallback + G1-G6/G11）+ 3 个生产 env smoke
+- 待 reviewer sign-off 后 merge 回 main
 
-# ==========================================
-# CORRECTNESS TESTS
-# ==========================================
-
-def test_reward_slot_is_r_obs_under_noise():
-    """obs["reward"] slot must equal r_obs (noised), matching the returned reward."""
-    env = omnipiano.make("OmniPiano-ClairDeLune-R-Gauss-P10-v0")
-    obs, _ = env.reset(seed=42)
-    obs_next, r_obs, _, _, _ = env.step(action)
-    
-    reward_slice = env.unwrapped._robust_wrapper._reward_slice
-    assert obs_next[reward_slice[0]] == np.float32(r_obs), (
-        "obs['reward'] slot should equal returned r_obs"
-    )
-
-
-def test_slice_dim_matches_observation_space():
-    """`_compute_ar_slices` computed total dim must match observation_space.shape[0]."""
-    env = omnipiano.make("OmniPiano-ClairDeLune-v0")
-    rw = env.unwrapped._robust_wrapper
-    # rw._compute_ar_slices 内部应该有 assertion，且导出 total_dim
-    # 这里只需验证不 raise
-    assert rw._action_slice.stop <= env.observation_space.shape[0]
-    assert rw._reward_slice.stop <= env.observation_space.shape[0]
-
-
-# ==========================================
-# FAIL-FAST TESTS
-# ==========================================
-
-def test_frame_stack_gt_1_raises():
-    """RobustWrapper must fail-fast if frame_stack > 1 in v1."""
-    # 注册一个 frame_stack=4 的 env（临时测试用）
-    with pytest.raises((AssertionError, NotImplementedError)):
-        env = omnipiano.make("...", frame_stack=4)  # 应该 fail
-
-
-def test_action_reward_obs_disabled_no_override():
-    """When action_reward_observation=False, no override should happen
-    (slice is None, step should not touch obs[slice])."""
-    # 注册一个 action_reward_observation=False 的 env
-    env = omnipiano.make("...", action_reward_observation=False)
-    rw = env.unwrapped._robust_wrapper
-    assert rw._action_slice is None
-    assert rw._reward_slice is None
-    # step 应该正常返回，不 raise
-    obs, r, _, _, _ = env.step(action)
-```
-
-**Gate 通过条件**：
-- **Prototype gate**: A1-A5 全部通过 → 可以进 Phase 0 整合
-- **Phase 0 integration gate**: 上面 8 个测试全部通过 → 方案 6 可以 land
-
-### Implementation strategy（推荐 prototype-first）
-
-**Step 1: Prototype（1-2 天）**
-- 分支：`feat/robust-method6-prototype`
-- 基于当前 codebase（不改 RobustConfig）
-- 只在 `RobustWrapper.__init__` 加 slice + physical bounds 缓存
-- 只在 `RobustWrapper.step` POST 阶段加 override 逻辑（15-20 行）
-- 跑 Test A1-A5，通过就 merge 到 mainline
-
-**Step 2: 完整 Phase 0（如果 Step 1 通过）**
+**Step 2: 完整 Phase 0**（待启动）
 - 分支：`feat/robust-phase0`
 - 按 §0.1-0.7 逐项做（14 字段 RobustConfig / eval_scale / reward noise / OBS_NOISE_SEED_OFFSET / CSV logging）
-- 把 Step 1 验证过的方案 6 逻辑合并进 §0.3（RobustWrapper.step）
-- 跑完整 8 测试 suite + equivalence test（0.7）
+- 方案 6 逻辑已在 mainline（Step 1 merge 后），§0.3 只需：(a) reward slot override（`obs[reward_slice] = float32(r_obs)`，仅 reward channel 激活时）；(b) `_channel_active` / `_sample_noise` 适配 14 字段 config —— a_cmd-save/override 机制不变
+- 跑 §"完整测试清单" 的 Phase 0 追加项（dist parametrize / reward gate / eval_scale / §0.7 equivalence）
 - 全绿才 merge
 
 **Step 3: Phase 1（如果 Phase 0 全绿）**
@@ -1041,13 +898,11 @@ def test_action_reward_obs_disabled_no_override():
 
 ### 与 Phase 0 其他 items 的依赖关系
 
-**方案 6 可以独立 prototype**（无依赖），但**正式整合位置**是 §0.3（RobustWrapper.step 里加 reward noise 时同时加 override）。
-
-Prototype 阶段用**现有 RobustConfig 2 字段版本**验证是可行的 —— 只测 action noise，不测 reward noise。Reward noise 的 override 在 Phase 0 §0.3 时一起加。
+方案 6 已独立完成 prototype（无依赖）。Phase 0 §0.3 加 reward noise 时**同时**加 reward slot override —— 复用已验证的 slice 机制（`_reward_slice` 在 prototype 里已计算并被 A3/G6/G11 测试，只是 override 尚未接线，因为 `reward_noise_std` 字段还不存在）。
 
 ### Paper 写作可 cite 的说明
 
-> "OmniPiano's `RobustWrapper` overrides the `action` and `reward` slots of the observation-augmented flat obs vector to expose the clean commanded action `a_cmd` (in the physical actuator range, matching RoboPianist's upstream convention) and the noised observed reward `r̃_t` to the policy, aligning with the Disrupted-MDP formalism (Robust-Gymnasium, Gu et al. 2025) and noisy-reward RL convention (Wang et al. 2020). The wrapper reuses `CanonicalSpecWrapper`'s canonical→physical mapping formula to compute the physical version of the clean canonical command, ensuring bit-exact numerical no-op behavior for non-robust environments (all noise = 0)."
+> "OmniPiano's `RobustWrapper` overrides the `action` and `reward` slots of the observation-augmented flat obs vector to expose the clean commanded action `a_cmd` (in the physical actuator range, matching RoboPianist's upstream convention) and the noised observed reward `r̃_t` to the policy, aligning with the Disrupted-MDP formalism (Robust-Gymnasium, Gu et al. 2025) and noisy-reward RL convention (Wang et al. 2020). Rather than reimplementing the canonical→physical rescaling, the wrapper invokes dm_env_wrappers' own `_scale_nested_action` with the spec object cached from the chain's `CanonicalSpecWrapper`, so the override and the executed path share one arithmetic implementation — verified bit-exact by a cross-condition gate test (identical fixed-action sequences fed to clean and noised environments yield bit-identical action slots over 100 steps). For non-robust environments the override branch never executes, leaving the observation object untouched."
 
 ---
 
@@ -1455,24 +1310,6 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 6. **§5.1(c)（包含 Shift 分布）**：v1 包含 "Shift" 分布（27 个 task 而不是 18 个）—— OK 还是砍掉？
    ✅ **已决定（2026-06-27）**：**保留** Shift 分布，v1 = 27 task（+ 1 Clean = 28）。语义采用 **program-run-level 恒定 `+shift_value`**（与 Q2 决议一致），其中 `shift_value` 是 `RobustConfig.*_noise_shift` 字段（Option C.3 独立字段，**与 `*_noise_std` 无关**）。加入的成本极低（无 RNG，无 reset 逻辑），且给 paper 提供 3-way 分布 sweep 与 Robust-Gymnasium 的直接对照（RG `noise_shift` 直接对齐），值得纳入。**注**：v1 registered shift tasks 用**正值**（`shift = +level_value`），符合 RG paper 惯例；非对称/负值 shift 由 infrastructure 支持但 v1 不默认注册。
 7. **§5.2（eval scale 覆盖路径）**：允许 sweep tool 通过 `_eval_scale_override=` 私有 kwarg 在 make() 时覆盖，而不是为每个 `(env × scale)` 对注册一个 env —— OK 吗？
-
-**决议 8（新，2026-06-27）：obs["action"] / obs["reward"] principled semantics 修正（§4.7 方案 6 Option B）**
-
-✅ **已决定**：正式采纳 **方案 6 Option B（physical override）**。RobustWrapper 在 step 的 POST 阶段用 canonical→physical 映射（复用 CanonicalSpec 公式）算出 clean physical，覆盖 obs 里 action / reward 两个 slot。
-
-**实施策略：prototype-first**（见 §4.7 完整说明）：
-- Step 1：在独立 prototype 分支上仅加 slice 计算 + Option B 覆盖，用现有 2 字段 RobustConfig 验证 A1-A5 五个假设（bit-exact no-op + 语义正确性）
-- Step 2：Step 1 全绿 → 正式整合进 Phase 0 §0.3（RobustWrapper.step）
-- Step 3：Phase 0 全绿 → 进 Phase 1（task 注册 + eval sweep）
-
-**详细测试要求**：8 项测试（§4.7 完整清单），涵盖 upstream 传统假设、字母序假设、动态 slice 计算、bit-exact no-op、语义正确、fail-fast 覆盖。
-
-**理由（简要）**：
-- 修正 obs["action"] noise leak（policy 反推 noise 的漏洞）
-- 修正 obs["reward"] 与训练 signal 一致性
-- 严格对齐 Wang 2020 noisy-reward RL + Gu 2025 Disrupted-MDP formalism
-- Option B（physical 版本）保持 RoboPianist upstream 传统（physical 值在 obs["action"]），对现有 baseline **bit-exact 零影响**
-- Prototype-first 策略降低风险（发现问题只损失 Step 1 工程时间，不影响 Phase 0 架构）
    ✅ **已决定（2026-06-27）**：**采用 `_eval_scale_override=` 私有 kwarg** 方案（B1）。仅 `tools/robust_eval_sweep.py` 使用，不暴露给一般用户。理由：
    - **避免 env 数爆炸**：不这样做则要注册 28 × 5 scale = 140 env
    - **eval scale 是"评估行为"**：概念上不属于"env 属性"（同一策略在不同 scale 下应有不同表现）
@@ -1495,6 +1332,26 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
            scale = 1.0
        # ...继续用 scale 计算 effective_robust_config
    ```
+
+**决议 8（2026-06-27 决定；2026-07-03 Step 1 完成 ✅）：obs["action"] / obs["reward"] principled semantics 修正（§4.7 方案 6 Option B）**
+
+✅ **已决定并完成 prototype**：正式采纳 **方案 6 Option B（physical override）**。RobustWrapper 在 step 的 POST 阶段覆盖 obs 里 action / reward 两个 slot（action：clean commanded 的 physical 版本；reward：noised observed，Phase 0 接线）。
+
+**Step 1 Prototype 结果（2026-07-03）**：
+- 分支 `feat/robust-method6-prototype`（commits `f8510b1` + `f7b8a5b`），main 未动
+- **15/15 测试全绿**（A1-A6 核心 gate + fail-fast/fallback + G1-G6/G11 扩展 gate），含 A6 cross-condition bit-exact（100 step）与 A4 对象 identity（结构性 no-op）
+- 3 个生产 env smoke 正常
+- As-built 关键决策：复用 upstream `_scale_nested_action` + 缓存原 spec 对象（而非重写公式）→ bit-exact 构造性成立；override 仅在 action noise 激活时运行 → 零噪声 env 连 copy 都不发生
+- 完整结果与 as-built 细节见 §4.7 顶部状态表
+
+**后续**：reviewer sign-off → merge main → Phase 0 §0.3 加 reward slot override（复用已验证的 `_reward_slice` 机制）。
+
+**理由（简要）**：
+- 修正 obs["action"] noise leak（policy 反推 noise 的漏洞）
+- 修正 obs["reward"] 与训练 signal 一致性
+- 严格对齐 Wang 2020 noisy-reward RL + Gu 2025 Disrupted-MDP formalism
+- Option B（physical 版本）保持 RoboPianist upstream 传统（physical 值在 obs["action"]），对现有 baseline **结构性零影响**
+- Prototype-first 策略已兑现（一次全绿，未触发回退路径）
 
 每个都可独立决定；想换的请告诉我，没说的我按 my recommendation 走。
 
