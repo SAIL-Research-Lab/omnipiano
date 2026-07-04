@@ -537,16 +537,28 @@ wrapper 数据流(已代码核对):
 
 **训练 rollout CSV 不动**:OmniSafe `progress.csv` / SB3 native 由各自库原生记录;训练噪声配置由 env_id 固定、可反推,不需要 per-episode 噪声记录。要 hook 它们的 logger 成本高、收益低。
 
-### 0.6.2 新增列(Tier 1,必做)
+### 0.6.2 新增列
 
-| 列 | 含义 | 用途 |
+**两类列,价值定位不同**:
+
+| 列 | 含义 | 定位 |
 |---|---|---|
-| `eval_noise_scale` | 该 eval 实际跑的噪声缩放因子(0=clean, 1=training-level, sweep 用其它值) | **sweep 命脉** —— 没它无法判断一行属于 robustness 曲线的哪个点 |
-| `ep_noise_action_l2` | episode 内 `info[robust/noise_action_l2]` 求和 | 审计"实际噪声水平是否符合配置",抓 config bug |
+| `eval_noise_scale` | 该 eval 实际跑的噪声缩放因子(0=clean, 1=training-level, sweep 用其它值) | **科学变量 / sweep 命脉** —— 没它无法判断一行属于 robustness 曲线的哪个点。**必留** |
+| `ep_noise_action_l2` | episode 内 `info[robust/noise_action_l2]`(clip 前原始噪声 L2)求和 | **开发期 tripwire**(见下) |
 | `ep_noise_obs_l2` | episode 内 `info[robust/noise_obs_l2]` 求和 | 同上 |
 | `ep_noise_reward` | episode 内 `info[robust/noise_reward]` 求和(§0.3 新增 key,可为负) | 同上 |
 
+**关于后三列的诚实定位(不要误当科学变量)**:
+- **不是复现所需**:固定 seed + env_id + `eval_noise_scale` 已完全决定噪声,可重建。
+- **信息量低**:高维 Gaussian 的 ‖noise‖ 因 concentration of measure 紧集中在 `std·√dim` 附近,基本是 (config × episode 长度) 的近似常数。
+- **记的是 clip 前原始噪声**,不是 clip 后的有效扰动。
+- **唯一真价值 = silent-failure tripwire**:`eval_noise_scale` 乘法链路是 Phase 0 新写的承载性代码,最危险的失效是"eval 时噪声悄悄没生效"——F1 会看起来意外地好,无明显症状,整条 robustness 曲线作废。`ep_noise_action_l2 == 0`(当期望非零)是一眼可见的报警。给外部用户跑 sweep 时是一个 per-run 保险。
+
+**保留决策(2026-07-03,用户)**:v1 **保留** 三列——开发/调试阶段抓静默失效非常有用。**待 pipeline 稳定后**可考虑降级(砍 obs/reward、只留 action 做 tripwire,或改为 CI test);届时若砍,需在 §0.6 记一笔并同步两个 CSV schema。
+
 `__init__` 加 accumulator,`reset()` 重置,`step()` 从 info key 累加,episode 结束写入。与现有 `episode_return` accumulator 同模式(`logger_wrapper.py:102-110`)。`checkpoint_replay_eval.py` 的 `_CSV_HEADER` + 写入逻辑同步加同样 4 列。
+
+**建议同时加一个 CI test**(与 tripwire 互补,不替代):断言 `eval_noise_scale=1` 时注入噪声匹配配置、`=0` 时为零——把 eval-noise 接线的正确性在 CI 钉一次。
 
 ### 0.6.3 明确**不新增**的列(核对后砍掉)
 
