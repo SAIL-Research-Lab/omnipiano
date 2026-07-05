@@ -1142,6 +1142,14 @@ v1 所有注册的 robust task 都是 **single-channel** —— 每个 env id �
 1. **直接可比性**：每个 v1 task ↔ 一个 RG `(env_id, --noise-factor=X)` 运行时配置。paper 里可以直接引用"our 27 tasks correspond to the (env × channel × dist × level) grid of Robust-Gymnasium's runtime configurations, projected as first-class registered environments"。
 2. **消融清晰**：paper reviewer 一定会问"哪个 channel 最脆？" —— single-channel task 直接给答案。multi-channel 混合注入把这个问题变成回归分析。
 3. **基础设施仍支持多 channel**：`RobustConfig` 有 3 个独立的 `*_noise_std` field，未来 v2+ 若要注册 combined-channel task（如 `OmniPiano-ClairDeLune-AO-Gauss-P05-v0`，同时扰 Action + Obs），只需设两个非零 std 即可。**API 不封死，只是 v1 registration 保持 single-channel 惯例**。
+
+   **Multi-channel 兼容性审计（2026-07-05，端到端实测确认，`test_robust_multichannel.py`）**：核心逻辑**已是 multi-channel 安全的、无 bug**——单通道开发时写得足够防御性：
+   - **两通道同时注入正确**：A+O 时 `action_l2>0` 且 `obs_l2>0`、reward 不受扰；A+R 时 action 与 reward 都注入。
+   - **obs slot 双 override 独立正确**：`override_action` / `override_reward` 是**独立布尔**（非互斥），A+R 时同一步内两个 slot 都覆盖（`obs["action"]`=clean physical，`obs["reward"]`=noised）。
+   - **CSV 记录无新污染**：F1/cost 恒真值；`ep_return_true`（分解列之和）在 action+reward 同时加噪时仍恢复干净 return（`received = ep_return_true + reward_noise` 逐步成立）；`ep_noise_{action,obs,reward}` 三累加器独立。
+   - **RNG 确定性**：obs 用独立 dm_env 流；action/reward 共享 gym 流但**固定顺序（先 action 后 reward）**→ 同 seed 可复现（§12 决议 8）。
+   - **⚠️ 唯一约束——同一个 `noise_dist`（全局单值）**：所有活跃通道**共享一种分布**。`A-gaussian + O-uniform` **不可表达、会 raise**。故 **"同分布" multi-channel（A+O 都 gaussian）= 开箱即用、零核心代码**；**"混分布" multi-channel = 需要 per-channel-dist 重构 = §16 冻结项**。
+   - **Phase 2 同分布 multi-channel 实际只需**：一个多通道注册 helper + 命名规范（`AO-Gauss-P05`），核心 wrapper/config/logger 逻辑零改动。另注：单个 `eval_noise_scale` 会同时缩放所有活跃通道（不能在一个 env 内独立 sweep 各通道 scale）。
 4. **RNG 简化**（见 §4）：v1 每个 task 只有 1 个 channel 活跃 → action+reward 共享一条 RNG stream 完全无风险，因为 action 或 reward 分支永远只有一个被触发。
 
 按照现有 `omnipiano/envs/__init__.py` 风格：
@@ -1854,7 +1862,7 @@ env = omnipiano.make(env_id, mode="eval", log_dir=my_dir)   # SafeRecord 自动�
 | # | 项目 | 阶段 | 状态 | 触发条件 | 主要工作 | 交叉引用 |
 |---|---|---|---|---|---|---|
 | A | 完成 Phase 1 实验矩阵（全档位 sweep + 曲线 + 填数） | **Phase 1 收尾** | 🟢 | 现在（首批 9 run 已在跑） | 补齐 level 档位训练 + `robust_eval_sweep.py` + `plot_robustness_curves.py` + 填 §10 数字 | §5.3 / §10 |
-| B | Multi-channel / combined-channel 任务（如同时扰 A+O） | **Phase 2** | 🟢 | 想要"多通道同时"消融 | **仅注册**（设 2 个非零 std；RNG 已保证 deterministic） | §5.1.0(3) / §12 决议 8 |
+| B | Multi-channel / combined-channel 任务（如同时扰 A+O，**同一 `noise_dist`**） | **Phase 2** | 🟢 | 想要"多通道同时"消融 | **仅注册**（设 2 个非零 std；核心 wrapper/config/logger 逻辑已**端到端审计确认 multi-channel 安全、无 bug**——双通道注入/双 slot override/§14/RNG 确定性全过，`test_robust_multichannel`）。**混分布**（每通道不同 dist）不在此项，需 per-channel-dist 重构（已冻结） | §5.1.0(3) / §12 决议 8 |
 | C | 非对称 uniform 任务注册（`Asym_XX_YY`） | **Phase 2** | 🟢 | 想研究单侧漂移（传感器零点/执行器单侧故障） | **仅注册**（infra 已支持 low≠−high） | §5.1.5 |
 | D | N-hand 单 agent robust 变体（3/4/5-hand） | **Phase 2** | 🟢 | v1 paper 之后想加 morphology 正交轴 | **仅注册 + 跑实验**（wrapper morphology-agnostic，代码零成本；实验成本 ~5×） | §11 行"N-hand SA robust" |
 | E | 跨库统一 eval 语义：给 OmniSafe replay 接线 | **Phase 2** | 🟡 | 真用 OmniSafe 训 robust 任务时 | 让 `checkpoint_replay_eval.py` 经 `make(mode="eval")` 建 env，或改用 `robust_eval_sweep.py` | §11 末行 / §15.2 / §0.2 |
