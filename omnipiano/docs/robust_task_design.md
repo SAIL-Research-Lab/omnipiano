@@ -327,46 +327,20 @@ def make(env_name, log_split="train", **kwargs):
         reward_noise_shift=robust_config.reward_noise_shift * scale,
     )
 
-    # ── reward 噪声是训练期专属：eval 时无条件置零（与 eval_noise_scale 无关）──
-    # 理由（§0.6.3）：固定策略 eval 不消费 reward，加噪只污染 ep_return 读数、
-    # 不改轨迹/F1，是可证明的退化操作。强制置零把"reward 噪声=训练期专属"变成
-    # 代码不变量，杜绝"对 reward 任务误跑 eval sweep → 假曲线"的静默失效。
-    # eval_noise_scale 于是只作用于 obs/action。
-    if log_split == "eval":
-        requested_reward_noise = (
-            robust_config.reward_noise_std != 0.0
-            or robust_config.reward_noise_uniform_low != 0.0
-            or robust_config.reward_noise_uniform_high != 0.0
-            or robust_config.reward_noise_shift != 0.0
-        )
-        effective_robust_config = replace(
-            effective_robust_config,
-            reward_noise_std=0.0,
-            reward_noise_uniform_low=0.0,
-            reward_noise_uniform_high=0.0,
-            reward_noise_shift=0.0,
-        )
-        # 若有人给 reward-channel 任务请求了非零 eval scale（注册了带 reward
-        # 噪声的 eval，或经 sweep tool 的 _eval_noise_scale_override 路径）——
-        # 这是概念错误(固定策略 eval 不消费 reward，加噪只污染 ep_return、
-        # 轨迹/F1 与 clean 一模一样)。force-zero 已把噪声禁掉；再 warn 明确指路。
-        if scale != 0.0 and requested_reward_noise:
-            warnings.warn(
-                "Reward noise at eval is DISABLED and has been forced to zero: a "
-                "fixed policy does not consume reward, so evaluating a reward-noise "
-                "env is meaningless (it only corrupts ep_return; the trajectory and "
-                "F1 are byte-identical to clean). Evaluate reward-trained policies "
-                "on OmniPiano-ClairDeLune-Clean-v0 (numerically identical to this "
-                "force-zeroed env). eval_noise_scale applies to obs/action only.",
-                stacklevel=2,
-            )
+    # NOTE (as-built, 决议 11): reward is scaled by eval_noise_scale like
+    # action/obs — it is NOT force-zeroed at eval (the earlier force-zero
+    # guard + warn shown in older revisions was removed). Because
+    # ObservationActionRewardWrapper feeds the noised reward into
+    # obs["reward"] (a policy input), matched-eval keeps it in-distribution;
+    # the true (denoised) return is a separate CSV column (ep_return_true).
+    # See §12 决议 11.
 
     # 然后 RobustWrapper 和 DmEnvObsNoiseWrapper 消费的是
     # effective_robust_config，而不是原始的。
     ...
 ```
 
-**执行点 = `make(log_split="eval")` 这一个 choke point**：**经此入口构造** eval env 的驱动器（SB3 `EvalCallback`、`_final_eval`、`SafeRecordEpisodeStatistics`，以及未来的 `robust_eval_sweep.py`）自动继承 force-zero，logger 侧**无需任何 reward 特判**。这就是"eval 禁噪"的落地方式:代码强制的不变量,而非"请记得设 scale=0"的约定。**例外**：`checkpoint_replay_eval.py`（OmniSafe，用 `Evaluator.load_saved()` 重建 env）**绕过 `make()`，不自动继承**——该缺口见 §11 deferred。驱动器枚举与"未来接库契约"详见 §0.6.3。
+**执行点 = `make(mode="eval")` 这一个 choke point**：**经此入口构造** eval env 的驱动器（SB3 `EvalCallback`、`_final_eval`、`SafeRecordEpisodeStatistics`，以及未来的 `robust_eval_sweep.py`）自动继承 `eval_noise_scale` 缩放（**三通道对称,含 reward——决议 11,不再 force-zero**），logger 侧无需 reward 特判。**例外**：`checkpoint_replay_eval.py`（OmniSafe，用 `Evaluator.load_saved()` 重建 env）**绕过 `make()`，不自动继承**——该缺口见 §11 deferred。
 
 **Scale 对 uniform bounds 的语义**：naive multiplication 保持"structure of the bias"。举例：
 
@@ -684,7 +658,7 @@ piano 里 `activation` 有**两个同名定义,别混**:
 |                                                                                                              | reward 通道任务                                                                                        | action / obs 通道任务                         |
 | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | training rollout CSV `ep_return`                                                                             | **污染**(真值+噪声,≠该轨迹真 return)                                                                         | **诚实**(准确测被扰动轨迹的真 return)                 |
-| eval `ep_return` / `mean_reward`(经 make() 的驱动器:SB3 `EvalCallback`+Monitor、`_final_eval`、SafeRecord CSV) | **clean**(eval 时 reward 噪声被 `make(log_split="eval")` 强制置零,见 §0.2 / §0.6.3;保证锚在 make() 入口。**例外**:OmniSafe `checkpoint_replay` 走 Evaluator 绕过 make,不自动继承,见 §11) | **诚实**(sweep 各 scale 的真值;scale=0 为 clean) |
+| eval `ep_return` / `mean_reward`(经 make() 的驱动器:SB3 `EvalCallback`+Monitor、`_final_eval`、SafeRecord CSV) | **matched**(决议 11:reward 噪声按 `eval_noise_scale` 缩放,不再 force-zero;`ep_return` 带噪,真实值见 `ep_return_true` 列 = 分解列之和) | **诚实**(sweep 各 scale 的真值;scale=0 为 clean) |
 | `ep_cost` / F1 / 分解列(任意 CSV)                                                                                 | clean                                                                                              | clean(读物理 / a_exec,不读 obs)                |
 
 
@@ -767,7 +741,7 @@ def test_robust_v1_noise_sequences_unchanged():
 
 Paper 的 robustness curve **不跨 channel 比较绝对 std 值**：
 
-- 每个 channel **独立**画曲线（action/obs 用 x = eval_noise_scale；reward 用 x = 训练噪声档位,见 §6 Reward 段），y = F1
+- 每个 channel **独立**画曲线（三通道均用 x = eval_noise_scale；决议 11 后 reward 与 action/obs 对称），y = F1
 - **不**画"同一 std 下 3 个 channel 的对比条形图" —— 这个图会误导读者以为 std 可比
 - 若要跨 channel 定性对比"哪个 channel 更 fragile"，用 **"F1 掉 50% 时的 std 值"** 作为 metric，这样每个 channel 各自的 std scale 隐去了
 
@@ -1167,8 +1141,8 @@ v1 所有注册的 robust task 都是 **single-channel** —— 每个 env id �
 def _make_cfg_for_task(channel_lower: str, dist_key: str, level_value: float):
     """Given (channel, dist, level), build a single-channel RobustConfig
     with only the fields for `dist` set. eval_noise_scale defaults to 1.0
-    (matched eval); reward-channel tasks set eval_noise_scale=0.0 explicitly
-    (reward eval is clean — force-zeroed regardless, §0.6.3).
+    (matched eval, all three channels INCLUDING reward — decision 11; reward
+    is NOT force-zeroed, its true return is a separate CSV column).
 
     Each distribution's parameter is set to `level_value` DIRECTLY
     (no cross-distribution normalization — Option 4a decision):
@@ -1400,7 +1374,7 @@ else:
 | **O**   | Shift   | O-Shift-P05   | O-Shift-P10   | O-Shift-P15   |
 
 
-### Reward（sweep `{0.10, 0.30, 0.50}` —— 这里的 sweep 是**训练噪声档位**，不是 eval scale）
+### Reward（注册档位 `{0.10, 0.30, 0.50}`；决议 11 后 eval 与 action/obs 一样按 `eval_noise_scale` sweep）
 
 
 | Channel | Dist    | P10 (0.10)    | P30 (0.30)    | P50 (0.50)    |
@@ -1462,11 +1436,11 @@ paper 要报告的**两种协议**：
 | **对未见噪声的泛化**                 | `OmniPiano-ClairDeLune-Clean-v0`（无噪声）       | `OmniPiano-ClairDeLune-A-Gauss-P05-v0` 配 `eval_noise_scale=1.0`（噪声开） | 净训练的 policy 在测试时面对噪声能否撑住        |
 
 
-**默认对应哪一行(决议 10,2026-07-04)**：`eval_noise_scale` **默认 = 1.0**,即默认 eval 就是第 1 行 **In-training / matched**——默认那个 eval 数直接是 RG 可比的鲁棒性数(RG 在训练档噪声下评估,无 clean-eval 概念)。第 2 行 post-training(clean)需**显式**设 `eval_noise_scale=0.0`。**reward 通道例外**:reward 噪声 eval 恒被 force-zero(§0.6.3),故 reward 任务注册时设 `eval_noise_scale=0.0`(避免 force-zero warn)。
+**默认对应哪一行(决议 10,2026-07-04)**：`eval_noise_scale` **默认 = 1.0**,即默认 eval 就是第 1 行 **In-training / matched**——默认那个 eval 数直接是 RG 可比的鲁棒性数(RG 在训练档噪声下评估,无 clean-eval 概念)。第 2 行 post-training(clean)需**显式**设 `eval_noise_scale=0.0`。**reward 通道(决议 11)**:与 action/obs 完全对称——同样默认 matched、可 sweep、**不 force-zero**;真实 return 用 `ep_return_true` 列(F1 仍是干净 headline)。
 
 Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（泛化）是 bonus，一旦 eval sweep 存在就是一行代码的事。
 
-**报告指标**：F1（per-step）和 EpRet，画成 **robustness 曲线**，针对一个或多个 checkpoint。**横轴按 channel 分**：**action / obs** 用 x = `eval_noise_scale`（部署期鲁棒性,同一策略在不同 eval 噪声下）；**reward** 用 x = 训练噪声档位（P10/P30/P50 三个训练 env,checkpoint 均在 Clean-v0 上 eval,训练期鲁棒性）—— reward 噪声 eval 被强制置零,不在 `eval_noise_scale` 轴上,详见 §6 Reward 段 / §0.6.3。
+**报告指标**：F1（per-step）和 EpRet，画成 **robustness 曲线**，针对一个或多个 checkpoint。**横轴按 channel 分**：**action / obs** 用 x = `eval_noise_scale`（部署期鲁棒性,同一策略在不同 eval 噪声下）；**reward**（决议 11）：与 action/obs 一样用 x = `eval_noise_scale`（matched 默认、可 sweep）；真实 return 用 `ep_return_true` 列。~~原"训练档位轴 / Clean-v0"~~已作废。
 
 ---
 
@@ -1501,7 +1475,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 | `test_obs_noise_seed_consistency.py`（§0.5）                                                                                                             | 0     | SA env 和 MA env 在同 master seed 下首个 obs-noise 样本必须一致                           |
 | Smoke test：`omnipiano.make("OmniPiano-ClairDeLune-A-Gauss-P05-v0").reset()` 能跑                                                                         | 0/1   | smoke                                                                         |
 | Smoke test：`log_split="eval"` 配 eval_noise_scale=0.5 → info 上的有效 std = 原值 × 0.5                                                                        | 0     | unit                                                                          |
-| Reward eval 禁噪 guard(§0.2)：reward-channel 任务 `log_split="eval"` 下,即便 eval_noise_scale>0,有效 reward 噪声字段全为 0(轨迹/F1 与 clean 一致),且发 warn;obs/action 通道不受影响 | 0     | unit                                                                          |
+| Reward matched eval(§0.2,决议 11)：reward-channel 任务 `mode="eval"` 下,reward 噪声按 `eval_noise_scale` 缩放(与 action/obs 对称,**不 force-zero、不 warn**);scale=1.0→matched、0.0→clean(已在 `test_robust_eval_scale.py` 覆盖) | 0     | unit                                                                          |
 | 分布合理性：symmetric std-matched uniform (`low=-0.1·√3, high=+0.1·√3`) 采 10000 样本 → empirical std ≈ 0.1 ± 1%                                                | 0     | unit                                                                          |
 | Uniform 非对称支持：`uniform_low=-0.02, uniform_high=+0.10` 采 10000 样本 → mean ≈ 0.04, std ≈ 0.035                                                            | 0     | unit                                                                          |
 | `__post_init__` 校验：设 `noise_dist='gaussian'` 但 `action_noise_shift=0.05` → 抛 `ValueError`                                                              | 0     | unit                                                                          |
@@ -1632,7 +1606,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 **语义**：action/obs 默认 eval 噪声档 = 训练档（同分布、不同 seed）。clean/nominal eval 需显式 `eval_noise_scale=0.0`；sweep 覆盖 `{0, 0.5, 1, 2, ...}` 画曲线。
 
-**reward 通道例外**：reward 噪声 eval 恒被 force-zero（reward-eval-noise 对固定策略退化，§0.6.3）。故 **reward 任务注册时应显式设 `eval_noise_scale=0.0`**，否则默认 1.0 会在 eval 触发 force-zero warn（结果仍 clean，但告警）。
+**reward 通道**：⚠️ 原"eval 恒 force-zero、reward 任务需设 `eval_noise_scale=0.0`"**已被决议 11 取代**——reward 现与 action/obs 完全对称（matched eval、不 force-zero、可 sweep），真实 return 用 `ep_return_true` 列。详见决议 11。
 
 **as-built**：`configs/__init__.py` 默认 1.0；`test_robust_eval_scale.py` 覆盖（default→matched、explicit-0.0→clean、reward default→warn、reward explicit-0.0→no-warn），全 59 tests green。SB3 模板的 periodic / final eval 因此默认 matched（action/obs）。
 
