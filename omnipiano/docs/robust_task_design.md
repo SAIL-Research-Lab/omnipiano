@@ -1670,3 +1670,66 @@ Phase 1 获批后：
 - 我在 chain 脚本里跑 §5.3 的 6 个 baseline 实验，预计总共约 24 GPU·小时。
 - 结果按照最近的 figures 扁平化约定 land 到 `examples/figures_aggregate/robust_v1/`。
 
+---
+
+## 14. 指标 × 噪声通道 × Logger 影响矩阵（代码核实 2026-07-04）
+
+专门回答：SB3 / OmniSafe 的四类记录（training rollout CSV、replay CSV、deterministic eval CSV、`SafeRecordEpisodeStatistics`）里的 `ep_cost` / `ep_return` / `F1` / `recall` / `precision`，是否会受 obs / action / reward robust 噪声影响。
+
+### 14.0 术语 + 两种"影响"
+
+- **`ep_return` == `ep_reward`**：一个 episode 内 Σ per-step reward（实收）。是的，ep_return 就是这条 episode 的总 reward。
+- 必须区分两种"受影响"：
+  - **污染-as-measurement**：记录的数字 **≠ 该轨迹的真实值**（尺子被弄脏）。
+  - **值随扰动轨迹变化（诚实）**：噪声改变策略行为 → 轨迹真变 → 指标如实反映**被扰动轨迹**。这**不是污染**。
+
+### 14.1 指标来源（决定是否被污染；re-verified，与文档既有结论一致）
+
+| 指标 | 来源 | 读 obs? | 结论 |
+|---|---|---|---|
+| **F1 / precision / recall** | `MidiEvaluationWrapper` 读 physics（`task.piano.activation` + MIDI `task._notes`，`robopianist/wrappers/evaluation.py:70/117`） | ❌ | 永不污染（§0.6.5(a) 已验证，仍正确） |
+| **ep_cost** | `SafetyWrapper` 的 constraint 读 physics 或 a_exec；`constraints.py` 全 `del obs`；reward 噪声不碰 cost；`RobustWrapper` 不改 `info[*_SAFETY_COST_*]` | ❌ | 永不污染（决议 11 CSV 规格已验证，仍正确） |
+| **ep_return** | Σ 流经 wrapper 的 reward 标量；`RobustWrapper` 仅在 reward 通道对它加噪（S4） | — | **仅 reward 噪声污染** |
+| reward 分解列 | `MetricsWrapper` 读加噪前 `reward_terms`（§0.6.5(c)） | ❌ | 永远 clean；其和 = clean return = `ep_return_true` |
+
+### 14.2 核心表：指标 × 噪声通道 → 是否**污染-as-measurement**
+
+| 指标 | action 噪声 | obs 噪声 | reward 噪声 |
+|---|---|---|---|
+| **F1 / precision / recall** | ❌ 不污染 | ❌ 不污染 | ❌ 不污染 |
+| **ep_cost** | ❌ 不污染 | ❌ 不污染 | ❌ 不污染 |
+| **ep_return** | ❌ 不污染（实收 = 被扰动轨迹真 return） | ❌ 不污染 | ✅ **污染**（= 真值 + Σ噪声） |
+
+**唯一被污染-as-measurement 的组合：reward 噪声下的 `ep_return`。** 其余任何组合要么不受影响、要么诚实反映被扰动轨迹。
+
+**值变化维度（非污染，补充）**：
+- action / obs 噪声改变轨迹 → F1 / cost / ep_return 数值都会变（诚实，是被扰动轨迹的真值）。
+- reward 噪声经 `obs["reward"]`（OAR + Method 6，`action_reward_observation=True` 默认）进入策略 → 也改变轨迹 → F1 / cost 数值会变（诚实）；ep_return 则**既随轨迹变、又被加噪污染**。
+
+### 14.3 Logger 覆盖表：哪个 logger 有哪些指标（新验证）
+
+| Logger | 框架 | ep_return | ep_cost | F1 / prec / recall | 分解列 | S6 列 |
+|---|---|---|---|---|---|---|
+| **training rollout** `train_iteration_summary.csv` | SB3 | ✓（mean±std） | ✓ | ✓ | ✓ | ✗ |
+| **training rollout** `progress.csv` | OmniSafe | ✓ EpRet | ✓ EpCost | ❌（`Evaluator` 不 surface terminal info，`run_omnisafe_template.py:74-76`） | ❌ | ✗ |
+| **deterministic eval** = `SafeRecordEpisodeStatistics` CSV | SB3 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **replay CSV** `examples/checkpoint_replay_eval.py` | OmniSafe | ✓ | ✓ | ✓（自写 rollout 读 terminal info） | ✓ | ✓（schema-lock；safety→nominal） |
+
+**两处新发现 / 更正**：
+1. **SB3 training CSV 有分解列**（`TrainIterationSummaryCallback` 读 terminal info：`ep_f1_mean` / `ep_precision_mean` / `episode_energy_reward_mean` …）→ 更正之前"training rollout 无分解列"的说法；SB3 训练侧 clean return 也可由分解列之和恢复。
+2. **OmniSafe training 无 F1/precision/recall**：`Evaluator.evaluate()` 只返回 (rewards, costs)、不 surface terminal info；F1 只在 `_final_eval` / `checkpoint_replay`（自写 rollout 读 terminal info）里才有。
+3. 只有**两个 eval CSV**（SafeRecord + replay）有 S6 的 `ep_return_true` / `eval_noise_scale` / `ep_noise_*`。`SafeRecordEpisodeStatistics` **就是** deterministic eval CSV 的 writer（表中同一行）。
+
+### 14.4 逐 logger × 逐指标的具体影响
+
+"是否污染"由**指标来源**决定、**与 logger 无关**。所以在**任一** logger 里：
+
+- 它记录的 **F1 / precision / recall / ep_cost 永远是真实轨迹的真值**——不被任何噪声通道污染-as-measurement；数值会随扰动轨迹变化（action/obs/reward 都可能改轨迹），那是诚实测量。
+- 它记录的 **ep_return**：
+  - **reward 任务** → 是 **noised（实收带噪）**，被污染-as-measurement；真值另有来源：eval CSV 的 `ep_return_true` 列 / SB3 training 的分解列之和 / F1（clean headline）。OmniSafe training 的 EpRet 是 noised 且无分解列 → 该处真值只能靠 F1（而 OmniSafe training 又无 F1，故 OmniSafe **训练**侧看真实表现要靠 replay CSV / `_final_eval`）。
+  - **action / obs 任务** → 是被扰动轨迹的**真 return**（reward 标量未被污染），可直接用。
+
+### 14.5 一句话总结
+
+**除了"reward 噪声污染 `ep_return`"这一个组合，所有 logger 里的 `ep_cost` / `F1` / `precision` / `recall` 都恒为真实轨迹的真值（不被任何噪声污染，只会随扰动轨迹诚实变化）。`ep_return` 在 reward 任务下是实收带噪值，其真值另有来源（`ep_return_true` / 分解列之和 / F1）。** F1 是全程 noise-immune 的 headline。
+
