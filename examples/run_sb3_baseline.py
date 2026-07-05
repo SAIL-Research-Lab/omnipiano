@@ -322,7 +322,8 @@ def _final_eval(
     env = make(
         env_name,
         log_dir=run_dir,
-        mode="final_eval",   # distinct from periodic "eval" CSV written by EvalCallback
+        mode="eval",   # unified with other templates; tools/postprocess_eval_csv.py
+                       # renames the 1-row final-eval CSV to final_eval_*.csv post-hoc
         record_dir=video_dir,
         seed=eval_seed,
     )

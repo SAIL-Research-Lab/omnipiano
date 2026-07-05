@@ -34,9 +34,10 @@ def test_default_config_all_zero_gaussian():
     assert cfg.action_noise_shift == 0.0
     assert cfg.obs_noise_shift == 0.0
     assert cfg.reward_noise_shift == 0.0
-    # Meta
+    # Meta — eval_noise_scale is a multiplier (not a magnitude); its default is
+    # 1.0 = matched eval (same noise as training), the RG-comparable default.
     assert cfg.noise_dist == "gaussian"
-    assert cfg.eval_noise_scale == 0.0
+    assert cfg.eval_noise_scale == 1.0
 
 
 def test_exactly_14_fields():

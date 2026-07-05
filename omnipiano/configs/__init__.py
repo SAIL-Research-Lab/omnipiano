@@ -42,8 +42,10 @@ class RobustConfig:
     the corresponding field(s). At evaluation time (via
     ``omnipiano.make(env_name, mode="eval")``), all magnitude fields are
     multiplied by ``eval_noise_scale``:
-      - ``eval_noise_scale=0.0`` (default) → clean eval (post-training)
-      - ``eval_noise_scale=1.0``           → same as training (in-training)
+      - ``eval_noise_scale=1.0`` (default) → matched eval (same noise level as
+        training) — the RG-comparable robustness number
+      - ``eval_noise_scale=0.0``           → clean/nominal eval (post-training
+        generalization)
       - values in between / >1             → robustness-curve sweep / stress
     (Reward noise is additionally force-zeroed at eval regardless of scale —
     see ``registration.make()``; reward perturbation is training-only.)
@@ -84,8 +86,14 @@ class RobustConfig:
 
     # === Eval-time noise multiplier (applied to ALL magnitude fields) ===
     # effective eval noise = registered training noise × eval_noise_scale.
-    # 0.0 = clean eval; 1.0 = same as training; >1 = stress test.
-    eval_noise_scale: float = 0.0
+    # DEFAULT 1.0 = matched eval (same noise level as training) — the
+    # RG-comparable robustness measurement (Robust-Gymnasium evaluates under
+    # the training-level perturbation; it has no clean-eval concept). Set to
+    # 0.0 for a clean/nominal eval (post-training generalization), or sweep
+    # {0, 0.5, 1, 2, ...} for the robustness curve. NOTE: reward-channel tasks
+    # should register eval_noise_scale=0.0 — reward noise is force-zeroed at
+    # eval regardless (reward perturbation is training-only, §0.6.3).
+    eval_noise_scale: float = 1.0
 
     def __post_init__(self):
         """Validate config integrity (raises ``ValueError`` on violation):

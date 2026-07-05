@@ -161,8 +161,9 @@ class RobustConfig:
     the corresponding field(s). At evaluation time (via
     omnipiano.make(env_name, log_split="eval")), all magnitude fields
     are multiplied by `eval_noise_scale`:
-      - eval_noise_scale=0.0 (default) → clean evaluation (post-training protocol)
-      - eval_noise_scale=1.0           → same as training (in-training protocol)
+      - eval_noise_scale=1.0 (default) → matched eval (same noise as training,
+        in-training protocol) — the RG-comparable robustness number
+      - eval_noise_scale=0.0           → clean/nominal eval (post-training)
       - Values in between        → robustness curve sweep
 
     Uniform bounds use NATURAL parameters (Option 4a, §12) — NO std-matching:
@@ -1163,7 +1164,9 @@ v1 所有注册的 robust task 都是 **single-channel** —— 每个 env id �
 
 def _make_cfg_for_task(channel_lower: str, dist_key: str, level_value: float):
     """Given (channel, dist, level), build a single-channel RobustConfig
-    with only the fields for `dist` set (and eval_noise_scale=0.0 default).
+    with only the fields for `dist` set. eval_noise_scale defaults to 1.0
+    (matched eval); reward-channel tasks set eval_noise_scale=0.0 explicitly
+    (reward eval is clean — force-zeroed regardless, §0.6.3).
 
     Each distribution's parameter is set to `level_value` DIRECTLY
     (no cross-distribution normalization — Option 4a decision):
@@ -1453,6 +1456,8 @@ paper 要报告的**两种协议**：
 | **对未见噪声的泛化**                 | `OmniPiano-ClairDeLune-Clean-v0`（无噪声）       | `OmniPiano-ClairDeLune-A-Gauss-P05-v0` 配 `eval_noise_scale=1.0`（噪声开） | 净训练的 policy 在测试时面对噪声能否撑住        |
 
 
+**默认对应哪一行(决议 10,2026-07-04)**：`eval_noise_scale` **默认 = 1.0**,即默认 eval 就是第 1 行 **In-training / matched**——默认那个 eval 数直接是 RG 可比的鲁棒性数(RG 在训练档噪声下评估,无 clean-eval 概念)。第 2 行 post-training(clean)需**显式**设 `eval_noise_scale=0.0`。**reward 通道例外**:reward 噪声 eval 恒被 force-zero(§0.6.3),故 reward 任务注册时设 `eval_noise_scale=0.0`(避免 force-zero warn)。
+
 Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（泛化）是 bonus，一旦 eval sweep 存在就是一行代码的事。
 
 **报告指标**：F1（per-step）和 EpRet，画成 **robustness 曲线**，针对一个或多个 checkpoint。**横轴按 channel 分**：**action / obs** 用 x = `eval_noise_scale`（部署期鲁棒性,同一策略在不同 eval 噪声下）；**reward** 用 x = 训练噪声档位（P10/P30/P50 三个训练 env,checkpoint 均在 Clean-v0 上 eval,训练期鲁棒性）—— reward 噪声 eval 被强制置零,不在 `eval_noise_scale` 轴上,详见 §6 Reward 段 / §0.6.3。
@@ -1612,6 +1617,18 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 **理由（前瞻）**：Phase 0 会让这同一个 flag 额外承担 eval 噪声语义（按 `eval_noise_scale` 缩放 obs/action、force-zero reward，见 §0.2）。届时 `log_split`（logging 名）控制 env 动力学 = "名字撒谎"；`mode`（train/eval 模式）名副其实。趁现在（未焊噪声行为、调用点少）改最便宜。**明确不做**：不引入独立的第二个 flag 去"解耦 CSV 与噪声语义"—— CSV 挂载已由 `log_dir` 门控半独立（`mode="eval"` 不传 `log_dir` = eval 语义、无 CSV），再加 flag 只会制造"两个 flag 必须保持一致"的负担。
 
 **术语说明**：本文档 §0.2 / §0.6.3 / §5.2 / §6 中出现的 `log_split="eval"` 与 §11 / 本条的 `mode="eval"` **指同一参数**；Phase 0 实施时代码统一为 `mode`，文档届时一并统一。
+
+**决议 10（2026-07-04 ✅，用户拍板）：eval 默认改为 matched（`eval_noise_scale` 默认 1.0），对齐 RG**
+
+✅ **已决定**：`RobustConfig.eval_noise_scale` 默认从 0.0 改为 **1.0** —— 默认 eval 在**训练档噪声下**评估（matched），给出 RG 可比的鲁棒性数。
+
+**依据（基于 RG 代码核实）**：Robust-Gymnasium 在 disrupted env 内按每 step 传入的 `args` 施加噪声，train/eval **复用同一个扰动 env**（eval 循环见 `examples/robust_nonstationary_env/main_stationary.py`；噪声机制见 `examples/robust_state/mujoco/test.py:36-41` 的 `robust_input`），**全仓无 clean/nominal-eval 开关**。即 RG 的鲁棒性指标 = "扰动下表现"，eval 与训练同噪声。原 clean 默认（0.0）偏离 RG 方法学，且默认那个数测的是"干净表现"而非鲁棒性。
+
+**语义**：action/obs 默认 eval 噪声档 = 训练档（同分布、不同 seed）。clean/nominal eval 需显式 `eval_noise_scale=0.0`；sweep 覆盖 `{0, 0.5, 1, 2, ...}` 画曲线。
+
+**reward 通道例外**：reward 噪声 eval 恒被 force-zero（reward-eval-noise 对固定策略退化，§0.6.3）。故 **reward 任务注册时应显式设 `eval_noise_scale=0.0`**，否则默认 1.0 会在 eval 触发 force-zero warn（结果仍 clean，但告警）。
+
+**as-built**：`configs/__init__.py` 默认 1.0；`test_robust_eval_scale.py` 覆盖（default→matched、explicit-0.0→clean、reward default→warn、reward explicit-0.0→no-warn），全 59 tests green。SB3 模板的 periodic / final eval 因此默认 matched（action/obs）。
 
 每个都可独立决定；想换的请告诉我，没说的我按 my recommendation 走。
 

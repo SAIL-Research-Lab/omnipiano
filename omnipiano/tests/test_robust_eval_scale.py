@@ -33,16 +33,20 @@ _register_once(
     robust_config=RobustConfig(action_noise_std=0.10, eval_noise_scale=0.5),
 )
 _register_once(
-    "OmniPianoTest-S3-ActionCleanDefault-v0",
-    robust_config=RobustConfig(action_noise_std=0.10),  # eval_noise_scale=0.0
+    "OmniPianoTest-S3-ActionDefaultMatched-v0",
+    robust_config=RobustConfig(action_noise_std=0.10),  # default eval_noise_scale=1.0
+)
+_register_once(
+    "OmniPianoTest-S3-ActionCleanExplicit-v0",
+    robust_config=RobustConfig(action_noise_std=0.10, eval_noise_scale=0.0),
 )
 _register_once(
     "OmniPianoTest-S3-Reward-v0",
     robust_config=RobustConfig(reward_noise_std=0.30, eval_noise_scale=1.0),
 )
 _register_once(
-    "OmniPianoTest-S3-RewardCleanDefault-v0",
-    robust_config=RobustConfig(reward_noise_std=0.30),  # eval_noise_scale=0.0
+    "OmniPianoTest-S3-RewardCleanExplicit-v0",
+    robust_config=RobustConfig(reward_noise_std=0.30, eval_noise_scale=0.0),
 )
 _register_once(
     "OmniPianoTest-S3-UniformScale-v0",
@@ -99,17 +103,27 @@ def test_action_scale_eval_is_halved():
     assert cfg.action_noise_std == pytest.approx(0.05)  # 0.10 * 0.5
 
 
-def test_action_default_scale_zero_is_clean_eval():
-    cfg = _config_of("OmniPianoTest-S3-ActionCleanDefault-v0", "eval")
-    assert cfg.action_noise_std == pytest.approx(0.0)          # 0.10 * 0.0
-    assert _robust_wrapper(
-        registration.make("OmniPianoTest-S3-ActionCleanDefault-v0", mode="eval")
-    )._channel_active("action") is False
+def test_action_default_eval_is_matched():
+    # NEW default eval_noise_scale=1.0 => eval noise == training noise (matched,
+    # RG-comparable). This is the headline default-eval behavior.
+    cfg = _config_of("OmniPianoTest-S3-ActionDefaultMatched-v0", "eval")
+    assert cfg.action_noise_std == pytest.approx(0.10)   # 0.10 * 1.0
 
 
-def test_action_default_scale_train_keeps_noise():
-    cfg = _config_of("OmniPianoTest-S3-ActionCleanDefault-v0", "train")
+def test_action_default_train_keeps_noise():
+    cfg = _config_of("OmniPianoTest-S3-ActionDefaultMatched-v0", "train")
     assert cfg.action_noise_std == pytest.approx(0.10)
+
+
+def test_action_explicit_scale_zero_is_clean_eval():
+    # eval_noise_scale=0.0 explicitly => clean/nominal eval (opt-in).
+    env = registration.make("OmniPianoTest-S3-ActionCleanExplicit-v0", mode="eval")
+    try:
+        rw = _robust_wrapper(env)
+        assert rw.config.action_noise_std == pytest.approx(0.0)   # 0.10 * 0.0
+        assert rw._channel_active("action") is False
+    finally:
+        env.close()
 
 
 # --------------------------------------------------------------------------
@@ -130,11 +144,12 @@ def test_reward_noise_force_zeroed_at_eval_with_warn():
         env.close()
 
 
-def test_reward_force_zero_no_warn_at_scale_zero():
-    # eval_noise_scale=0.0 => reward zeroed by scale; no confusion => no warn.
+def test_reward_explicit_scale_zero_no_warn():
+    # Reward task registered with eval_noise_scale=0.0 (recommended convention
+    # under the matched-default) => reward zeroed by scale, no force-zero warn.
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
-        env = registration.make("OmniPianoTest-S3-RewardCleanDefault-v0", mode="eval")
+        env = registration.make("OmniPianoTest-S3-RewardCleanExplicit-v0", mode="eval")
         env.close()
     reward_warns = [w for w in rec if "Reward noise at eval" in str(w.message)]
     assert reward_warns == []
