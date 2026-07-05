@@ -1270,6 +1270,34 @@ register(
 )
 
 
+# --- Multi-channel / combined-channel experiments (NOT in the v1 matrix) --
+# First combined-channel probes (2026-07-05). Same-dist multi-channel is
+# register-only (audit: §5.1.0(3), verified by test_robust_multichannel).
+# Naming: two channel letters in canonical order (A<O<R) + shared Dist + level
+# (P15 = +0.15, N15 = -0.15). Each id perturbs TWO channels with ONE shared
+# noise_dist (mixed-per-channel-dist is the frozen per-channel-dist item).
+register(  # Action + Obs, both gaussian σ=0.15
+    id="OmniPiano-ClairDeLune-AO-Gauss-P15-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(
+        noise_dist="gaussian", action_noise_std=0.15, obs_noise_std=0.15),
+)
+register(  # Action + Reward, both uniform bounds [-0.15, +0.15]
+    id="OmniPiano-ClairDeLune-AR-Uniform-P15-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(
+        noise_dist="uniform",
+        action_noise_uniform_low=-0.15, action_noise_uniform_high=0.15,
+        reward_noise_uniform_low=-0.15, reward_noise_uniform_high=0.15),
+)
+register(  # Obs + Reward, both constant shift -0.15
+    id="OmniPiano-ClairDeLune-OR-Shift-N15-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(
+        noise_dist="shift", obs_noise_shift=-0.15, reward_noise_shift=-0.15),
+)
+
+
 # ===========================================================================
 # Multi-agent (PettingZoo ParallelEnv) registrations.
 # Side-effect import: triggers register_parallel() calls in multiagent_envs.py.
