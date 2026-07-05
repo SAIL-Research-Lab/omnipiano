@@ -18,6 +18,13 @@
 !/setup.py
 !/README.md
 
+# examples/: track DIRECT files (trainer templates / helper scripts) so the
+# omnipiano.make() call sites stay version-controlled, but keep the subfolders
+# ignored (logs/, runs/, figures_aggregate/, repertoire/, __pycache__/ are
+# local run artifacts, not source). Subfolder tracking is opt-in per request.
+!/examples/
+/examples/*/
+
 # Python bytecode cache (any __pycache__/ anywhere in the tree)
 __pycache__/
 
