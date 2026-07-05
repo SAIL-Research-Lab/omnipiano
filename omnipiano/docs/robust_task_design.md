@@ -1733,3 +1733,51 @@ Phase 1 获批后：
 
 **除了"reward 噪声污染 `ep_return`"这一个组合，所有 logger 里的 `ep_cost` / `F1` / `precision` / `recall` 都恒为真实轨迹的真值（不被任何噪声污染，只会随扰动轨迹诚实变化）。`ep_return` 在 reward 任务下是实收带噪值，其真值另有来源（`ep_return_true` / 分解列之和 / F1）。** F1 是全程 noise-immune 的 headline。
 
+---
+
+## 15. 接入新算法库做 robust baseline —— checklist（决议 11 接库契约的落地）
+
+未来接入新 RL 库（CleanRL / RLlib / TorchRL / Mava …）跑 robust baseline 时要做什么。
+
+### 15.1 训练侧：无需特殊处理
+
+`omnipiano.make(env_id, mode="train")`，正常训练即可。robust 噪声在 wrapper 链里**逐 step 自动注入（库无关）**；库只管 `step()` + 用返回的（带噪）reward 训练。matched 训练由 env 保证。
+
+### 15.2 Eval 侧：eval env 必须经 `make(mode="eval")` 构造
+
+- 只有经 `omnipiano.make(env_id, mode="eval")` 才**自动继承 eval 语义**（按 `eval_noise_scale` 缩放，matched 默认，决议 10/11）。
+- **反例**：像 OmniSafe `checkpoint_replay` 那样用框架自己的 Evaluator 从训练 config 重建 env（**绕过 make**）→ **不继承** eval 语义（§11 deferred 记的缺口）。新库要么走 `make(mode="eval")`，要么显式复刻缩放。
+- sweep：用 `make(env_id, mode="eval", _eval_noise_scale_override=scale)`（Phase 1 实现的私有 kwarg，§12 决议 7）遍历 scale；或注册 per-scale env。
+
+### 15.3 Eval 记录 —— 两条路
+
+**A（最省事，推荐）**：给 eval env 传 `log_dir` → make() 自动挂 `SafeRecordEpisodeStatistics` → **所有列（含 `ep_return_true` / `eval_noise_scale` / `ep_noise_*`）免费写好**，新库啥都不用做。
+```python
+env = omnipiano.make(env_id, mode="eval", log_dir=my_dir)   # SafeRecord 自动挂
+```
+**B（自写 eval CSV）**：若库要写自己的 eval CSV，必须（schema-lock 到 SafeRecord 的 24 列，便于统一画图）：
+- 从 terminal info 读：`episode_task/f1`（+ precision/recall/sustain_*）、`episode_safety/cost_total` + `violations`、`episode_task/*_reward`（6 个分解列）。
+- 记录：`ep_return`（实收）、**`ep_return_true` = Σ 分解列**（clean headline）、`eval_noise_scale`、(可选) `ep_noise_{action,obs,reward}` = Σ per-step `info["robust/noise_*"]`。
+- 交叉校验：`ep_return − ep_return_true == ep_noise_reward`。
+
+### 15.4 至少要加的列（回答"我理解至少需要加几个 column + ep_return_true"）
+
+✅ 你理解对了。相对一个"只记 `ep_return`/`ep_cost`"的朴素 logger，做 robust baseline 在 **deterministic eval / ckpt eval CSV 至少要加**：
+
+| 列 | 为什么必须 |
+|---|---|
+| **`ep_return_true`**（= 分解列之和） | reward 任务的真实表现；`ep_return` 带噪时的干净值。**必加** |
+| **`eval_noise_scale`** | robustness 曲线定位——没它无法判断一行属于曲线哪个点。**必加** |
+| `ep_noise_{action,obs,reward}` | dev tripwire，确认噪声真注入了。**建议加** |
+
+前提：F1/precision/recall/cost/分解列 也得从 info key 读全（否则连 `ep_return_true` 都算不出）。
+
+### 15.5 Headline + gotchas
+
+- **headline 用 F1**（noise-immune、读物理、与库/噪声无关）；reward 任务的 return 用 `ep_return_true`。
+- env **不产 `info["episode"]`**——库若依赖它需自挂 `RecordEpisodeStatistics` / `Monitor`。
+- 向量化 env 下 terminal info 在 `info["final_info"]`。
+- 真值（F1/cost/分解）是**环境层量**（`info` key，见 §14），库无关——写不写进 CSV 取决于库自己的 logger。**用路 A（挂 SafeRecord）最稳。**
+
+一句话：**训练侧啥都不用改（噪声在 env 里）；eval 侧只要 (1) 经 `make(mode="eval")` 建 env、(2) 挂 `SafeRecordEpisodeStatistics`（或自写时补齐 `ep_return_true` + `eval_noise_scale` + noise 列并 schema-lock），headline 看 F1，就能产出 robust-comparable 的结果。**
+
