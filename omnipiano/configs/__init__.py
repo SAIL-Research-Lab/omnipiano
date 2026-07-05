@@ -90,9 +90,11 @@ class RobustConfig:
     # RG-comparable robustness measurement (Robust-Gymnasium evaluates under
     # the training-level perturbation; it has no clean-eval concept). Set to
     # 0.0 for a clean/nominal eval (post-training generalization), or sweep
-    # {0, 0.5, 1, 2, ...} for the robustness curve. NOTE: reward-channel tasks
-    # should register eval_noise_scale=0.0 — reward noise is force-zeroed at
-    # eval regardless (reward perturbation is training-only, §0.6.3).
+    # {0, 0.5, 1, 2, ...} for the robustness curve. Reward is treated the same
+    # as action/obs (decision 11): matched at eval, so obs["reward"] (fed back
+    # to the policy by ObservationActionRewardWrapper) stays in the training
+    # distribution; the true (denoised) return is a separate CSV column
+    # (ep_return_true), NOT obtained by suppressing reward noise at eval.
     eval_noise_scale: float = 1.0
 
     def __post_init__(self):

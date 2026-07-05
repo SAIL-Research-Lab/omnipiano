@@ -127,32 +127,29 @@ def test_action_explicit_scale_zero_is_clean_eval():
 
 
 # --------------------------------------------------------------------------
-# reward force-zero at eval (+ warn)
+# reward scales like action/obs at eval — matched by default (decision 11):
+# NOT force-zeroed, no warn (obs["reward"] must stay in-distribution vs train)
 # --------------------------------------------------------------------------
 def test_reward_noise_present_at_train():
     cfg = _config_of("OmniPianoTest-S3-Reward-v0", "train")
     assert cfg.reward_noise_std == pytest.approx(0.30)
 
 
-def test_reward_noise_force_zeroed_at_eval_with_warn():
-    # scale=1.0 + reward requested => force-zero AND warn.
-    with pytest.warns(UserWarning, match="Reward noise at eval is DISABLED"):
-        env = registration.make("OmniPianoTest-S3-Reward-v0", mode="eval")
-    try:
-        assert _robust_wrapper(env).config.reward_noise_std == pytest.approx(0.0)
-    finally:
-        env.close()
-
-
-def test_reward_explicit_scale_zero_no_warn():
-    # Reward task registered with eval_noise_scale=0.0 (recommended convention
-    # under the matched-default) => reward zeroed by scale, no force-zero warn.
+def test_reward_matched_at_eval_no_force_zero_no_warn():
+    # eval_noise_scale=1.0 => reward noise kept at training level (matched),
+    # NOT force-zeroed (decision 11), and no warning is emitted.
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
-        env = registration.make("OmniPianoTest-S3-RewardCleanExplicit-v0", mode="eval")
-        env.close()
-    reward_warns = [w for w in rec if "Reward noise at eval" in str(w.message)]
-    assert reward_warns == []
+        cfg = _config_of("OmniPianoTest-S3-Reward-v0", "eval")
+    assert cfg.reward_noise_std == pytest.approx(0.30)   # matched, not zeroed
+    assert [w for w in rec if "Reward noise" in str(w.message)] == []
+
+
+def test_reward_scales_to_clean_with_explicit_zero():
+    # A reward task registered with eval_noise_scale=0.0 => reward scaled to
+    # clean at eval (same scaling mechanism as action/obs).
+    cfg = _config_of("OmniPianoTest-S3-RewardCleanExplicit-v0", "eval")
+    assert cfg.reward_noise_std == pytest.approx(0.0)     # 0.30 * 0.0
 
 
 # --------------------------------------------------------------------------

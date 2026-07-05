@@ -75,7 +75,6 @@ _np.array = _np_array_compat  # type: ignore[assignment]
 # Imports
 # ---------------------------------------------------------------------------
 import dataclasses
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Dict, Sequence
 
@@ -274,13 +273,19 @@ def make(
 
     # ------------------------------------------------------------------
     # 0c. Effective robust config — mode / eval_noise_scale plumbing (§0.2).
-    #     At mode=="eval", every RobustConfig magnitude field is multiplied
-    #     by eval_noise_scale (0.0=clean default, 1.0=training-level,
-    #     >1=stress); at mode=="train" the scale is 1.0 (registered training
-    #     noise). Reward noise is training-only and is force-zeroed at eval
-    #     regardless of scale (§0.6.3) — a fixed policy does not consume
-    #     reward, so reward-eval-noise only corrupts ep_return, not the
-    #     trajectory/F1. Everything downstream (RobustWrapper,
+    #     At mode=="eval", every RobustConfig magnitude field (all three
+    #     channels, INCLUDING reward) is multiplied by eval_noise_scale
+    #     (1.0=matched default, 0.0=clean/nominal, >1=stress); at
+    #     mode=="train" the scale is 1.0 (registered training noise).
+    #
+    #     Reward is treated symmetrically with action/obs (decision 11): it is
+    #     NOT force-zeroed at eval. Because ObservationActionRewardWrapper
+    #     feeds the (noised) reward back into obs["reward"] — a policy input —
+    #     suppressing reward noise at eval would push obs["reward"] out of the
+    #     training distribution. Matched eval keeps it in-distribution; the
+    #     true (denoised) return is recovered as a separate CSV column
+    #     (ep_return_true = sum of reward-decomposition terms, §0.6), not by
+    #     killing the noise. Everything downstream (RobustWrapper,
     #     DmEnvObsNoiseWrapper) consumes effective_robust_config; the raw
     #     registered robust_config is kept unmodified for reproducibility.
     # ------------------------------------------------------------------
@@ -300,30 +305,6 @@ def make(
         obs_noise_shift=robust_config.obs_noise_shift * scale,
         reward_noise_shift=robust_config.reward_noise_shift * scale,
     )
-    if mode == "eval":
-        requested_reward_noise = (
-            robust_config.reward_noise_std != 0.0
-            or robust_config.reward_noise_uniform_low != 0.0
-            or robust_config.reward_noise_uniform_high != 0.0
-            or robust_config.reward_noise_shift != 0.0
-        )
-        effective_robust_config = dataclasses.replace(
-            effective_robust_config,
-            reward_noise_std=0.0,
-            reward_noise_uniform_low=0.0,
-            reward_noise_uniform_high=0.0,
-            reward_noise_shift=0.0,
-        )
-        if scale != 0.0 and requested_reward_noise:
-            warnings.warn(
-                "Reward noise at eval is DISABLED and has been forced to zero: "
-                "a fixed policy does not consume reward, so evaluating a "
-                "reward-noise env is meaningless (it only corrupts ep_return; "
-                "trajectory and F1 are byte-identical to clean). Evaluate "
-                "reward-trained policies on OmniPiano-ClairDeLune-Clean-v0. "
-                "eval_noise_scale affects obs/action only.",
-                stacklevel=2,
-            )
 
     # ------------------------------------------------------------------
     # 1. Extract suite/wrapper-level fields from kwargs.

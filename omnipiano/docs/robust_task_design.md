@@ -630,6 +630,8 @@ wrapper 数据流(已代码核对):
 - **`ep_true_return`(clean reward 单位下的真性能)**:**不加**。原因:
   1. clean total reward = 现有 reward 分解列之和(`energy + key_press + sustain + ot_fingering + forearm`,composite reward 就是各 term 相加),**已可从现有列算出**,无需新列;
   2. 更根本:**reward channel 在 eval(固定策略)下,reward 噪声是 no-op** —— eval 时 `π(obs)→action` 不看 reward(无学习),噪声只污染返回标量、不改 action,所以轨迹与 clean env 逐字节相同,F1、ep_return 都不受影响(ep_return 只是被"事后污染",轨迹不变)。**推论:reward channel 的 robustness 完全是训练期现象**,eval 天然该 clean(eval_noise_scale=0),observed-vs-true 区分无意义。
+  > ⚠️ **已被决议 11（2026-07-04）取代**：下段的"reward eval force-zero / 恒 clean / 不需 `ep_true_return`"结论**已作废**。前提"固定策略不消费 reward"在 `action_reward_observation=True`(默认)下不成立（noised reward 经 `obs["reward"]` 进入策略)。现方案:reward 与 action/obs 对称、eval matched，真实 return 用 `ep_return_true`/`ep_return_noised` 两列。详见 §12 决议 11。以下保留原文仅作历史。
+
   **落地结论(reward 通道,决定 2026-07-04:保留任务 + eval 禁噪)**:eval 时对 reward 加噪是**可证明的退化操作**(固定策略不消费 reward → 轨迹/F1 与 clean 逐字节相同,只污染 `ep_return` 读数),因此 **v1 在 `make(log_split="eval")` 里无条件把 reward 噪声三/四字段置零**(代码强制的不变量,见 §0.2 guard),而不是"请记得设 scale=0"的约定 —— 后者有静默失效风险(有人对 reward 任务误跑 sweep → 一堆被污染的假曲线)。
   **评估协议(canonical)**:**reward-trained policy 的 eval 一律在 `OmniPiano-ClairDeLune-Clean-v0` 上跑**。单通道设计下 `R-*` 任务与 `Clean-v0` 仅差 reward 噪声配置,噪声置零后二者 byte-equivalent —— 故"在 force-zeroed 的 R 任务 env 上 eval"与"在 Clean-v0 上 eval"数值完全相同,以 **Clean-v0 为 canonical eval env** 表述最无歧义。**双重保障**:(i) 若有人仍对 reward 任务构造 eval env 并请求非零 eval 噪声(注册带噪 eval 或 sweep override),`make()` 发 `warn` 指路 Clean-v0;(ii) force-zero 兜底,即便 warning 被忽略,eval 也保证干净(不是仅提示,是真禁用)。
   **保证的锚点是 `make(log_split="eval")` 这个 env 构造入口,不是任何 logger**。**经此入口构造 eval env** 的驱动器,故全部继承 force-zero:
@@ -1365,6 +1367,8 @@ else:
 
 输出：列为 `(env_id, ckpt_epoch, eval_noise_scale, eval_seed, ep_return, ep_cost, ep_f1, ep_noise_*)` 的 CSV —— 喂给 robustness 曲线绘图。
 
+> ⚠️ **已被决议 11（2026-07-04）取代**：reward 现在与 action/obs 对称——sweep tool **照常对 `-R-` 任务在其自身 env 上跑 `eval_noise_scale` grid**（不再跳过、不再换 Clean-v0）。以下原文作废，仅作历史。
+
 **Reward 通道任务的特殊处理(决定 2026-07-04)**：对 reward-channel checkpoint(训练 env_id 含 `-R-`),sweep tool **跳过 scale grid,直接在 `OmniPiano-ClairDeLune-Clean-v0` 上做单次 eval**。因为 reward 噪声在 eval 被 `make()` 强制置零(§0.2),对 R 任务遍历 `eval_noise_scale>0` 只会得到 F1 完全相同、仅 `ep_return` 读数无意义波动的重复行;而 force-zeroed R-env 与 Clean-v0 byte-equivalent,故 canonical 做法是直接在 Clean-v0 上评估(见 §6 Reward 段)。R 任务的 robustness 曲线在**训练噪声档位**轴上跨 P10/P30/P50 画,不在此 tool 的 scale grid 上。tool 应据训练 env_id 的 channel 标记(`-A-`/`-O-`/`-R-`)自动分流:A/O 在自身 env 上跑 scale grid,R 在 Clean-v0 上跑单点。
 
 **已决议（§12 决议 7，2026-06-27）**：采用 `make()` 上的私有 kwarg `_eval_noise_scale_override=` 做运行时覆盖，**仅供这个 sweep tool 使用，不暴露给一般用户**。替代方案（为每个 `(channel, dist, std, scale)` 四元组注册一个 env）会让 env 数膨胀到约 135 个，已否决。详见 §12 决议 7。
@@ -1405,6 +1409,8 @@ else:
 | **R**   | Uniform | R-Uniform-P10 | R-Uniform-P30 | R-Uniform-P50 |
 | **R**   | Shift   | R-Shift-P10   | R-Shift-P30   | R-Shift-P50   |
 
+
+> ⚠️ **已被决议 11（2026-07-04）取代**：reward 与 action/obs **完全对称**——默认 matched eval、横轴用 `eval_noise_scale`（不再是训练档位轴）、不换 Clean-v0；真实 return 用 `ep_return_true`/`ep_return_noised` 两列，F1 仍是干净 headline。详见 §12 决议 11。以下原文作废。
 
 **Reward 通道的 eval / 曲线语义（与 action/obs 不同，决定 2026-07-04）**：reward 噪声是**训练期专属**扰动，eval 时被 `make(log_split="eval")` 强制置零(§0.2 guard)，`eval_noise_scale` 对 R 任务无效（若请求非零则 warn 指路 Clean-v0）。**canonical 评估协议:每个 reward-trained checkpoint(来自 P10/P30/P50 训练 env)一律在 `OmniPiano-ClairDeLune-Clean-v0` 上 eval**（force-zeroed R-env 与 Clean-v0 byte-equivalent,以 Clean-v0 为准最无歧义）。robustness 曲线横轴是**训练噪声档位**（P10→P30→P50），纵轴是 **F1 on Clean-v0**，对照 `Clean-v0`(clean-trained) 基线 —— 衡量"训练在多脏的 reward 信号下，学出来的策略退化多少"（训练期鲁棒性）。这与 action/obs 的"部署期鲁棒性曲线"（x=`eval_noise_scale`，同一策略在不同 eval 噪声下）互补。`**tools/robust_eval_sweep.py`（§5.2）对 R 任务不做 scale grid，直接在 Clean-v0 上评估各训练档位的 checkpoint**。
 
@@ -1629,6 +1635,24 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 **reward 通道例外**：reward 噪声 eval 恒被 force-zero（reward-eval-noise 对固定策略退化，§0.6.3）。故 **reward 任务注册时应显式设 `eval_noise_scale=0.0`**，否则默认 1.0 会在 eval 触发 force-zero warn（结果仍 clean，但告警）。
 
 **as-built**：`configs/__init__.py` 默认 1.0；`test_robust_eval_scale.py` 覆盖（default→matched、explicit-0.0→clean、reward default→warn、reward explicit-0.0→no-warn），全 59 tests green。SB3 模板的 periodic / final eval 因此默认 matched（action/obs）。
+
+**决议 11（2026-07-04 ✅，用户拍板）：reward 与 action/obs 对称——eval matched（撤销 force-zero），真实 return 用单独 CSV 列**
+
+**背景 / 纠错**：决议 10 及之前把 reward 在 eval **force-zero**，前提是"eval 固定策略不消费 reward"。**该前提在 `action_reward_observation=True`（OmniPiano 默认）下是错的**：方案 6 的 reward-slot override 把 noised reward 写进 `obs["reward"]`，而 `obs["reward"]` **是策略输入**。force-zero → eval 的 `obs["reward"]` 变 clean → **与训练分布 OOD 不一致**，且 reward 噪声其实经此 slot 影响策略（**非 vacuous，甚至能影响 F1**）。
+
+✅ **已决定**：reward **不再 force-zero**，与 action/obs **完全对称**——默认 matched（`eval_noise_scale=1.0`）、可 sweep。这样 eval 的 `obs["reward"]` 保持训练同分布。
+
+**测量**：reward matched 下 `ep_return` 会被噪声污染 → **加两列**（仅 eval CSV）：
+- `ep_return_true` = **reward 分解列之和**（MetricsWrapper 读加噪前物理值；`get_reward=reward_fn.compute=Σterms` 无额外变换，已代码严格核实 —— composite_reward.py:46-56 / piano_with_shadow_hands.py:210-211），作 headline；float64 分解和比 float32 累加更精确。
+- `ep_return_noised` = 实收（带噪）return。交叉校验：`noised − true = ep_noise_reward`。
+- action/obs 任务两列相等（reward 标量未被污染）。**F1 恒为干净 headline**（读物理）。
+- **仅加到我们控制的两个 eval CSV**（`SafeRecordEpisodeStatistics` + `checkpoint_replay`，有分解列）；**training rollout**（库原生 Monitor/progress）保持 noised（有意——agent 训练信号）、无分解列 → 无 true 列（靠 F1）。跨库：真值是环境层量（info 里的 `episode_task/*_reward`），库无关；写不写取决于 logger。
+
+**本决议撤销 / 取代**：S3a 的 reward eval force-zero + warn（已移除）；§0.6.3 的"reward eval 恒 clean / 不需 `ep_true_return`"；§6 的"reward eval 换 Clean-v0 / 只放训练档位轴"；§5.2 的"reward 跳过 scale grid"；决议 10 的 reward 例外。→ **reward 三通道完全对称：matched 默认、`eval_noise_scale` 轴 sweep、F1 干净 headline + `ep_return_true`/`ep_return_noised` 两列**。
+
+**edge case**：`action_reward_observation=False`（非默认）时 reward 不进 obs，eval reward 噪声才真 vacuous；标准任务 OAR=on，matched 即正确。
+
+**as-built**：`registration.py` force-zero 已移除（warn + `import warnings` 清除）；`test_robust_eval_scale.py` reward 测试改为 matched（59 green）。`ep_return_true`/`ep_return_noised` 列在 S6 实现。
 
 每个都可独立决定；想换的请告诉我，没说的我按 my recommendation 走。
 
