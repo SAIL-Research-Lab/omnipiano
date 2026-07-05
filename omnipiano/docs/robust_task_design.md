@@ -148,7 +148,7 @@ Phase 0 全部子阶段完成（分支 `feat/robust-phase0`）：
 | §0.7 | 2 个 v1 env equivalence（可复现 + 通道 + gaussian bit-exact） | `test_robust_v1_equivalence.py` |
 | 贯穿 | Method 6 gates | `test_robust_v1_method6.py`（15/15） |
 
-**全套 84 passed。** 语义决策见 §12 决议 9/10/11。（`examples/` SB3 模板已追踪；`tools/checkpoint_replay_eval.py` 的 schema-lock 改动在磁盘但 `tools/` 被 gitignore。）
+**全套 84 passed。** 语义决策见 §12 决议 9/10/11。（`examples/` SB3 模板已追踪；`examples/checkpoint_replay_eval.py` 的 schema-lock 改动在磁盘但 `tools/` 被 gitignore。）
 
 ### Phase 0 工作项
 
@@ -552,7 +552,7 @@ obs_noise_seed = (_seed + OBS_NOISE_SEED_OFFSET) if _seed is not None else None
 
 **Reviewer 待决问题**：是否要写一个单独的 `tests/test_obs_noise_seed_consistency.py`，构造 SA env 和 MA env 在同 master seed 下，断言它们的 `DmEnvObsNoiseWrapper._rng` 首个样本一致？这固化了 SA/MA 一致性这个 invariant。我的建议：**要**，约 20 LOC，维护成本低。
 
-**0.6 — Robust eval 数据记录规格**（`omnipiano/utils/logger_wrapper.py` + `tools/checkpoint_replay_eval.py`）
+**0.6 — Robust eval 数据记录规格**（`omnipiano/utils/logger_wrapper.py` + `examples/checkpoint_replay_eval.py`）
 
 > 本节由 2026-07-03 的一轮"RG logging 深度调研 + OmniPiano wrapper 数据流逐层核对"重写。核对了 RG 全仓库(结论:RG 极简,不记噪声、不记 clean-vs-perturbed、eval 只报 perturbed reward、无 CVaR/worst-case)与 OmniPiano 的 3 个 wrapper 数据源,确认了下面的"F1 天然 clean"结构性优势。
 
@@ -587,7 +587,7 @@ wrapper 数据流(已代码核对):
 **只改 eval CSV(两个,schema 锁定要同步)**:
 
 - `<split>_episode_metrics_<id>.csv`(`SafeRecordEpisodeStatistics`,SB3 eval env)
-- `eval_episode_metrics_<uuid>.csv`(`tools/checkpoint_replay_eval.py`,OmniSafe post-hoc eval)
+- `eval_episode_metrics_<uuid>.csv`(`examples/checkpoint_replay_eval.py`,OmniSafe post-hoc eval)
 
 **训练 rollout CSV 不动**:OmniSafe `progress.csv` / SB3 native 由各自库原生记录;训练噪声配置由 env_id 固定、可反推,不需要 per-episode 噪声记录。要 hook 它们的 logger 成本高、收益低。
 
@@ -634,7 +634,7 @@ wrapper 数据流(已代码核对):
 
   一旦 reward 噪声在 make() 里被置零,RobustWrapper 原样透传 reward → **无论上面哪个驱动器、在 RobustWrapper 内层还是外层累加,拿到的都是 true return**。因此 `ep_return`/`mean_reward` 都是真值,**不需要 `ep_true_return` 列、也不需要 logger 做任何 reward 特判**。
 
-  **例外(重要)**:OmniSafe 的 **`tools/checkpoint_replay_eval.py`** 用 `omnisafe.Evaluator().load_saved()` 从**训练 config 重建 env**,**绕过 `make()`**,故**不自动继承** force-zero。该缺口已在 **§11** 记为 deferred(OmniSafe 主场 safety 任务无 reward 噪声,缺口大概率为空;真需要时 reward 任务 eval 换 `Clean-v0`)。
+  **例外(重要)**:OmniSafe 的 **`examples/checkpoint_replay_eval.py`** 用 `omnisafe.Evaluator().load_saved()` 从**训练 config 重建 env**,**绕过 `make()`**,故**不自动继承** force-zero。该缺口已在 **§11** 记为 deferred(OmniSafe 主场 safety 任务无 reward 噪声,缺口大概率为空;真需要时 reward 任务 eval 换 `Clean-v0`)。
 
   **未来接入新算法库的契约**:eval env 必须走 `make(mode="eval")`;满足这一条,新库用自己的 eval 循环 / logger 也自动继承该保证(SB3 `EvalCallback` 即先例)。反例即 OmniSafe replay——它绕过 make,所以不在保证范围内。
   **注意范围**:此 force-zero **仅针对 reward 通道**;`eval_noise_scale` 对 **obs/action 通道照常生效**(它们的 sweep 需要 scale>0)。**训练侧 Monitor / OmniSafe native logger 保持加噪现状**(agent 本就该看噪声 reward),训练侧真实演奏水平看 F1(clean-by-construction)。reward 通道的 robustness 因此**不画在 `eval_noise_scale` 轴上**,而是画在**训练噪声档位**轴上(P10/P30/P50 三个训练 env,checkpoint 均在 Clean-v0 上 eval),y=F1 on Clean-v0,对照 Clean-trained baseline —— 详见 §6 Reward 段。
@@ -1321,7 +1321,7 @@ register(
 
 ### 5.2 Eval harness —— `tools/robust_eval_sweep.py`
 
-现有 `tools/checkpoint_replay_eval.py` 的姊妹。给定：
+现有 `examples/checkpoint_replay_eval.py` 的姊妹。给定：
 
 - 一个训练好的 ckpt（来自 27 个注册 env 之一 OR 净训练的 ckpt）
 - 噪声 grid：`eval_noise_scale` 值列表（例如 `[0.0, 0.5, 1.0, 2.0, 4.0]`）
@@ -1475,7 +1475,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 | `omnipiano/envs/registration.py`                | 0     | 修改（eval_noise_scale 接线，使用来自 dm_env_obs_noise.OBS_NOISE_SEED_OFFSET 的命名常量）       |
 | `omnipiano/multiagent/registration.py`          | 0     | 修改（使用同样的命名常量；去重 line 319 的 `+31415` 第二份副本）                                      |
 | `omnipiano/utils/logger_wrapper.py`             | 0     | 修改（eval CSV 加 4 列：`eval_noise_scale` + `ep_noise_{action,obs,reward}`，见 §0.6.2） |
-| `tools/checkpoint_replay_eval.py`               | 0     | 修改（`_CSV_HEADER` + 写入同步加同样 4 列，schema 与 logger_wrapper 锁定，见 §0.6.1）             |
+| `examples/checkpoint_replay_eval.py`               | 0     | 修改（`_CSV_HEADER` + 写入同步加同样 4 列，schema 与 logger_wrapper 锁定，见 §0.6.1）             |
 | `omnipiano/utils/info_keys.py`                  | 0     | 修改（加 ROBUST_NOISE_REWARD）                                                       |
 | `omnipiano/tests/test_robust_v1_equivalence.py` | 0     | 新建（bit-exact 回归测试）                                                              |
 | `omnipiano/envs/__init__.py`                    | 1     | 修改（追加约 28 个 robust task 注册）                                                     |

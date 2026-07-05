@@ -13,7 +13,7 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
     ep_return, ep_length, ep_cost, ep_violations, F1 / precision / recall,
     sustain_*, and reward decomposition) to
     ``<log_dir>/<split>_episode_metrics_<env_id>.csv``. Schema is locked
-    to ``tools/checkpoint_replay_eval.py``'s ``_CSV_HEADER`` so SB3 +
+    to ``examples/checkpoint_replay_eval.py``'s ``_CSV_HEADER`` so SB3 +
     OmniSafe eval data plot with the same downstream code.
 
     NOT a drop-in for ``gymnasium.wrappers.RecordEpisodeStatistics``
@@ -39,7 +39,7 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
     ``log_split == "eval"`` (see ``omnipiano/envs/registration.py``).
     Used by the SB3 baseline templates' eval_env construction; not
     attached on training envs or on OmniSafe runs (OmniSafe eval CSVs
-    are produced post-hoc by ``tools/checkpoint_replay_eval.py``).
+    are produced post-hoc by ``examples/checkpoint_replay_eval.py``).
 
     Required upstream wrapper order (set in ``registration.py``)
     -----------------------------------------------------------
