@@ -3,7 +3,7 @@ import csv
 import os
 import time
 import uuid
-from omnipiano.utils.info_keys import EpisodeInfoKeys
+from omnipiano.utils.info_keys import EpisodeInfoKeys, InfoKeys
 
 
 class SafeRecordEpisodeStatistics(gym.Wrapper):
@@ -49,8 +49,13 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
     terminal step) and ``episode_safety/*`` (from SafetyWrapper) so this
     wrapper just reads them out.
     """
-    def __init__(self, env, log_dir, env_id=None, split="train"):
+    def __init__(self, env, log_dir, env_id=None, split="train",
+                 eval_noise_scale=0.0):
         super().__init__(env)
+        # The effective robustness eval scale this env was built with (0=clean,
+        # 1=matched/training-level, >1=stress). Logged per row so a sweep can
+        # locate the point on the robustness curve (§0.6, decision 10/11).
+        self.eval_noise_scale = eval_noise_scale
         self.log_dir = log_dir
         os.makedirs(self.log_dir, exist_ok=True)
         self.split = split
@@ -68,7 +73,14 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
         self.t0 = time.perf_counter()
         self.episode_return = 0.0
         self.episode_length = 0
-        
+        # Per-episode robust-noise aggregates, summed over the episode from
+        # info["robust/noise_*"]. ep_noise_{action,obs}_l2 are summed per-step
+        # L2 norms (dev tripwire); ep_noise_reward is the summed signed reward
+        # noise (== ep_return - ep_return_true for reward tasks; §0.6).
+        self.ep_noise_action_l2 = 0.0
+        self.ep_noise_obs_l2 = 0.0
+        self.ep_noise_reward = 0.0
+
         # Initialize CSV header
         with open(self.csv_path, mode='w', newline='') as file:
             writer = csv.writer(file)
@@ -87,7 +99,16 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
                 # Hungarian-matched K-to-K distance) and are not directly
                 # comparable.
                 'energy_reward', 'fingering_reward', 'ot_fingering_reward',
-                'forearm_reward', 'key_press_reward', 'sustain_reward'
+                'forearm_reward', 'key_press_reward', 'sustain_reward',
+                # Robust-eval columns (§0.6, decision 11), appended so existing
+                # column indices are unchanged. `ep_return` (col 4) stays the
+                # received/accumulated return (= noised for reward-noise tasks);
+                # `ep_return_true` is the clean/denoised return = sum of the
+                # reward-decomposition terms above. F1 remains the noise-immune
+                # headline. `eval_noise_scale` locates the robustness-curve
+                # point; `ep_noise_*` are the per-episode summed injected noise.
+                'eval_noise_scale', 'ep_return_true',
+                'ep_noise_action_l2', 'ep_noise_obs_l2', 'ep_noise_reward',
             ])
 
     def reset(self, **kwargs):
@@ -97,6 +118,9 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
         obs, info = self.env.reset(**kwargs)
         self.episode_return = 0.0
         self.episode_length = 0
+        self.ep_noise_action_l2 = 0.0
+        self.ep_noise_obs_l2 = 0.0
+        self.ep_noise_reward = 0.0
         return obs, info
 
     def step(self, action):
@@ -105,7 +129,10 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
         self.episode_return += reward
         self.episode_length += 1
         self.env_step_count += 1
-        
+        self.ep_noise_action_l2 += info.get(InfoKeys.ROBUST_NOISE_ACTION_L2, 0.0)
+        self.ep_noise_obs_l2 += info.get(InfoKeys.ROBUST_NOISE_OBS_L2, 0.0)
+        self.ep_noise_reward += info.get(InfoKeys.ROBUST_NOISE_REWARD, 0.0)
+
         if terminated or truncated:
             self.completed_episode_count += 1
             t = time.perf_counter() - self.t0
@@ -128,6 +155,17 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
             key_press_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_KEY_PRESS_REWARD, "")
             sustain_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_REWARD, "")
 
+            # Clean/denoised return = sum of the reward-decomposition terms
+            # (MetricsWrapper reads pre-noise physics, so this is noise-immune).
+            # Inactive terms are logged blank ("") and skipped. Equals the
+            # received ep_return minus the accumulated reward noise.
+            ep_return_true = sum(
+                float(x) for x in (
+                    energy_rew, fingering_rew, ot_fingering_rew,
+                    forearm_rew, key_press_rew, sustain_rew,
+                ) if x != ""
+            )
+
             with open(self.csv_path, mode='a', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow([
@@ -141,7 +179,10 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
                     ep_f1, ep_precision, ep_recall,
                     ep_sus_f1, ep_sus_prec, ep_sus_rec,
                     energy_rew, fingering_rew, ot_fingering_rew,
-                    forearm_rew, key_press_rew, sustain_rew
+                    forearm_rew, key_press_rew, sustain_rew,
+                    self.eval_noise_scale, ep_return_true,
+                    self.ep_noise_action_l2, self.ep_noise_obs_l2,
+                    self.ep_noise_reward,
                 ])
                 
         return obs, reward, terminated, truncated, info

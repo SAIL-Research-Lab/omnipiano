@@ -449,6 +449,7 @@ def make(
             env,
             log_dir=log_dir,
             split=mode,
+            eval_noise_scale=scale,  # effective robustness eval scale (§0.6)
         )
 
     return env
