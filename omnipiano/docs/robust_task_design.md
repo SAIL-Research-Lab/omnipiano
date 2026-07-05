@@ -115,7 +115,7 @@ gym 层 (在 dm_env adapter 之后)：
     → MetricsWrapper
     → SafetyWrapper
     → RobustWrapper            ← 扩展：同时处理 reward noise
-    → [SafeRecordEpisodeStatistics if log_split == "eval"]   ← 扩展：记录 noise L2
+    → [SafeRecordEpisodeStatistics if mode == "eval"]   ← 扩展：记录 noise L2
 ```
 
 **为什么 `RobustWrapper`（而不是新建 `RewardNoiseWrapper`）处理 reward noise**：
@@ -159,7 +159,7 @@ class RobustConfig:
 
     At training time, RobustWrapper reads (channel, noise_dist) → picks
     the corresponding field(s). At evaluation time (via
-    omnipiano.make(env_name, log_split="eval")), all magnitude fields
+    omnipiano.make(env_name, mode="eval")), all magnitude fields
     are multiplied by `eval_noise_scale`:
       - eval_noise_scale=1.0 (default) → matched eval (same noise as training,
         in-training protocol) — the RG-comparable robustness number
@@ -292,17 +292,17 @@ cfg.action_noise_uniform_high = +level
 
 **0.2 — `eval_noise_scale` 在 make() 中的接线**（`omnipiano/envs/registration.py`）
 
-> **术语（决议 9，2026-07-04）**：Phase 0 把 `make()` 的 `log_split` 参数改名为 `mode`（纯 rename，值/行为不变，见 §12 决议 9）。下方代码片段暂用 `log_split` 以反映当前代码；实施时统一替换为 `mode`。
+> **术语（决议 9）**：`make()` 的参数名是 `mode`（`log_split` 是改名前的旧名，见 §12 决议 9）；as-built 代码已统一为 `mode`。
 
-`omnipiano.make()` 用 `log_split="train"` 或 `log_split="eval"` 调用。我们让 `log_split` 影响 `RobustConfig` 如何被消费。**因为 Option C.3 有 3 种独立分布字段（12 个 magnitude 字段），`replace()` 需要覆盖所有 12 个**：
+`omnipiano.make()` 用 `mode="train"` 或 `mode="eval"` 调用。我们让 `mode` 影响 `RobustConfig` 如何被消费。**因为 Option C.3 有 3 种独立分布字段（12 个 magnitude 字段），`replace()` 需要覆盖所有 12 个**：
 
 ```python
-def make(env_name, log_split="train", **kwargs):
+def make(env_name, mode="train", **kwargs):
     ...
     robust_config = task_spec.robust_config or RobustConfig()
 
-    # 根据 log_split 决定 scale
-    if log_split == "eval":
+    # 根据 mode 决定 scale
+    if mode == "eval":
         scale = robust_config.eval_noise_scale
     else:
         scale = 1.0
@@ -606,19 +606,19 @@ wrapper 数据流(已代码核对):
   2. 更根本:**reward channel 在 eval(固定策略)下,reward 噪声是 no-op** —— eval 时 `π(obs)→action` 不看 reward(无学习),噪声只污染返回标量、不改 action,所以轨迹与 clean env 逐字节相同,F1、ep_return 都不受影响(ep_return 只是被"事后污染",轨迹不变)。**推论:reward channel 的 robustness 完全是训练期现象**,eval 天然该 clean(eval_noise_scale=0),observed-vs-true 区分无意义。
   > ⚠️ **已被决议 11（2026-07-04）取代**：下段的"reward eval force-zero / 恒 clean / 不需 `ep_true_return`"结论**已作废**。前提"固定策略不消费 reward"在 `action_reward_observation=True`(默认)下不成立（noised reward 经 `obs["reward"]` 进入策略)。现方案:reward 与 action/obs 对称、eval matched，真实 return 用 `ep_return_true`/`ep_return_noised` 两列。详见 §12 决议 11。以下保留原文仅作历史。
 
-  **落地结论(reward 通道,决定 2026-07-04:保留任务 + eval 禁噪)**:eval 时对 reward 加噪是**可证明的退化操作**(固定策略不消费 reward → 轨迹/F1 与 clean 逐字节相同,只污染 `ep_return` 读数),因此 **v1 在 `make(log_split="eval")` 里无条件把 reward 噪声三/四字段置零**(代码强制的不变量,见 §0.2 guard),而不是"请记得设 scale=0"的约定 —— 后者有静默失效风险(有人对 reward 任务误跑 sweep → 一堆被污染的假曲线)。
+  **落地结论(reward 通道,决定 2026-07-04:保留任务 + eval 禁噪)**:eval 时对 reward 加噪是**可证明的退化操作**(固定策略不消费 reward → 轨迹/F1 与 clean 逐字节相同,只污染 `ep_return` 读数),因此 **v1 在 `make(mode="eval")` 里无条件把 reward 噪声三/四字段置零**(代码强制的不变量,见 §0.2 guard),而不是"请记得设 scale=0"的约定 —— 后者有静默失效风险(有人对 reward 任务误跑 sweep → 一堆被污染的假曲线)。
   **评估协议(canonical)**:**reward-trained policy 的 eval 一律在 `OmniPiano-ClairDeLune-Clean-v0` 上跑**。单通道设计下 `R-*` 任务与 `Clean-v0` 仅差 reward 噪声配置,噪声置零后二者 byte-equivalent —— 故"在 force-zeroed 的 R 任务 env 上 eval"与"在 Clean-v0 上 eval"数值完全相同,以 **Clean-v0 为 canonical eval env** 表述最无歧义。**双重保障**:(i) 若有人仍对 reward 任务构造 eval env 并请求非零 eval 噪声(注册带噪 eval 或 sweep override),`make()` 发 `warn` 指路 Clean-v0;(ii) force-zero 兜底,即便 warning 被忽略,eval 也保证干净(不是仅提示,是真禁用)。
-  **保证的锚点是 `make(log_split="eval")` 这个 env 构造入口,不是任何 logger**。**经此入口构造 eval env** 的驱动器,故全部继承 force-zero:
+  **保证的锚点是 `make(mode="eval")` 这个 env 构造入口,不是任何 logger**。**经此入口构造 eval env** 的驱动器,故全部继承 force-zero:
   - SB3 **`EvalCallback`**(周期性 deterministic eval,`run_sb3_template.py:227/231`)—— 其 `mean_reward` 来自 **Monitor**,写进 `evaluations.npz` / tensorboard / best_model 选择;
   - SB3 **`_final_eval`**(手写 deterministic rollout,`run_sb3_template.py:116-134`,`ep_return` 手动累加);
   - **`SafeRecordEpisodeStatistics`**(旁挂 CSV side-effect);
-  - (未来) **`tools/robust_eval_sweep.py`**(§5.2,`make(log_split="eval", _eval_noise_scale_override=...)`)。
+  - (未来) **`tools/robust_eval_sweep.py`**(§5.2,`make(mode="eval", _eval_noise_scale_override=...)`)。
 
   一旦 reward 噪声在 make() 里被置零,RobustWrapper 原样透传 reward → **无论上面哪个驱动器、在 RobustWrapper 内层还是外层累加,拿到的都是 true return**。因此 `ep_return`/`mean_reward` 都是真值,**不需要 `ep_true_return` 列、也不需要 logger 做任何 reward 特判**。
 
   **例外(重要)**:OmniSafe 的 **`tools/checkpoint_replay_eval.py`** 用 `omnisafe.Evaluator().load_saved()` 从**训练 config 重建 env**,**绕过 `make()`**,故**不自动继承** force-zero。该缺口已在 **§11** 记为 deferred(OmniSafe 主场 safety 任务无 reward 噪声,缺口大概率为空;真需要时 reward 任务 eval 换 `Clean-v0`)。
 
-  **未来接入新算法库的契约**:eval env 必须走 `make(log_split="eval")`;满足这一条,新库用自己的 eval 循环 / logger 也自动继承该保证(SB3 `EvalCallback` 即先例)。反例即 OmniSafe replay——它绕过 make,所以不在保证范围内。
+  **未来接入新算法库的契约**:eval env 必须走 `make(mode="eval")`;满足这一条,新库用自己的 eval 循环 / logger 也自动继承该保证(SB3 `EvalCallback` 即先例)。反例即 OmniSafe replay——它绕过 make,所以不在保证范围内。
   **注意范围**:此 force-zero **仅针对 reward 通道**;`eval_noise_scale` 对 **obs/action 通道照常生效**(它们的 sweep 需要 scale>0)。**训练侧 Monitor / OmniSafe native logger 保持加噪现状**(agent 本就该看噪声 reward),训练侧真实演奏水平看 F1(clean-by-construction)。reward 通道的 robustness 因此**不画在 `eval_noise_scale` 轴上**,而是画在**训练噪声档位**轴上(P10/P30/P50 三个训练 env,checkpoint 均在 Clean-v0 上 eval),y=F1 on Clean-v0,对照 Clean-trained baseline —— 详见 §6 Reward 段。
 - **per-step 全量 obs / action / noise 向量 trace(原 Tier 3 `noise_trace.npz`)**:**v1 不做**(用户 2026-07-03 确认)。固定 seed 下可重建;需要时再单独设计,不进 v1 scope。
 - **a_exec(执行的噪声 action)向量**:**不记**。它的*结果*已被 F1/reward 捕获;向量本身固定 seed 可重建。
@@ -1386,7 +1386,7 @@ else:
 
 > ⚠️ **已被决议 11（2026-07-04）取代**：reward 与 action/obs **完全对称**——默认 matched eval、横轴用 `eval_noise_scale`（不再是训练档位轴）、不换 Clean-v0；真实 return 用 `ep_return_true`/`ep_return_noised` 两列，F1 仍是干净 headline。详见 §12 决议 11。以下原文作废。
 
-**Reward 通道的 eval / 曲线语义（与 action/obs 不同，决定 2026-07-04）**：reward 噪声是**训练期专属**扰动，eval 时被 `make(log_split="eval")` 强制置零(§0.2 guard)，`eval_noise_scale` 对 R 任务无效（若请求非零则 warn 指路 Clean-v0）。**canonical 评估协议:每个 reward-trained checkpoint(来自 P10/P30/P50 训练 env)一律在 `OmniPiano-ClairDeLune-Clean-v0` 上 eval**（force-zeroed R-env 与 Clean-v0 byte-equivalent,以 Clean-v0 为准最无歧义）。robustness 曲线横轴是**训练噪声档位**（P10→P30→P50），纵轴是 **F1 on Clean-v0**，对照 `Clean-v0`(clean-trained) 基线 —— 衡量"训练在多脏的 reward 信号下，学出来的策略退化多少"（训练期鲁棒性）。这与 action/obs 的"部署期鲁棒性曲线"（x=`eval_noise_scale`，同一策略在不同 eval 噪声下）互补。`**tools/robust_eval_sweep.py`（§5.2）对 R 任务不做 scale grid，直接在 Clean-v0 上评估各训练档位的 checkpoint**。
+**Reward 通道的 eval / 曲线语义（与 action/obs 不同，决定 2026-07-04）**：reward 噪声是**训练期专属**扰动，eval 时被 `make(mode="eval")` 强制置零(§0.2 guard)，`eval_noise_scale` 对 R 任务无效（若请求非零则 warn 指路 Clean-v0）。**canonical 评估协议:每个 reward-trained checkpoint(来自 P10/P30/P50 训练 env)一律在 `OmniPiano-ClairDeLune-Clean-v0` 上 eval**（force-zeroed R-env 与 Clean-v0 byte-equivalent,以 Clean-v0 为准最无歧义）。robustness 曲线横轴是**训练噪声档位**（P10→P30→P50），纵轴是 **F1 on Clean-v0**，对照 `Clean-v0`(clean-trained) 基线 —— 衡量"训练在多脏的 reward 信号下，学出来的策略退化多少"（训练期鲁棒性）。这与 action/obs 的"部署期鲁棒性曲线"（x=`eval_noise_scale`，同一策略在不同 eval 噪声下）互补。`**tools/robust_eval_sweep.py`（§5.2）对 R 任务不做 scale grid，直接在 Clean-v0 上评估各训练档位的 checkpoint**。
 
 ### Clean baseline
 
@@ -1474,7 +1474,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 | `test_robust_v1_equivalence.py`（上文 §0.7）                                                                                                               | 0     | 在 2 个现有 robust env 上 bit-exact 回归（除掉 seed offset 从 31415 → 20000 的有意 bump 之外） |
 | `test_obs_noise_seed_consistency.py`（§0.5）                                                                                                             | 0     | SA env 和 MA env 在同 master seed 下首个 obs-noise 样本必须一致                           |
 | Smoke test：`omnipiano.make("OmniPiano-ClairDeLune-A-Gauss-P05-v0").reset()` 能跑                                                                         | 0/1   | smoke                                                                         |
-| Smoke test：`log_split="eval"` 配 eval_noise_scale=0.5 → info 上的有效 std = 原值 × 0.5                                                                        | 0     | unit                                                                          |
+| Smoke test：`mode="eval"` 配 eval_noise_scale=0.5 → info 上的有效 std = 原值 × 0.5                                                                        | 0     | unit                                                                          |
 | Reward matched eval(§0.2,决议 11)：reward-channel 任务 `mode="eval"` 下,reward 噪声按 `eval_noise_scale` 缩放(与 action/obs 对称,**不 force-zero、不 warn**);scale=1.0→matched、0.0→clean(已在 `test_robust_eval_scale.py` 覆盖) | 0     | unit                                                                          |
 | 分布合理性：symmetric std-matched uniform (`low=-0.1·√3, high=+0.1·√3`) 采 10000 样本 → empirical std ≈ 0.1 ± 1%                                                | 0     | unit                                                                          |
 | Uniform 非对称支持：`uniform_low=-0.02, uniform_high=+0.10` 采 10000 样本 → mean ≈ 0.04, std ≈ 0.035                                                            | 0     | unit                                                                          |
@@ -1594,9 +1594,9 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 **这是纯变量名替换，当前行为零变化**：`make(mode="eval")` == 旧 `make(log_split="eval")` —— 同样门控 SafeRecord 挂载（仍额外由 `log_dir` 决定）、同样作 CSV 文件名前缀；`log_dir` 独立不动；**不引入第二个 flag、不合并不拆分**。调用点（`run_sb3_*.py` 等 SB3 模板）只需把 kwarg 名 `log_split=` → `mode=`，传的字符串不变。（`checkpoint_replay_eval.py` 不调 `make()`、无此 kwarg，不涉及。）
 
-**理由（前瞻）**：Phase 0 会让这同一个 flag 额外承担 eval 噪声语义（按 `eval_noise_scale` 缩放 obs/action、force-zero reward，见 §0.2）。届时 `log_split`（logging 名）控制 env 动力学 = "名字撒谎"；`mode`（train/eval 模式）名副其实。趁现在（未焊噪声行为、调用点少）改最便宜。**明确不做**：不引入独立的第二个 flag 去"解耦 CSV 与噪声语义"—— CSV 挂载已由 `log_dir` 门控半独立（`mode="eval"` 不传 `log_dir` = eval 语义、无 CSV），再加 flag 只会制造"两个 flag 必须保持一致"的负担。
+**理由（前瞻）**：Phase 0 会让这同一个 flag 额外承担 eval 噪声语义（按 `eval_noise_scale` 缩放**三通道**噪声——含 reward，见决议 11；见 §0.2）。届时 `log_split`（logging 名）控制 env 动力学 = "名字撒谎"；`mode`（train/eval 模式）名副其实。趁现在（未焊噪声行为、调用点少）改最便宜。**明确不做**：不引入独立的第二个 flag 去"解耦 CSV 与噪声语义"—— CSV 挂载已由 `log_dir` 门控半独立（`mode="eval"` 不传 `log_dir` = eval 语义、无 CSV），再加 flag 只会制造"两个 flag 必须保持一致"的负担。
 
-**术语说明**：本文档 §0.2 / §0.6.3 / §5.2 / §6 中出现的 `log_split="eval"` 与 §11 / 本条的 `mode="eval"` **指同一参数**；Phase 0 实施时代码统一为 `mode`，文档届时一并统一。
+**术语说明**：as-built——代码与文档均已统一为 `mode`（`log_split` 仅在本决议作为"改名前旧名"出现）。
 
 **决议 10（2026-07-04 ✅，用户拍板）：eval 默认改为 matched（`eval_noise_scale` 默认 1.0），对齐 RG**
 
