@@ -1552,7 +1552,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 3. **噪声下 precision 高（0.90–0.999）、recall 低** → policy 变**保守**（漏音多于误按），F1 掉主要来自 recall。
 4. **reward 噪声"污染 return 但不污染 F1"实锤**：`R-Shift` return 虚高（+294 灌入）而 F1 才 0.589；`R-Gauss` return 不虚高（1684）但 F1 崩到 0.117（§14 预测成立）。
 
-**Caveats（写作须 disclose）**：(a) 仅 **matched eval**（scale=1.0），部署期鲁棒性曲线（scale sweep）待 `robust_eval_sweep.py` 跑出；(b) 仅 **seed=0 单种子**；(c) 仅 **P15/P50 最脏档**——中间档 P05/P10/P30 待补；(d) obs 噪声 = 关节角 + 键态，**不含关节速度**（该任务 obs 无 `joints_vel` key）；(e) baseline 为**纯 PPO**（robust 无 cost，不跑 PPOLag）。
+**Caveats（写作须 disclose）**：(a) 仅 **matched eval**（scale=1.0），部署期鲁棒性曲线（scale sweep）待 `robust_eval_sweep.py` 跑出；(b) 仅 **seed=0 单种子**；(c) 仅 **P15/P50 最脏档**——中间档 P05/P10/P30 待补；(d) obs 噪声**忠实扰动 policy 实际消费的本体感觉通道**（关节角 `joints_pos` + 感知键态 `piano/state` + `sustain_state`）；关节速度不在其中，因为**上游 RoboPianist 基准本就是 position-only 观测**（`joints_vel` observable 上游定义但从未 enable，`piano_with_shadow_hands.py:_add_observables`），policy 从不观测速度、故无速度可扰——这是与 RoboPianist 对齐的 disclosure，非遗漏；(e) baseline 为**纯 PPO**（robust 无 cost，不跑 PPOLag）。
 
 ### Phase 1 待补数字（robustness 曲线阶段）
 
