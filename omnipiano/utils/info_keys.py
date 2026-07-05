@@ -18,6 +18,10 @@ class InfoKeys:
     # Robustness
     ROBUST_NOISE_ACTION_L2 = "robust/noise_action_l2"
     ROBUST_NOISE_OBS_L2 = "robust/noise_obs_l2"
+    # Per-step reward noise (signed scalar; can be negative). Matched at eval
+    # (decision 11) — NOT force-zeroed. Aggregated per-episode into the eval
+    # CSV `ep_noise_reward` column; ep_return_noised - ep_return_true == sum.
+    ROBUST_NOISE_REWARD = "robust/noise_reward"
     
     # Task (Musical Metrics) — per-step
     # TODO: not yet emitted by any wrapper. Reserved placeholders for

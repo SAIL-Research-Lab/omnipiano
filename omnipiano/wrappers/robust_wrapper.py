@@ -237,19 +237,42 @@ class RobustWrapper(gym.Wrapper):
         if self._channel_active("obs"):
             obs_noise_l2 = self._read_obs_noise_l2()
 
-        # 3. Method 6 (Option B): expose the clean commanded action to the
-        #    policy instead of the noised executed one. Only runs when
-        #    action noise was actually injected — non-robust envs return
-        #    the inner obs object untouched (no copy), so existing
-        #    baselines are structurally unaffected.
-        if a_cmd is not None and self._action_slice is not None:
-            obs = obs.copy()
-            obs[self._action_slice] = np.asarray(
-                self._clean_physical(a_cmd), dtype=obs.dtype
+        # 3. Reward noise (decision 11: matched at eval, NOT force-zeroed).
+        #    Add noise to the scalar reward the agent receives and trains on.
+        #    Shares the gym np_random stream with action noise; v1 tasks are
+        #    single-channel, so only one of action/reward is ever active and
+        #    the two never interleave the stream (equivalence gate §0.7).
+        reward_noise = 0.0
+        reward_active = self._channel_active("reward")
+        if reward_active:
+            reward_noise = float(
+                self._sample_noise(self.np_random, channel="reward", shape=())
             )
+            reward = float(reward) + reward_noise
+
+        # 4. Method 6 (Option B) obs-slot overrides — only when the relevant
+        #    noise is active, so non-robust envs return the inner obs object
+        #    untouched (no copy), leaving existing baselines structurally
+        #    unaffected.
+        #    * obs["action"] -> clean commanded a_cmd in physical units (hide
+        #      the injected action noise from the policy).
+        #    * obs["reward"] -> the noised observed reward r_obs the agent
+        #      received, so its reward memory matches the training signal and
+        #      stays in-distribution at matched eval (Wang 2020; decision 11).
+        override_action = a_cmd is not None and self._action_slice is not None
+        override_reward = reward_active and self._reward_slice is not None
+        if override_action or override_reward:
+            obs = obs.copy()
+            if override_action:
+                obs[self._action_slice] = np.asarray(
+                    self._clean_physical(a_cmd), dtype=obs.dtype
+                )
+            if override_reward:
+                obs[self._reward_slice] = np.asarray(reward, dtype=obs.dtype)
 
         info[InfoKeys.ROBUST_NOISE_ACTION_L2] = action_noise_l2
         info[InfoKeys.ROBUST_NOISE_OBS_L2] = obs_noise_l2
+        info[InfoKeys.ROBUST_NOISE_REWARD] = reward_noise
 
         return obs, reward, terminated, truncated, info
 
