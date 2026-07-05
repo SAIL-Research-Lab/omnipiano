@@ -1560,7 +1560,15 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 2. **通道敏感度：Action ≈ Reward ≫ Obs**。Obs 噪声下 F1 都聚在 0.54–0.60（policy 能滤掉部分传感器噪声，且 obs 噪声只打 141 维本体感觉/键态、不碰 979 维 goal）；Action/Reward 的高斯档跌到 0.12–0.28。
 3. **噪声下 precision 高（0.90–0.999）、recall 低** → policy 变**保守**（漏音多于误按），F1 掉主要来自 recall。
 4. **reward 噪声"污染 return 但不污染 F1"实锤**：`R-Shift` return 虚高（+294 灌入）而 F1 才 0.589；`R-Gauss` return 不虚高（1684）但 F1 崩到 0.117（§14 预测成立）。
-5. **⚠️ Action-Shift 不是 adversarial 扰动——它比 clean 还好**：`A-Shift-P15` F1=0.704 **高于 Clean 0.626（+12%）**，recall 0.605 > clean 0.506。已排除 bug（通道纯度已验证注入了 act_l2=591.66 的恒定噪声）。**机理**：action 是 canonical [-1,1] 位置目标，恒定 +0.15 偏置**把手指整体压向琴键**→ 多按对音（recall↑）。这是 **in-training robustness 协议**（§7 行 1）——policy 训练时就知道有此偏置、学到适配它的策略，而该恒定偏置恰是**有益的归纳偏置**。**paper 含义**：action 通道的 shift（至少 +方向）是**良性/有益**的，挑战"robustness=一定退化"的朴素框架，须显式 disclose。**待验证**：单 seed；方向对照实验（**A-Shift −0.15**，预期若 +0.15 因"压向键"有益、则 −0.15"抬离键"应有害）+ 多 seed 确认幅度。
+5. **⚠️ Action-Shift 不是 adversarial 扰动——效果由符号决定，围绕 clean 单调（方向对照已确认，2026-07-05）**：三点单调，precision 恒定 ~0.975：
+
+   | task | action shift | F1 | recall | ΔF1 vs clean |
+   |---|---|---|---|---|
+   | **A-Shift-N15** | **−0.15** | 0.553 | 0.436 | **−0.073** |
+   | **Clean-v0** | 0 | 0.626 | 0.506 | — |
+   | **A-Shift-P15** | **+0.15** | 0.704 | 0.605 | **+0.078** |
+
+   **机理确认**：action 是 canonical [-1,1] 位置目标——**+0.15 把手指压向琴键 → 多按对音（recall↑）→ F1↑（超 clean）；−0.15 抬离琴键 → recall↓ → F1↓（低于 clean）**。方向决定 help/harm，围绕 clean 近似线性（+0.078 / −0.073 近对称）。已排除 bug（通道纯度验证注入 act_l2=591.66 的恒定噪声）。这是 **in-training robustness 协议**（§7 行 1，policy 训练时已知偏置、学到适配）。**paper 含义**：(a) action-shift 是**系统性方向偏置**、非退化型扰动——只测 +方向会漏掉一半图景；(b) shift 与零均值噪声（gaussian/uniform 纯退化）**本质不同**；(c) 挑战"robustness=一定退化"的朴素框架，须显式 disclose。**诊断 env**：`OmniPiano-ClairDeLune-A-Shift-N15-v0`（ablation，不在 v1 矩阵）。**仍待**：多 seed 确认幅度。
 
 **Caveats（写作须 disclose）**：(a) 仅 **matched eval**（scale=1.0），部署期鲁棒性曲线（scale sweep）待 `robust_eval_sweep.py` 跑出；(b) 仅 **seed=0 单种子**；(c) 仅 **P15/P50 最脏档**——中间档 P05/P10/P30 待补；(d) obs 噪声**忠实扰动 policy 实际消费的本体感觉通道**（关节角 `joints_pos` + 感知键态 `piano/state` + `sustain_state`）；关节速度不在其中，因为**上游 RoboPianist 基准本就是 position-only 观测**（`joints_vel` observable 上游定义但从未 enable，`piano_with_shadow_hands.py:_add_observables`），policy 从不观测速度、故无速度可扰——这是与 RoboPianist 对齐的 disclosure，非遗漏；(e) baseline 为**纯 PPO**（robust 无 cost，不跑 PPOLag）。
 
