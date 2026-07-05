@@ -1710,13 +1710,13 @@ Phase 1 获批后：
 
 | Logger | 框架 | ep_return | ep_cost | F1 / prec / recall | 分解列 | S6 列 |
 |---|---|---|---|---|---|---|
-| **training rollout** `train_iteration_summary.csv` | SB3 | ✓（mean±std） | ✓ | ✓ | ✓ | ✗ |
+| **training rollout** `progress.csv`（SB3-native Monitor/logger） | SB3 | ✓ `ep_rew_mean` | ✗ | ✗ | ✗ | ✗ |
 | **training rollout** `progress.csv` | OmniSafe | ✓ EpRet | ✓ EpCost | ❌（`Evaluator` 不 surface terminal info，`run_omnisafe_template.py:74-76`） | ❌ | ✗ |
 | **deterministic eval** = `SafeRecordEpisodeStatistics` CSV | SB3 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **replay CSV** `examples/checkpoint_replay_eval.py` | OmniSafe | ✓ | ✓ | ✓（自写 rollout 读 terminal info） | ✓ | ✓（schema-lock；safety→nominal） |
 
 **两处新发现 / 更正**：
-1. **SB3 training CSV 有分解列**（`TrainIterationSummaryCallback` 读 terminal info：`ep_f1_mean` / `ep_precision_mean` / `episode_energy_reward_mean` …）→ 更正之前"training rollout 无分解列"的说法；SB3 训练侧 clean return 也可由分解列之和恢复。
+1. **SB3 training rollout 是 SB3-native 的 `progress.csv`（`ep_rew_mean` / `ep_len`），无 F1/cost/分解列。** 曾有一个自定义 `TrainIterationSummaryCallback` → `train_iteration_summary.csv` 记这些 mean，但它**非 SB3-native、已 comment off 禁用**（`run_sb3_template.py`；SB3 自带的 Monitor/logger 计算逻辑才是经过验证的，计划由 native `info_keywords` logger 替换——见 memory 的"native framework loggers refactor"）。→ SB3 训练期的 **F1/cost 改由 periodic eval（EvalCallback → SafeRecord CSV）提供**，与 OmniSafe 训练侧（也无 F1）对称。
 2. **OmniSafe training 无 F1/precision/recall**：`Evaluator.evaluate()` 只返回 (rewards, costs)、不 surface terminal info；F1 只在 `_final_eval` / `checkpoint_replay`（自写 rollout 读 terminal info）里才有。
 3. 只有**两个 eval CSV**（SafeRecord + replay）有 S6 的 `ep_return_true` / `eval_noise_scale` / `ep_noise_*`。`SafeRecordEpisodeStatistics` **就是** deterministic eval CSV 的 writer（表中同一行）。
 
@@ -1726,7 +1726,7 @@ Phase 1 获批后：
 
 - 它记录的 **F1 / precision / recall / ep_cost 永远是真实轨迹的真值**——不被任何噪声通道污染-as-measurement；数值会随扰动轨迹变化（action/obs/reward 都可能改轨迹），那是诚实测量。
 - 它记录的 **ep_return**：
-  - **reward 任务** → 是 **noised（实收带噪）**，被污染-as-measurement；真值另有来源：eval CSV 的 `ep_return_true` 列 / SB3 training 的分解列之和 / F1（clean headline）。OmniSafe training 的 EpRet 是 noised 且无分解列 → 该处真值只能靠 F1（而 OmniSafe training 又无 F1，故 OmniSafe **训练**侧看真实表现要靠 replay CSV / `_final_eval`）。
+  - **reward 任务** → 是 **noised（实收带噪）**，被污染-as-measurement；真值来源：eval CSV 的 `ep_return_true` 列 / F1（clean headline，periodic eval 提供）。两个框架的 **training rollout 都没有干净的 return**（SB3-native 无分解列、OmniSafe 无 F1）→ 训练期看真实表现一律靠 **periodic eval（SB3：EvalCallback→SafeRecord CSV）或 replay/`_final_eval`（OmniSafe）**。
   - **action / obs 任务** → 是被扰动轨迹的**真 return**（reward 标量未被污染），可直接用。
 
 ### 14.5 一句话总结

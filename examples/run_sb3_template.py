@@ -50,7 +50,13 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from omnipiano import make
 from omnipiano.configs import BenchmarkProtocolConfig
-from omnipiano.integrations.sb3 import TrainIterationSummaryCallback
+# DISABLED: TrainIterationSummaryCallback writes a CUSTOM train_iteration_summary.csv
+# (per-rollout means aggregated from info["episode"] + OmniPiano info keys) — it is
+# NOT SB3-native. We rely on SB3's verified Monitor (monitor.csv) + native
+# progress.csv for the training rollout instead; F1/cost during training come from
+# the periodic EvalCallback -> SafeRecordEpisodeStatistics eval CSV. To be replaced
+# by a native info_keywords logger (paused "native framework loggers refactor").
+# from omnipiano.integrations.sb3 import TrainIterationSummaryCallback
 
 
 def _parse_net_arch(s: str) -> List[int]:
@@ -255,8 +261,8 @@ def main():
     )
 
     print(f"Training for {args.total_steps:,} timesteps...")
-    iteration_summary = TrainIterationSummaryCallback(log_dir=log_dir)
-    callbacks = CallbackList([periodic_eval, iteration_summary])
+    # iteration_summary = TrainIterationSummaryCallback(log_dir=log_dir)  # DISABLED (custom, non-native; see import)
+    callbacks = CallbackList([periodic_eval])
     model.learn(total_timesteps=args.total_steps, callback=callbacks)
 
     model_path = os.path.join(log_dir, "final_model")
