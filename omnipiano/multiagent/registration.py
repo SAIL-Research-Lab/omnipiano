@@ -264,7 +264,10 @@ def _make_dm_env_chain_builder(
         ObservationActionRewardWrapper,
         SinglePrecisionWrapper,
     )
-    from omnipiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
+    from omnipiano.envs.dm_env_obs_noise import (
+        DmEnvObsNoiseWrapper,
+        OBS_NOISE_SEED_OFFSET,
+    )
     from omnipiano.envs.robopianist.wrappers import (
         MidiEvaluationWrapper,
     )
@@ -316,7 +319,9 @@ def _make_dm_env_chain_builder(
         env = MidiEvaluationWrapper(env, deque_size=1)
 
         if robust_config.is_channel_active("obs"):
-            obs_noise_seed = (_seed + 31415) if _seed is not None else None
+            obs_noise_seed = (
+                (_seed + OBS_NOISE_SEED_OFFSET) if _seed is not None else None
+            )
             env = DmEnvObsNoiseWrapper(
                 env,
                 robust_config=robust_config,

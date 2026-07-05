@@ -96,7 +96,10 @@ from omnipiano.configs import (
     TaskVariantConfig,
 )
 from omnipiano.envs.dm_env_adapter import DmEnvToGymnasium
-from omnipiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
+from omnipiano.envs.dm_env_obs_noise import (
+    DmEnvObsNoiseWrapper,
+    OBS_NOISE_SEED_OFFSET,
+)
 from omnipiano.tasks.hand_spec import HandSpec
 from omnipiano.tasks.omni_piano_task import OmniPianoTask
 from omnipiano.wrappers.metrics_wrapper import MetricsWrapper
@@ -385,7 +388,9 @@ def make(
             # Derive obs-noise RNG seed from the master seed but with an
             # offset so the noise stream is independent of the task's
             # internal random_state (used for episode init).
-            obs_noise_seed = (_seed + 31415) if _seed is not None else None
+            obs_noise_seed = (
+                (_seed + OBS_NOISE_SEED_OFFSET) if _seed is not None else None
+            )
             env = DmEnvObsNoiseWrapper(
                 env,
                 robust_config=effective_robust_config,

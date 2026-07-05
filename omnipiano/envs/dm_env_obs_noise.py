@@ -29,6 +29,15 @@ import numpy as np
 from dm_env_wrappers import EnvironmentWrapper
 
 
+# Offset added to the master seed to derive the obs-noise RNG seed, so the
+# obs-noise stream is independent of the task's internal random_state (episode
+# init). SINGLE SOURCE OF TRUTH — imported by both the single-agent
+# (envs/registration.py) and multi-agent (multiagent/registration.py) factories
+# so they can never drift to different offsets (the §0.5 dedup: this was
+# previously hardcoded as +31415 in two places). Value chosen 20000.
+OBS_NOISE_SEED_OFFSET = 20000
+
+
 class DmEnvObsNoiseWrapper(EnvironmentWrapper):
     """Inject independent per-key noise (gaussian / uniform / shift) into
     selected dm_env obs keys.
@@ -61,7 +70,7 @@ class DmEnvObsNoiseWrapper(EnvironmentWrapper):
         seed: Seed for the wrapper's own RNG. Use a value derived from
             (but distinct from) the dm_env's master seed so that
             obs-noise sequences don't consume the same RNG stream as
-            task initialization (e.g., ``seed + 31415``).
+            task initialization (e.g., ``master_seed + OBS_NOISE_SEED_OFFSET``).
     """
 
     DEFAULT_INCLUDE_PATTERNS: Sequence[str] = (
