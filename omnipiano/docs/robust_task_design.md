@@ -1524,17 +1524,46 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 - "OmniPiano supports the random-perturbation subset of the disruptor taxonomy from Robust-Gymnasium [Gu et al. 2025], covering state, action, and reward channels under Gaussian / Uniform / Shift distributions, with strict separation between training-time and evaluation-time noise levels."
 - "OmniPiano-Robust covers the observation, action, and reward disruptor families of Robust-Gymnasium [Gu et al. 2025]. We deliberately exclude adversarial perturbations (which require per-paper-method infrastructure not shared across baselines — LLM API, gradient access to the policy, or a separately trained adversary) and environment/dynamics randomization. The latter is out of scope by design: dynamics randomization is motivated by sim-to-real transfer, which does not apply to a fixed-repertoire pure-simulation music benchmark, and perturbing physical parameters (e.g. piano-key spring stiffness) entangles the robustness axis with the definition of correct play (the force-to-key-activation mapping the F1 metric depends on), unlike observation/action/reward noise which leaves the ground-truth F1 measurement intact."
 
-### Phase 1 跑完后要填的数字
+### Phase 1 首批实测数字（matched eval，纯 PPO，seed=0，5M，2026-07-05）
 
-- 每 channel：PPO 在 `ClairDeLune` 上 std=0.05 时的 净 vs 扰 F1 跌幅
-- 每 channel：PPOLag 在 `ClairDeLune` 上 std=0.05 时的 净 vs 扰 F1 跌幅
-- 每 channel 的 robustness 曲线斜率（ΔF1 / Δeval_noise_scale）
-- "shift" 分布的曲线是否与 Gaussian 在质上不同（YES 有意思，NO 在预期内）
+首批跑了 **9 个 run**：Action/Obs 的 **P15**（0.15）× {Gauss,Uniform,Shift} + Reward 的 **P50**（0.50）× {Gauss,Uniform,Shift}。数字来自各 run 的 **final eval CSV**（`mode="eval"`，`eval_noise_scale=1.0` matched，1 episode，deterministic）。**headline = F1**（noise-immune，读物理）。
 
-### 值得记录的负结果（预期可能出现）
+| 任务（matched eval σ/level=P） | F1 | precision | recall | return（实收）\* |
+|---|---|---|---|---|
+| **A-Gauss-P15** | **0.277** | 0.902 | 0.193 | 1653 |
+| **A-Uniform-P15** | 0.371 | 0.972 | 0.269 | 1663 |
+| **A-Shift-P15** | **0.704** | 0.974 | 0.605 | 1868 |
+| **O-Gauss-P15** | 0.588 | 0.989 | 0.448 | 1846 |
+| **O-Uniform-P15** | 0.599 | 0.981 | 0.476 | 1848 |
+| **O-Shift-P15** | 0.539 | 0.980 | 0.433 | 1832 |
+| **R-Gauss-P50** | **0.117** | 0.994 | 0.075 | 1684 |
+| **R-Uniform-P50** | 0.300 | 0.999 | 0.217 | 1766 |
+| **R-Shift-P50** | 0.589 | 0.971 | 0.475 | **2141** |
 
-- 我们预期 "shift" 在与 Gaussian 同 numerical level_value 时（如 A-Shift-P05 vs A-Gauss-P05 都用 0.05）表现相似，因为 policy 原则上可学到 shift 的恒定 bias。如果显著不同，那就是个 result（注：shift 的 empirical std=0，Gaussian 的 empirical std=0.05；即使 numerical value 相同也是不同扰动，具体是 policy 应对 bias 还是 white noise 的能力对比）。
-- 我们预期 std=0.10 的 reward noise（大致是一个 timestep reward 的 magnitude）会严重降低学习。如果真降，论证应当用更紧的 reward std 默认值；如果没降，那 policy 比朴素理论预测更鲁棒。
+\* return = **实收（带噪）**；reward 任务被污染（§14）。真值用 `ep_return_true`：`R-Shift` 实收 2141 里约 +294（=0.5×588 步的 shift）是噪声灌入，真值 ≈ 1847；`R-Gauss`/`R-Uniform` 噪声零均值，实收 ≈ 真值。
+
+**已观测到的 claim（可入 paper）**：
+
+1. **分布难度排序在 Action 与 Reward 上一致：Shift（易）> Uniform > Gauss（难）**。
+   - Action：Shift 0.704 ≫ Uniform 0.371 > Gauss 0.277。
+   - Reward：Shift 0.589 ≫ Uniform 0.300 > Gauss **0.117**。
+   - 机理：**shift 是可学习的恒定偏置**（policy 学会补偿）；uniform 经验 std=level/√3 < gaussian=level；gaussian 白噪声最难。**证据**：三分布同 numerical level 下噪声 L2 实测 Gauss:Uniform=√3、Shift 完全确定性（§9 分析）。
+2. **通道敏感度：Action ≈ Reward ≫ Obs**。Obs 噪声下 F1 都聚在 0.54–0.60（policy 能滤掉部分传感器噪声，且 obs 噪声只打 141 维本体感觉/键态、不碰 979 维 goal）；Action/Reward 的高斯档跌到 0.12–0.28。
+3. **噪声下 precision 高（0.90–0.999）、recall 低** → policy 变**保守**（漏音多于误按），F1 掉主要来自 recall。
+4. **reward 噪声"污染 return 但不污染 F1"实锤**：`R-Shift` return 虚高（+294 灌入）而 F1 才 0.589；`R-Gauss` return 不虚高（1684）但 F1 崩到 0.117（§14 预测成立）。
+
+**Caveats（写作须 disclose）**：(a) 仅 **matched eval**（scale=1.0），部署期鲁棒性曲线（scale sweep）待 `robust_eval_sweep.py` 跑出；(b) 仅 **seed=0 单种子**；(c) 仅 **P15/P50 最脏档**——中间档 P05/P10/P30 待补；(d) obs 噪声 = 关节角 + 键态，**不含关节速度**（该任务 obs 无 `joints_vel` key）；(e) baseline 为**纯 PPO**（robust 无 cost，不跑 PPOLag）。
+
+### Phase 1 待补数字（robustness 曲线阶段）
+
+- 每 channel 的 robustness 曲线斜率（ΔF1 / Δ`eval_noise_scale`），由 `robust_eval_sweep.py`（scale grid {0,0.5,1,2,4}）产出。
+- Clean-trained baseline（`OmniPiano-ClairDeLune-Clean-v0`）作参照：净训 policy 在各 scale 下的泛化退化（§7 第 3 行协议）。
+- 中间噪声档（A/O 的 P05/P10、R 的 P10/P30）填满难度-F1 曲线。
+
+### 负结果 / 预期验证（首批已给答案，2026-07-05）
+
+- **"shift 与 Gaussian 同 numerical level 是否表现相似？" → 答案：显著不同，是个 result。** A-Shift-P15 F1=0.704 vs A-Gauss-P15 0.277（2.5×）；R-Shift-P50 0.589 vs R-Gauss-P50 0.117（5×）。policy 能学会补偿恒定 bias（shift，empirical std=0），但对 white noise（gaussian）无能为力。**这不是原预期的"相似"负结果，而是分布轴的正向发现**——支持 v1 保留 3-way 分布 sweep 的价值。
+- **"σ=0.5 的 reward noise 是否严重降低学习？" → 是（严重）。** R-Gauss-P50 F1 崩到 0.117、`explained_variance` 只有 0.27（value function 拟合被高方差 reward 噪声破坏）。**对 paper 意味着**：reward 高斯档在 P50 可能过狠（曲线接近地板），中间档 P10/P30 更能给出可分辨的退化曲线；R-Shift-P50 反而 F1=0.589 说明"档位狠不狠"高度依赖分布。
 
 ---
 
