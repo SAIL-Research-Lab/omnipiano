@@ -1257,6 +1257,19 @@ def _register_clairdelune_robust_v1() -> None:
 _register_clairdelune_robust_v1()
 
 
+# --- Ablation / diagnostic (NOT part of the v1 27+1 matrix) --------------
+# Directional control for the "A-Shift-P15 F1 > Clean" finding (§10 claim 5):
+# the canonical A-Shift-P15 uses +0.15 (pushes fingers toward keys → higher
+# recall). This negative-shift twin (-0.15, suffix "N15") tests the mechanism:
+# if +0.15 helps by pressing toward keys, -0.15 (lifting away) should hurt.
+# Registered separately so it stays out of the canonical sweep matrix.
+register(
+    id="OmniPiano-ClairDeLune-A-Shift-N15-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(noise_dist="shift", action_noise_shift=-0.15),
+)
+
+
 # ===========================================================================
 # Multi-agent (PettingZoo ParallelEnv) registrations.
 # Side-effect import: triggers register_parallel() calls in multiagent_envs.py.
