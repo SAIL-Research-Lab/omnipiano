@@ -1618,7 +1618,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 **测量**：reward matched 下 `ep_return` 会被噪声污染 → **加两列**（仅 eval CSV）：
 - `ep_return_true` = **reward 分解列之和**（MetricsWrapper 读加噪前物理值；`get_reward=reward_fn.compute=Σterms` 无额外变换，已代码严格核实 —— composite_reward.py:46-56 / piano_with_shadow_hands.py:210-211），作 headline；float64 分解和比 float32 累加更精确。
-- `ep_return_noised` = 实收（带噪）return。交叉校验：`noised − true = ep_noise_reward`。
+- 实收（带噪）return = **现有 `ep_return` 列**（as-built 保留其含义=received/accumulated，向后兼容不改；reward 任务下即"noised"）。交叉校验：`ep_return − ep_return_true = ep_noise_reward`。（**未单独加名为 `ep_return_noised` 的列**——`ep_return` 即承担该角色。）
 - action/obs 任务两列相等（reward 标量未被污染）。**F1 恒为干净 headline**（读物理）。
 - **仅加到我们控制的两个 eval CSV**（`SafeRecordEpisodeStatistics` + `checkpoint_replay`，有分解列）；**training rollout**（库原生 Monitor/progress）保持 noised（有意——agent 训练信号）、无分解列 → 无 true 列（靠 F1）。跨库：真值是环境层量（info 里的 `episode_task/*_reward`），库无关；写不写取决于 logger。
 
@@ -1630,7 +1630,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 **edge case**：`action_reward_observation=False`（非默认）时 reward 不进 obs，eval reward 噪声才真 vacuous；标准任务 OAR=on，matched 即正确。
 
-**as-built**：`registration.py` force-zero 已移除（warn + `import warnings` 清除）；`test_robust_eval_scale.py` reward 测试改为 matched（59 green）。`ep_return_true`/`ep_return_noised` 列在 S6 实现。
+**as-built（S6 完成）**：`registration.py` force-zero 已移除；reward 测试改 matched。**S6 CSV 列**（两个 eval CSV,schema-locked）：`ep_return` **保留=received**（reward 任务即 noised，不改），**新增** `ep_return_true`（=分解列之和,clean headline）+ `eval_noise_scale` + `ep_noise_{action_l2,obs_l2,reward}`；追加在末尾,现有列 index 不变。交叉校验 `ep_return − ep_return_true == ep_noise_reward`。gate `test_robust_eval_csv.py`（5）；全套 80 green。checkpoint_replay 的 header 同步（tools/ 被 gitignore,改动在本地）。
 
 每个都可独立决定；想换的请告诉我，没说的我按 my recommendation 走。
 
