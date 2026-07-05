@@ -198,46 +198,15 @@ class RobustWrapper(gym.Wrapper):
         )
 
     # ------------------------------------------------------------------
-    # Noise distribution dispatch (Option C.3 — per-distribution fields)
+    # Noise dispatch — delegates to RobustConfig (single source of truth,
+    # shared with the dm_env-layer DmEnvObsNoiseWrapper so the two layers
+    # never diverge). See RobustConfig.is_channel_active / sample_noise.
     # ------------------------------------------------------------------
     def _channel_active(self, channel: str) -> bool:
-        """True if ``channel`` has nonzero noise magnitude for the currently
-        active ``noise_dist`` (gaussian→std, uniform→low/high, shift→shift)."""
-        dist = self.config.noise_dist
-        if dist == "gaussian":
-            return getattr(self.config, f"{channel}_noise_std") != 0.0
-        if dist == "uniform":
-            lo = getattr(self.config, f"{channel}_noise_uniform_low")
-            hi = getattr(self.config, f"{channel}_noise_uniform_high")
-            return (lo != 0.0) or (hi != 0.0)
-        if dist == "shift":
-            return getattr(self.config, f"{channel}_noise_shift") != 0.0
-        raise ValueError(f"Unknown noise_dist: {self.config.noise_dist!r}")
+        return self.config.is_channel_active(channel)
 
     def _sample_noise(self, rng, channel: str, shape):
-        """Sample noise for ``channel`` from the active distribution.
-
-        - gaussian: read ``{channel}_noise_std`` as σ → N(0, σ²) per-dim
-          (step-level). Kept **bit-identical** to the pre-Phase-0 direct
-          ``rng.normal(0, std, size=shape)`` call (equivalence gate §0.7).
-        - uniform:  read ``{channel}_noise_uniform_{low,high}`` → U[low, high]
-          per-dim (step-level); bounds may be asymmetric.
-        - shift:    read ``{channel}_noise_shift`` → constant offset broadcast
-          to all dims; **NO RNG draw** (deterministic, program-run-level), so
-          the shift branch never perturbs the gaussian/uniform stream ordering.
-        """
-        dist = self.config.noise_dist
-        if dist == "gaussian":
-            std = getattr(self.config, f"{channel}_noise_std")
-            return rng.normal(0.0, std, size=shape)
-        if dist == "uniform":
-            lo = getattr(self.config, f"{channel}_noise_uniform_low")
-            hi = getattr(self.config, f"{channel}_noise_uniform_high")
-            return rng.uniform(lo, hi, size=shape)
-        if dist == "shift":
-            shift = getattr(self.config, f"{channel}_noise_shift")
-            return np.full(shape, shift, dtype=float)
-        raise ValueError(f"Unknown noise_dist: {self.config.noise_dist!r}")
+        return self.config.sample_noise(rng, channel, shape)
 
     # ------------------------------------------------------------------
     # Step
@@ -317,7 +286,7 @@ class RobustWrapper(gym.Wrapper):
         wrapper = find_dm_env_wrapper(dm_env, DmEnvObsNoiseWrapper)
         if wrapper is None:
             raise RuntimeError(
-                "RobustConfig.obs_noise_std > 0 but DmEnvObsNoiseWrapper "
+                "RobustConfig obs channel is active but DmEnvObsNoiseWrapper "
                 "is not present in the dm_env chain. Verify "
                 "omnipiano.envs.registration._build_dm_env_chain inserts "
                 "DmEnvObsNoiseWrapper BEFORE ConcatObservationWrapper "

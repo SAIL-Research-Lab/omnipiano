@@ -12,7 +12,7 @@ dm_env layer:
     → EpisodeStatisticsWrapper
     → [PianoSoundVideoWrapper if record_dir]
     → MidiEvaluationWrapper
-    → [DmEnvObsNoiseWrapper if robust_config.obs_noise_std > 0]
+    → [DmEnvObsNoiseWrapper if robust_config obs channel active]
     → [ObservationActionRewardWrapper if action_reward_observation]
     → ConcatObservationWrapper           # Dict → flat ndarray
     → [FrameStackingWrapper if frame_stack > 1]
@@ -381,14 +381,14 @@ def make(
         # Per-key obs noise (only when ObservationRobust task requests it).
         # Must come BEFORE ConcatObservationWrapper so it can pick keys
         # by name (skip categorical/counter keys like "goal").
-        if effective_robust_config.obs_noise_std > 0:
+        if effective_robust_config.is_channel_active("obs"):
             # Derive obs-noise RNG seed from the master seed but with an
             # offset so the noise stream is independent of the task's
             # internal random_state (used for episode init).
             obs_noise_seed = (_seed + 31415) if _seed is not None else None
             env = DmEnvObsNoiseWrapper(
                 env,
-                noise_std=effective_robust_config.obs_noise_std,
+                robust_config=effective_robust_config,
                 seed=obs_noise_seed,
             )
 

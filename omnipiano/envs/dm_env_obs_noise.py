@@ -30,7 +30,8 @@ from dm_env_wrappers import EnvironmentWrapper
 
 
 class DmEnvObsNoiseWrapper(EnvironmentWrapper):
-    """Inject independent Gaussian noise into selected dm_env obs keys.
+    """Inject independent per-key noise (gaussian / uniform / shift) into
+    selected dm_env obs keys.
 
     Only modifies keys whose name CONTAINS any pattern in
     `include_key_patterns`. Default allowlist covers continuous
@@ -48,8 +49,10 @@ class DmEnvObsNoiseWrapper(EnvironmentWrapper):
         environment: Inner dm_env to wrap. Its `observation_spec()`
             must be a Dict (i.e., place this BEFORE
             `ConcatObservationWrapper`).
-        noise_std: Standard deviation of injected Gaussian noise. If
-            ``<= 0`` the wrapper is a no-op (still passes through).
+        robust_config: RobustConfig whose obs-channel fields + noise_dist
+            define the injected noise (gaussian / uniform / shift). If the
+            obs channel is inactive (``is_channel_active("obs")`` False) the
+            wrapper is a no-op (still passes through).
         include_key_patterns: Substrings (case-sensitive) that select
             which obs keys to noise. A key is noised iff
             ``any(p in key for p in patterns)``. Defaults to
@@ -71,12 +74,16 @@ class DmEnvObsNoiseWrapper(EnvironmentWrapper):
     def __init__(
         self,
         environment: dm_env.Environment,
-        noise_std: float,
+        robust_config,
         include_key_patterns: Optional[Sequence[str]] = None,
         seed: Optional[int] = None,
     ) -> None:
         super().__init__(environment)
-        self._noise_std = float(noise_std)
+        # RobustConfig owns the noise semantics (gaussian / uniform / shift);
+        # this wrapper injects the obs channel via config.sample_noise, so the
+        # dm_env obs layer and the gym-layer RobustWrapper never diverge.
+        self._config = robust_config
+        self._active = robust_config.is_channel_active("obs")
         self._patterns: tuple = tuple(
             include_key_patterns
             if include_key_patterns is not None
@@ -91,7 +98,7 @@ class DmEnvObsNoiseWrapper(EnvironmentWrapper):
 
     def step(self, action) -> dm_env.TimeStep:
         timestep = self._environment.step(action)
-        if self._noise_std <= 0:
+        if not self._active:
             self.last_step_noise_l2 = 0.0
             return timestep
 
@@ -113,7 +120,7 @@ class DmEnvObsNoiseWrapper(EnvironmentWrapper):
                 continue
             if not any(p in key for p in self._patterns):
                 continue
-            noise = self._rng.normal(0.0, self._noise_std, size=value.shape)
+            noise = self._config.sample_noise(self._rng, "obs", value.shape)
             total_l2 += float(np.linalg.norm(noise))
             new_obs[key] = value + noise
 

@@ -315,11 +315,11 @@ def _make_dm_env_chain_builder(
 
         env = MidiEvaluationWrapper(env, deque_size=1)
 
-        if robust_config.obs_noise_std > 0:
+        if robust_config.is_channel_active("obs"):
             obs_noise_seed = (_seed + 31415) if _seed is not None else None
             env = DmEnvObsNoiseWrapper(
                 env,
-                noise_std=robust_config.obs_noise_std,
+                robust_config=robust_config,
                 seed=obs_noise_seed,
             )
 

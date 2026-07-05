@@ -148,6 +148,46 @@ class RobustConfig:
                     f"Use {ch}_noise_shift instead."
                 )
 
+    # ------------------------------------------------------------------
+    # Noise semantics — single source of truth, used by BOTH the gym-layer
+    # RobustWrapper (action / reward channels) and the dm_env-layer
+    # DmEnvObsNoiseWrapper (obs channel), so the two layers never diverge.
+    # ------------------------------------------------------------------
+    def is_channel_active(self, channel: str) -> bool:
+        """True if ``channel`` has nonzero noise magnitude under noise_dist
+        (gaussian→std, uniform→low/high, shift→shift)."""
+        if self.noise_dist == "gaussian":
+            return getattr(self, f"{channel}_noise_std") != 0.0
+        if self.noise_dist == "uniform":
+            return (getattr(self, f"{channel}_noise_uniform_low") != 0.0
+                    or getattr(self, f"{channel}_noise_uniform_high") != 0.0)
+        if self.noise_dist == "shift":
+            return getattr(self, f"{channel}_noise_shift") != 0.0
+        raise ValueError(f"Unknown noise_dist: {self.noise_dist!r}")
+
+    def sample_noise(self, rng, channel: str, shape):
+        """Sample noise for ``channel`` from the active distribution.
+
+        - gaussian: read ``{channel}_noise_std`` as σ → N(0, σ²) per-dim
+          (step-level). Kept **bit-identical** to a direct
+          ``rng.normal(0, std, size=shape)`` call (equivalence gate §0.7).
+        - uniform:  read ``{channel}_noise_uniform_{low,high}`` → U[low, high]
+          per-dim (step-level); bounds may be asymmetric.
+        - shift:    read ``{channel}_noise_shift`` → constant offset broadcast
+          to all dims; **NO rng draw** (deterministic, program-run-level).
+        """
+        if self.noise_dist == "gaussian":
+            std = getattr(self, f"{channel}_noise_std")
+            return rng.normal(0.0, std, size=shape)
+        if self.noise_dist == "uniform":
+            lo = getattr(self, f"{channel}_noise_uniform_low")
+            hi = getattr(self, f"{channel}_noise_uniform_high")
+            return rng.uniform(lo, hi, size=shape)
+        if self.noise_dist == "shift":
+            shift = getattr(self, f"{channel}_noise_shift")
+            return np.full(shape, shift, dtype=float)
+        raise ValueError(f"Unknown noise_dist: {self.noise_dist!r}")
+
 @dataclass
 class TaskVariantConfig:
     """OmniPiano-only task variants — MJCF/XML-level modifications applied
