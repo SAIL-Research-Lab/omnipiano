@@ -1622,6 +1622,10 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 - action/obs 任务两列相等（reward 标量未被污染）。**F1 恒为干净 headline**（读物理）。
 - **仅加到我们控制的两个 eval CSV**（`SafeRecordEpisodeStatistics` + `checkpoint_replay`，有分解列）；**training rollout**（库原生 Monitor/progress）保持 noised（有意——agent 训练信号）、无分解列 → 无 true 列（靠 F1）。跨库：真值是环境层量（info 里的 `episode_task/*_reward`），库无关；写不写取决于 logger。
 
+**CSV 规格补充（代码核实 2026-07-04）**：
+- **`checkpoint_replay_eval.py`（OmniSafe）也加 true/noised 两列——schema-locked**：其 `_CSV_HEADER` 已含全部 6 个 reward 分解列（`_INFO_KEY_BY_CSV_COL` 从 `EpisodeInfoKeys.EPISODE_TASK_*_REWARD` 读），故 `ep_return_true` = 6 列之和直接可算、`ep_return_noised` = 它累加的 `ep_return`。它虽绕过 `make()`（走 Evaluator），但 MetricsWrapper 仍在重建链里 → 分解列照样有。**注**：它是 OmniSafe/safety 任务专用，safety 无 reward 噪声 → true == noised；加这两列主要为**与 SafeRecord schema 一致**（header 明确 "mirrors SafeRecordEpisodeStatistics schema"）。真正 true≠noised 的是 SB3 reward-噪声任务。
+- **`ep_cost` 恒为 true value，不被任何噪声通道污染-as-measurement**：cost 由 `SafetyWrapper`（在 `RobustWrapper` 内层）的 constraint 算，**只读 physics 或 a_exec（执行的噪声动作），从不读 obs**（constraints.py 全部 `del obs`）；reward 噪声只碰 reward 标量、与 cost 独立；`RobustWrapper` 从不改 `info[*_SAFETY_COST_*]`。OmniSafe 从 `info[STEP_SAFETY_COST_TOTAL]` 取（`run_omnisafe_template.py:191`）、replay 从 `EPISODE_SAFETY_COST_TOTAL` 读——两个 CSV 存的都是真实轨迹的真 cost。**精确区别**（同 F1）：cost 数值会随轨迹被扰动而变（诚实测量被扰动轨迹），但绝不会像 reward 噪声污染 `ep_return` 那样被"事后加噪弄脏"。
+
 **本决议撤销 / 取代**：S3a 的 reward eval force-zero + warn（已移除）；§0.6.3 的"reward eval 恒 clean / 不需 `ep_true_return`"；§6 的"reward eval 换 Clean-v0 / 只放训练档位轴"；§5.2 的"reward 跳过 scale grid"；决议 10 的 reward 例外。→ **reward 三通道完全对称：matched 默认、`eval_noise_scale` 轴 sweep、F1 干净 headline + `ep_return_true`/`ep_return_noised` 两列**。
 
 **edge case**：`action_reward_observation=False`（非默认）时 reward 不进 obs，eval reward 噪声才真 vacuous；标准任务 OAR=on，matched 即正确。
