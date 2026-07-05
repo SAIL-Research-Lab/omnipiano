@@ -1176,6 +1176,88 @@ register(
 
 
 # ===========================================================================
+# Robust Task v1 — ClairDeLune single-channel sweep (Phase 1, §5.1 / §6)
+#
+# 1 曲 (ClairDeLune) × 3 channel × 3 distributions × 3 noise level
+#   = 27 robust task id  (+ 1 explicit Clean = 28).
+#
+# 命名: OmniPiano-ClairDeLune-<C>-<Dist>-P<XX>-v0
+#   <C>    ∈ {A, O, R}                Action / Observation / Reward
+#   <Dist> ∈ {Gauss, Uniform, Shift}
+#   P<XX>  = level_value × 100         P05 = 0.05, P30 = 0.30
+#
+# single-channel per task (§5.1.0, RG-aligned): each id perturbs exactly ONE
+# channel; the other two stay 0. Level is each distribution's NATURAL
+# parameter (Gaussian σ / Uniform half-range a / Shift constant), NOT the
+# empirical std — the 3 dists differ in empirical strength at the same P
+# (§5.1.4).
+#
+# eval semantics: eval_noise_scale defaults to 1.0 (matched eval, decisions
+# 10/11) — NOT force-zeroed, reward symmetric with action/obs. The stale
+# `eval_noise_scale=0.0` in the design-doc §5.1 code snippet predates
+# decisions 10/11; we intentionally use the RobustConfig default here.
+# ===========================================================================
+_CLAIRDELUNE_BASE = "RoboPianist-repertoire-150-ClairDeLune-v0"
+_ROBUST_CHANNEL_LETTERS = {"action": "A", "obs": "O", "reward": "R"}
+# Channel-specific sweep values, matched to Robust-Gymnasium paper figures
+# (§5.1.4): action/obs {0.05,0.10,0.15}; reward {0.10,0.30,0.50} (reward's
+# scalar magnitude ~2-3 needs larger sigmas to perturb, as in RG).
+_ROBUST_CHANNEL_LEVELS = {
+    "action": (0.05, 0.10, 0.15),
+    "obs":    (0.05, 0.10, 0.15),
+    "reward": (0.10, 0.30, 0.50),
+}
+_ROBUST_DISTS = (("Gauss", "gaussian"), ("Uniform", "uniform"), ("Shift", "shift"))
+
+
+def _robust_cfg_for_task(channel: str, dist_key: str, level: float) -> RobustConfig:
+    """Single-channel RobustConfig with only `dist_key`'s field(s) set to
+    `level` (Option 4a: level is the natural parameter, no cross-dist
+    normalization). eval_noise_scale left at its 1.0 default (matched eval)."""
+    kwargs = {"noise_dist": dist_key}
+    if dist_key == "gaussian":
+        kwargs[f"{channel}_noise_std"] = level
+    elif dist_key == "uniform":
+        kwargs[f"{channel}_noise_uniform_low"] = -level
+        kwargs[f"{channel}_noise_uniform_high"] = +level
+    elif dist_key == "shift":
+        kwargs[f"{channel}_noise_shift"] = level
+    else:
+        raise ValueError(f"Unknown dist: {dist_key!r}")
+    return RobustConfig(**kwargs)
+
+
+def _register_clairdelune_robust_v1() -> None:
+    """Register the 27 single-channel robust tasks + 1 Clean baseline.
+
+    Wrapped in a function so the loop variables / helper don't leak into the
+    `omnipiano.envs` package namespace.
+    """
+    for channel, letter in _ROBUST_CHANNEL_LETTERS.items():
+        for dist_label, dist_key in _ROBUST_DISTS:
+            for level in _ROBUST_CHANNEL_LEVELS[channel]:
+                level_label = f"P{int(round(level * 100)):02d}"
+                env_id = (f"OmniPiano-ClairDeLune-"
+                          f"{letter}-{dist_label}-{level_label}-v0")
+                register(
+                    id=env_id,
+                    base_env_name=_CLAIRDELUNE_BASE,
+                    robust_config=_robust_cfg_for_task(channel, dist_key, level),
+                )
+    # Explicit in-family clean baseline (§12 decision 5): all std=0, so the
+    # sweep is self-contained and reviewers need not hunt a cross-family
+    # implicit clean baseline.
+    register(
+        id="OmniPiano-ClairDeLune-Clean-v0",
+        base_env_name=_CLAIRDELUNE_BASE,
+        robust_config=RobustConfig(),  # all-zero magnitudes → clean
+    )
+
+
+_register_clairdelune_robust_v1()
+
+
+# ===========================================================================
 # Multi-agent (PettingZoo ParallelEnv) registrations.
 # Side-effect import: triggers register_parallel() calls in multiagent_envs.py.
 # ===========================================================================

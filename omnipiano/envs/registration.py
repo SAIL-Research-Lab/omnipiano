@@ -176,6 +176,7 @@ def make(
     env_name: str,
     log_dir: Optional[str] = None,
     mode: str = "train",
+    _eval_noise_scale_override: Optional[float] = None,
     **kwargs,
 ):
     """Build a paper-chain OmniPiano gymnasium env.
@@ -193,12 +194,19 @@ def make(
         log_dir: If set, eval mode writes per-episode CSV here.
         mode: ``"train"`` or ``"eval"`` (renamed from ``log_split``,
             decision 9 — one flag selecting the env's train/eval regime).
-            At ``"eval"``: all RobustConfig magnitude fields are scaled by
-            ``eval_noise_scale`` (0.0=clean default, 1.0=training-level,
-            >1=stress) and reward noise is force-zeroed (reward perturbation
-            is training-only, §0.6.3); additionally, if ``log_dir`` is set,
-            SafeRecordEpisodeStatistics is attached. At ``"train"`` the noise
-            scale is 1.0 (registered training noise).
+            At ``"eval"``: all RobustConfig magnitude fields (all three
+            channels, INCLUDING reward — decision 11, reward is NOT
+            force-zeroed) are scaled by ``eval_noise_scale`` (1.0=matched
+            default, 0.0=clean/nominal, >1=stress); additionally, if
+            ``log_dir`` is set, SafeRecordEpisodeStatistics is attached. At
+            ``"train"`` the noise scale is 1.0 (registered training noise).
+        _eval_noise_scale_override: PRIVATE (leading underscore) sweep-tool
+            hook (§12 decision 7). When set (only valid with ``mode="eval"``),
+            replaces the registered ``eval_noise_scale`` for this one call, so
+            ``examples/robust_eval_sweep.py`` can evaluate a single registered
+            training env over a grid of eval noise magnitudes WITHOUT
+            registering ~135 extra ``(channel, dist, level, scale)`` env ids.
+            Not part of the public contract; normal users should not pass it.
         **kwargs: Strictly whitelisted to ``_RUNTIME_BYPASS_FIELDS``
             (``seed``, ``record_dir``, ``record_every``,
             ``record_resolution``, ``camera_id``) — none of which
@@ -292,7 +300,27 @@ def make(
     #     DmEnvObsNoiseWrapper) consumes effective_robust_config; the raw
     #     registered robust_config is kept unmodified for reproducibility.
     # ------------------------------------------------------------------
-    scale = robust_config.eval_noise_scale if mode == "eval" else 1.0
+    #     Private sweep-tool hook (§12 decision 7): _eval_noise_scale_override
+    #     replaces the registered eval_noise_scale for this one call. Only the
+    #     robustness sweep harness (examples/robust_eval_sweep.py) uses it, to
+    #     scan a scale grid on one registered training env without registering
+    #     ~135 extra env ids. Valid only at eval; must be >= 0.
+    if _eval_noise_scale_override is not None:
+        if mode != "eval":
+            raise ValueError(
+                f"_eval_noise_scale_override is only valid with mode='eval', "
+                f"got mode={mode!r}. It is the sweep tool's per-call override "
+                f"of eval_noise_scale."
+            )
+        if _eval_noise_scale_override < 0:
+            raise ValueError(
+                f"_eval_noise_scale_override must be >= 0, got "
+                f"{_eval_noise_scale_override!r}."
+            )
+        eval_scale_field = _eval_noise_scale_override
+    else:
+        eval_scale_field = robust_config.eval_noise_scale
+    scale = eval_scale_field if mode == "eval" else 1.0
     effective_robust_config = dataclasses.replace(
         robust_config,
         action_noise_std=robust_config.action_noise_std * scale,
