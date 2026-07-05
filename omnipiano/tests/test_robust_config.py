@@ -162,3 +162,23 @@ def test_valid_shift():
 def test_eval_noise_scale_settable():
     cfg = RobustConfig(action_noise_std=0.05, eval_noise_scale=0.5)
     assert cfg.eval_noise_scale == 0.5
+
+
+# --------------------------------------------------------------------------
+# __post_init__ — fail-fast validation of noise_dist + non-negative magnitudes
+# --------------------------------------------------------------------------
+def test_invalid_noise_dist_raises():
+    # A typo must fail at construction, not silently produce a clean env.
+    with pytest.raises(ValueError, match="noise_dist must be one of"):
+        RobustConfig(noise_dist="gausian")
+
+
+@pytest.mark.parametrize("ch", ["action", "obs", "reward"])
+def test_negative_std_raises(ch):
+    with pytest.raises(ValueError, match="must be >= 0"):
+        RobustConfig(**{f"{ch}_noise_std": -0.05})
+
+
+def test_negative_eval_noise_scale_raises():
+    with pytest.raises(ValueError, match="eval_noise_scale must be >= 0"):
+        RobustConfig(eval_noise_scale=-1.0)

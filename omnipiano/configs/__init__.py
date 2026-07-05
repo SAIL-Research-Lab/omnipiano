@@ -100,12 +100,34 @@ class RobustConfig:
     def __post_init__(self):
         """Validate config integrity (raises ``ValueError`` on violation):
 
+        0. noise_dist is a known value; magnitudes (std, eval_noise_scale)
+           are non-negative — fail fast rather than let a typo silently
+           produce a clean env or crash mid-episode.
         1. Uniform bounds are finite and ordered (``low <= high``).
         2. A channel does not set fields inconsistent with ``noise_dist``
            (e.g. ``noise_dist='gaussian'`` but a ``*_noise_shift`` is
            nonzero) — catches accidental mis-registration at construction
            time rather than letting it silently drift.
         """
+        valid_dists = ("gaussian", "uniform", "shift")
+        if self.noise_dist not in valid_dists:
+            raise ValueError(
+                f"RobustConfig: noise_dist must be one of {valid_dists}, "
+                f"got {self.noise_dist!r}"
+            )
+        if self.eval_noise_scale < 0.0:
+            raise ValueError(
+                f"RobustConfig: eval_noise_scale must be >= 0, "
+                f"got {self.eval_noise_scale}"
+            )
+        for ch in ("action", "obs", "reward"):
+            std = getattr(self, f"{ch}_noise_std")
+            if std < 0.0:
+                raise ValueError(
+                    f"RobustConfig: {ch}_noise_std must be >= 0 (standard "
+                    f"deviation), got {std}"
+                )
+
         for ch in ("action", "obs", "reward"):
             lo = getattr(self, f"{ch}_noise_uniform_low")
             hi = getattr(self, f"{ch}_noise_uniform_high")

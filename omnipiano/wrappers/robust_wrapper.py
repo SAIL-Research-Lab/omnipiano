@@ -128,13 +128,19 @@ class RobustWrapper(gym.Wrapper):
         # are all frame_stack=1 (paper-same), so fail fast instead of
         # silently overriding the wrong slice.
         if find_dm_env_wrapper(dm_env, FrameStackingWrapper) is not None:
-            if self.config.action_noise_std > 0:
+            # Any channel that needs an obs-slot override (action -> obs["action"],
+            # reward -> obs["reward"]) is unsupported under stacking, regardless
+            # of distribution. Gate on is_channel_active so uniform/shift action
+            # and reward noise are caught too (not just gaussian action).
+            if (self.config.is_channel_active("action")
+                    or self.config.is_channel_active("reward")):
                 raise NotImplementedError(
-                    "RobustWrapper's obs['action'] override (Method 6) does "
-                    "not support frame_stack > 1. All OmniPiano / "
-                    "RoboPianist protocols use frame_stack=1; see "
-                    "omnipiano/docs/robust_task_design.md §4.7 before "
-                    "enabling stacking on a robust task."
+                    "RobustWrapper's obs['action'] / obs['reward'] override "
+                    "(Method 6) does not support frame_stack > 1: the flat obs "
+                    "interleaves frames, so only the newest frame's slot could "
+                    "be fixed. All OmniPiano / RoboPianist protocols use "
+                    "frame_stack=1; see omnipiano/docs/robust_task_design.md "
+                    "§4.7 before enabling stacking on an action/reward robust task."
                 )
             return None, None, None, False
 

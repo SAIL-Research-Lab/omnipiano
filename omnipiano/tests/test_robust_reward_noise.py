@@ -15,7 +15,7 @@ the ep_return_true basis (§0.6 / decision 11).
 import numpy as np
 import pytest
 
-from omnipiano.configs import RobustConfig
+from omnipiano.configs import BenchmarkEnvConfig, RobustConfig
 from omnipiano.envs import registration
 from omnipiano.utils.info_keys import InfoKeys
 from omnipiano.wrappers.robust_wrapper import RobustWrapper
@@ -87,6 +87,16 @@ def test_clean_env_no_reward_noise():
         assert reward == pytest.approx(_clean_reward(info), abs=1e-4)  # not noised
     finally:
         env.close()
+
+
+def test_frame_stack_gt1_with_reward_noise_raises():
+    # The Method-6 reward-slot override can't work under frame stacking; the
+    # guard must fire for reward noise too (not just gaussian action noise).
+    _reg("OmniPianoTest-S4-RewardFrameStack-v0",
+         env_config=BenchmarkEnvConfig(frame_stack=4),
+         robust_config=RobustConfig(noise_dist="gaussian", reward_noise_std=0.5))
+    with pytest.raises(NotImplementedError, match="frame_stack"):
+        registration.make("OmniPianoTest-S4-RewardFrameStack-v0")
 
 
 def test_action_only_task_no_reward_noise():
