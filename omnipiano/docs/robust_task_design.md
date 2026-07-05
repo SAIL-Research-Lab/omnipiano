@@ -627,8 +627,8 @@ wrapper 数据流(已代码核对):
   **落地结论(reward 通道,决定 2026-07-04:保留任务 + eval 禁噪)**:eval 时对 reward 加噪是**可证明的退化操作**(固定策略不消费 reward → 轨迹/F1 与 clean 逐字节相同,只污染 `ep_return` 读数),因此 **v1 在 `make(mode="eval")` 里无条件把 reward 噪声三/四字段置零**(代码强制的不变量,见 §0.2 guard),而不是"请记得设 scale=0"的约定 —— 后者有静默失效风险(有人对 reward 任务误跑 sweep → 一堆被污染的假曲线)。
   **评估协议(canonical)**:**reward-trained policy 的 eval 一律在 `OmniPiano-ClairDeLune-Clean-v0` 上跑**。单通道设计下 `R-*` 任务与 `Clean-v0` 仅差 reward 噪声配置,噪声置零后二者 byte-equivalent —— 故"在 force-zeroed 的 R 任务 env 上 eval"与"在 Clean-v0 上 eval"数值完全相同,以 **Clean-v0 为 canonical eval env** 表述最无歧义。**双重保障**:(i) 若有人仍对 reward 任务构造 eval env 并请求非零 eval 噪声(注册带噪 eval 或 sweep override),`make()` 发 `warn` 指路 Clean-v0;(ii) force-zero 兜底,即便 warning 被忽略,eval 也保证干净(不是仅提示,是真禁用)。
   **保证的锚点是 `make(mode="eval")` 这个 env 构造入口,不是任何 logger**。**经此入口构造 eval env** 的驱动器,故全部继承 force-zero:
-  - SB3 **`EvalCallback`**(周期性 deterministic eval,`run_sb3_template.py:227/231`)—— 其 `mean_reward` 来自 **Monitor**,写进 `evaluations.npz` / tensorboard / best_model 选择;
-  - SB3 **`_final_eval`**(手写 deterministic rollout,`run_sb3_template.py:116-134`,`ep_return` 手动累加);
+  - SB3 **`EvalCallback`**(周期性 deterministic eval,`run_sb3_baseline.py:435`)—— 其 `mean_reward` 来自 **Monitor**,写进 `evaluations.npz` / tensorboard / best_model 选择;
+  - SB3 **`_final_eval`**(手写 deterministic rollout,`run_sb3_baseline.py:313`,`ep_return` 手动累加);
   - **`SafeRecordEpisodeStatistics`**(旁挂 CSV side-effect);
   - (未来) **`tools/robust_eval_sweep.py`**(§5.2,`make(mode="eval", _eval_noise_scale_override=...)`)。
 
@@ -1716,7 +1716,7 @@ Phase 1 获批后：
 | **replay CSV** `examples/checkpoint_replay_eval.py` | OmniSafe | ✓ | ✓ | ✓（自写 rollout 读 terminal info） | ✓ | ✓（schema-lock；safety→nominal） |
 
 **两处新发现 / 更正**：
-1. **SB3 training rollout 是 SB3-native 的 `progress.csv`（`ep_rew_mean` / `ep_len`），无 F1/cost/分解列。** 曾有一个自定义 `TrainIterationSummaryCallback` → `train_iteration_summary.csv` 记这些 mean，但它**非 SB3-native、已 comment off 禁用**（`run_sb3_template.py`；SB3 自带的 Monitor/logger 计算逻辑才是经过验证的，计划由 native `info_keywords` logger 替换——见 memory 的"native framework loggers refactor"）。→ SB3 训练期的 **F1/cost 改由 periodic eval（EvalCallback → SafeRecord CSV）提供**，与 OmniSafe 训练侧（也无 F1）对称。
+1. **SB3 training rollout 是 SB3-native 的 `progress.csv`（`ep_rew_mean` / `ep_len`），无 F1/cost/分解列。** canonical SB3 PPO 模板是 **`examples/run_sb3_baseline.py`**——它**不用任何自定义 training-CSV callback**、只靠 SB3-native logger（经过验证）。（旧模板 `run_sb3_template.py` 曾用自定义 `TrainIterationSummaryCallback` → `train_iteration_summary.csv`（非 SB3-native），现已**整体废弃/全注释**，SB3 PPO 实验统一走 `run_sb3_baseline.py`。）→ SB3 训练期的 **F1/cost 由 periodic eval（EvalCallback → SafeRecord CSV）提供**，与 OmniSafe 训练侧（也无 F1）对称。
 2. **OmniSafe training 无 F1/precision/recall**：`Evaluator.evaluate()` 只返回 (rewards, costs)、不 surface terminal info；F1 只在 `_final_eval` / `checkpoint_replay`（自写 rollout 读 terminal info）里才有。
 3. 只有**两个 eval CSV**（SafeRecord + replay）有 S6 的 `ep_return_true` / `eval_noise_scale` / `ep_noise_*`。`SafeRecordEpisodeStatistics` **就是** deterministic eval CSV 的 writer（表中同一行）。
 
