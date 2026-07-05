@@ -1810,28 +1810,25 @@ env = omnipiano.make(env_id, mode="eval", log_dir=my_dir)   # SafeRecord 自动�
 
 ---
 
-## 16. Phase 1 之后的路线图（Phase 1.5 / Phase 2 / v2+）
+## 16. Phase 1 之后的路线图（Phase 2 / v2+）
 
 > **本节是给 reviewer 审阅的正向路线图**（"接下来打算做什么、什么时候做、成本多大"）。它与 **§11** 互补：§11 是**理由表**（"为什么某项不在 v1"），本节是**计划表**（把那些延期项 + 散落在正文里的扩展 hook 归拢成阶段化的 backlog）。凡涉及"为什么延期"的论证一律**引用 §11**，此处不复述。
 >
 > **状态图例**：🟢 基建就绪（只需注册/跑实验，零/极少代码）｜🟡 需少量代码｜🔴 需大量代码/算法侧改动｜⚪️ 明确不计划（除非 reviewer 硬要求）。
+>
+> **❄️ 已从 backlog 移除（用户 2026-07-04，优先级极低，暂不做，有余力可能再做）**：**① 对抗扰动、② Episode 级 shift 频率（仅对 shift 有意义）、③ Per-dim 噪声 std / per-channel dist**。三者**不再列入下方 backlog**；其"为什么 / 何时重议"仍保留在 §11 对应行，需要时从那里捞回。
 
 ### 16.0 Master backlog（一张表看全）
 
 | # | 项目 | 阶段 | 状态 | 触发条件 | 主要工作 | 交叉引用 |
 |---|---|---|---|---|---|---|
 | A | 完成 Phase 1 实验矩阵（全档位 sweep + 曲线 + 填数） | **Phase 1 收尾** | 🟢 | 现在（首批 9 run 已在跑） | 补齐 level 档位训练 + `robust_eval_sweep.py` + `plot_robustness_curves.py` + 填 §10 数字 | §5.3 / §10 |
-| B | Per-dim / per-key 噪声 std（dict-typed 字段替换 scalar） | **Phase 1.5** | 🔴 | reviewer 明确要求异质 std | `RobustConfig` scalar→dict 字段、per-key obs filter、采样 dispatch | §11 行"Per-dim 噪声 std" + "Per-key obs σ 校准" |
-| C | Multi-channel / combined-channel 任务（如同时扰 A+O） | **Phase 2** | 🟢 | 想要"多通道同时"消融 | **仅注册**（设 2 个非零 std；RNG 已保证 deterministic） | §5.1.0(3) / §12 决议 8 |
-| D | 非对称 uniform 任务注册（`Asym_XX_YY`） | **Phase 2** | 🟢 | 想研究单侧漂移（传感器零点/执行器单侧故障） | **仅注册**（infra 已支持 low≠−high） | §5.1.5 |
-| E | Episode-level shift 频率（`shift_frequency` 字段） | **Phase 2** | 🟡 | 想把 shift 从确定性 calibration error 变成随机 domain 偏移 | `RobustConfig` 加 `shift_frequency`(constant/episode/…)、`reset()` 采样；**不替换** v1 constant 语义 | §11 行"Episode 级频率" / §12 决议 3/6 / §0.4 |
-| F | N-hand 单 agent robust 变体（3/4/5-hand） | **Phase 2** | 🟢 | v1 paper 之后想加 morphology 正交轴 | **仅注册 + 跑实验**（wrapper morphology-agnostic，代码零成本；实验成本 ~5×） | §11 行"N-hand SA robust" |
-| G | 跨库统一 eval 语义：给 OmniSafe replay 接线 | **Phase 2** | 🟡 | 真用 OmniSafe 训 robust 任务时 | 让 `checkpoint_replay_eval.py` 经 `make(mode="eval")` 建 env，或改用 `robust_eval_sweep.py` | §11 末行 / §15.2 / §0.2 |
-| H | MA Territorial robust（`MARobustWrapper`） | **Phase 2** | 🔴 | 配合 MA 专项 paper | 新 wrapper 处理 `Dict[agent_id, action]` + per-agent std | §11 行"MA Territorial robust" |
-| I | 对抗扰动（LLM / gradient FGSM / RARL / ATLA / SA-PPO） | **v2+** | 🔴 | v2 paper 后 reviewer 要求 | 算法侧改造（改 PPO/SAC），横跨 SB3+OmniSafe；LLM 版 ~700h/run | §11 行"对抗扰动" / §10 claim |
-| J | Per-key obs σ 校准 | **v2+** | ⚪️ | reviewer 要 per-key 精细化 | 每 key 估 range/统计校准（RG 也不做，破坏可比性） | §11 行"Per-key obs σ 校准" |
-| K | Obs 归一化 wrapper（VecNormalize 类） | **明确不计划** | ⚪️ | 除非重构整个 baseline 生态 | 破坏与 RG raw-obs 的 baseline 可比性 | §11 行"Obs 归一化 wrapper" |
-| L | Dynamics randomization（mass/friction/spring…） | **out of scope（非延期）** | ⚪️ | reviewer 硬要一个 dynamics 轴 → 仅 `key-weight` 候选，需单独评估 F1 语义影响 | 不预先建基建 | §0 / §11 行"Dynamics randomization" |
+| B | Multi-channel / combined-channel 任务（如同时扰 A+O） | **Phase 2** | 🟢 | 想要"多通道同时"消融 | **仅注册**（设 2 个非零 std；RNG 已保证 deterministic） | §5.1.0(3) / §12 决议 8 |
+| C | 非对称 uniform 任务注册（`Asym_XX_YY`） | **Phase 2** | 🟢 | 想研究单侧漂移（传感器零点/执行器单侧故障） | **仅注册**（infra 已支持 low≠−high） | §5.1.5 |
+| D | N-hand 单 agent robust 变体（3/4/5-hand） | **Phase 2** | 🟢 | v1 paper 之后想加 morphology 正交轴 | **仅注册 + 跑实验**（wrapper morphology-agnostic，代码零成本；实验成本 ~5×） | §11 行"N-hand SA robust" |
+| E | 跨库统一 eval 语义：给 OmniSafe replay 接线 | **Phase 2** | 🟡 | 真用 OmniSafe 训 robust 任务时 | 让 `checkpoint_replay_eval.py` 经 `make(mode="eval")` 建 env，或改用 `robust_eval_sweep.py` | §11 末行 / §15.2 / §0.2 |
+| F | MA Territorial robust（`MARobustWrapper`） | **Phase 2** | 🔴 | 配合 MA 专项 paper | 新 wrapper 处理 `Dict[agent_id, action]` + per-agent std | §11 行"MA Territorial robust" |
+| G | Per-key obs σ 校准 | **v2+** | ⚪️ | reviewer 要 per-key 精细化 | 每 key 估 range/统计校准（RG 也不做，破坏可比性） | §11 行"Per-key obs σ 校准" |
 
 ### 16.1 Phase 1 收尾（item A）—— 当前正在做
 
@@ -1843,21 +1840,19 @@ env = omnipiano.make(env_id, mode="eval", log_dir=my_dir)   # SafeRecord 自动�
 - **填 §10 数字**：净 vs 扰 F1 跌幅、曲线斜率、shift 是否与 gaussian 质性不同。
 - ⚠️ **baseline 算法已定纯 PPO**（用户拍板 2026-07-04，不跑 PPOLag——robust 任务无 cost，PPOLag 退化为 PPO）。§5.3 已同步。
 
-### 16.2 Phase 1.5（item B）—— reviewer 驱动的精细化
-
-只有一项且**仅当 reviewer 明确要求**：**per-dim / per-key 异质 std**。当前 scalar-std 已是 per-dim 独立采样（只是每维同 std）；真正的异质 std 需把 `RobustConfig` 的 scalar 字段换成 dict-typed（`{dim: std}` 或 `{obs_key: std}`）并改采样 dispatch + per-key obs filter。理由与边界见 §11。**注**：Option C.3 的 uniform low/high 已提供"每 channel 非对称"的局部精细化（item D 即用它），不必等 Phase 1.5。
-
-### 16.3 Phase 2（items C–H）—— 主要扩展
+### 16.2 Phase 2（items B–F）—— 主要扩展
 
 按"代码成本从低到高"排：
 
-1. **🟢 零代码、仅注册**：Multi-channel（C）、非对称 uniform（D）、N-hand SA（F）——基建全就绪，Phase 2 主要是**注册决策 + 实验算力**，不是写代码。RNG 已对 multi-channel 保证 deterministic（§12 决议 8）。
-2. **🟡 少量代码**：Episode-level shift（E，加 `shift_frequency` 字段 + reset 采样，单调扩展不破 v1）、OmniSafe eval 接线（G，让 replay 走 `make(mode="eval")`）。
-3. **🔴 大量代码**：MA robust（H，新 `MARobustWrapper` 处理 per-agent dict action）——配合 MA 专项 paper 才值得。
+1. **🟢 零代码、仅注册**：Multi-channel（B）、非对称 uniform（C）、N-hand SA（D）——基建全就绪，Phase 2 主要是**注册决策 + 实验算力**，不是写代码。RNG 已对 multi-channel 保证 deterministic（§12 决议 8）。
+2. **🟡 少量代码**：OmniSafe eval 接线（E，让 replay 走 `make(mode="eval")`）。
+3. **🔴 大量代码**：MA robust（F，新 `MARobustWrapper` 处理 per-agent dict action）——配合 MA 专项 paper 才值得。
 
-### 16.4 v2+ / 不计划（items I–L）
+### 16.3 v2+（item G）
 
-- **对抗扰动（I）**：单独 paper 级贡献（改算法、跨库、LLM 版极贵）。v2 之后按需。
-- **Per-key σ 校准（J）/ Obs 归一化（K）**：破坏与 RG 的直接可比性，除非 reviewer 硬要或生态重构，否则不做。
-- **Dynamics randomization（L）**：**out of scope（非延期）**——纯仿真无 sim-to-real 动机、且纠缠 F1 语义（§0 / §11）。真被逼要一个 dynamics 轴，只有 `key-weight` 是 piano-native 候选，且需单独评估其对 F1 ground-truth 的影响，**不预先承诺建基建**。
+- **Per-key obs σ 校准（G）**：破坏与 RG 的直接可比性（RG 全仓无 per-key sigma），除非 reviewer 硬要 per-key 精细化，否则不做。理由见 §11。
+
+> **注**：本表 A–G 只列**仍在计划内**的工作。以下几项已明确排除、不在 backlog：
+> - **❄️ 冻结（有余力可能再做，用户 2026-07-04）**：对抗扰动、Episode 级 shift 频率、Per-dim std / per-channel dist —— 见节首说明，理由/重议条件在 §11 对应行。
+> - **✗ 明确不做（直接删除，用户 2026-07-04）**：**Dynamics randomization**（out of scope，纯仿真无 sim-to-real 动机、纠缠 F1 语义；§0 / §11）、**Obs 归一化 wrapper（VecNormalize 类）**（破坏与 RG raw-obs baseline 的可比性；§11）。二者的完整理由仍留在 §11，但**不再作为待办**。
 
