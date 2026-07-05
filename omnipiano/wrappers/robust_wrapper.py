@@ -198,19 +198,61 @@ class RobustWrapper(gym.Wrapper):
         )
 
     # ------------------------------------------------------------------
+    # Noise distribution dispatch (Option C.3 — per-distribution fields)
+    # ------------------------------------------------------------------
+    def _channel_active(self, channel: str) -> bool:
+        """True if ``channel`` has nonzero noise magnitude for the currently
+        active ``noise_dist`` (gaussian→std, uniform→low/high, shift→shift)."""
+        dist = self.config.noise_dist
+        if dist == "gaussian":
+            return getattr(self.config, f"{channel}_noise_std") != 0.0
+        if dist == "uniform":
+            lo = getattr(self.config, f"{channel}_noise_uniform_low")
+            hi = getattr(self.config, f"{channel}_noise_uniform_high")
+            return (lo != 0.0) or (hi != 0.0)
+        if dist == "shift":
+            return getattr(self.config, f"{channel}_noise_shift") != 0.0
+        raise ValueError(f"Unknown noise_dist: {self.config.noise_dist!r}")
+
+    def _sample_noise(self, rng, channel: str, shape):
+        """Sample noise for ``channel`` from the active distribution.
+
+        - gaussian: read ``{channel}_noise_std`` as σ → N(0, σ²) per-dim
+          (step-level). Kept **bit-identical** to the pre-Phase-0 direct
+          ``rng.normal(0, std, size=shape)`` call (equivalence gate §0.7).
+        - uniform:  read ``{channel}_noise_uniform_{low,high}`` → U[low, high]
+          per-dim (step-level); bounds may be asymmetric.
+        - shift:    read ``{channel}_noise_shift`` → constant offset broadcast
+          to all dims; **NO RNG draw** (deterministic, program-run-level), so
+          the shift branch never perturbs the gaussian/uniform stream ordering.
+        """
+        dist = self.config.noise_dist
+        if dist == "gaussian":
+            std = getattr(self.config, f"{channel}_noise_std")
+            return rng.normal(0.0, std, size=shape)
+        if dist == "uniform":
+            lo = getattr(self.config, f"{channel}_noise_uniform_low")
+            hi = getattr(self.config, f"{channel}_noise_uniform_high")
+            return rng.uniform(lo, hi, size=shape)
+        if dist == "shift":
+            shift = getattr(self.config, f"{channel}_noise_shift")
+            return np.full(shape, shift, dtype=float)
+        raise ValueError(f"Unknown noise_dist: {self.config.noise_dist!r}")
+
+    # ------------------------------------------------------------------
     # Step
     # ------------------------------------------------------------------
     def step(self, action):
-        # 1. Action noise — operates on flat action vector,
-        #    completely independent of obs format.
+        # 1. Action noise — operates on flat action vector, completely
+        #    independent of obs format. Distribution per config.noise_dist.
         action_noise_l2 = 0.0
         a_cmd = None
-        if self.config.action_noise_std > 0:
+        if self._channel_active("action"):
             # Save the clean commanded action BEFORE noise (Method 6).
             # .copy() guards against callers reusing the same buffer.
             a_cmd = np.asarray(action).copy()
-            noise = self.np_random.normal(
-                0, self.config.action_noise_std, size=action.shape
+            noise = self._sample_noise(
+                self.np_random, channel="action", shape=action.shape
             )
             action_noise_l2 = float(np.linalg.norm(noise))
             action = np.clip(
@@ -223,7 +265,7 @@ class RobustWrapper(gym.Wrapper):
         #    DmEnvObsNoiseWrapper.step (if present). Just read its L2
         #    snapshot for logging.
         obs_noise_l2 = 0.0
-        if self.config.obs_noise_std > 0:
+        if self._channel_active("obs"):
             obs_noise_l2 = self._read_obs_noise_l2()
 
         # 3. Method 6 (Option B): expose the clean commanded action to the
