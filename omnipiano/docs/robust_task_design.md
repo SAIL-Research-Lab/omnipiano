@@ -375,7 +375,7 @@ def make(env_name, mode="train", **kwargs):
 
 `replace()` 来自 `dataclasses`（廉价不可变拷贝）。原始 `robust_config`（来自 registry）保持未修改，以便 reproducibility tracing。
 
-**已决议（§12 决议 7，2026-06-27）**：**不**向一般用户暴露公开的 `eval_noise_scale_override`（遵循与 `safety_config` 一样的"只在 registry 配置"哲学）；但**为 sweep tool 保留一个私有 kwarg `_eval_noise_scale_override=`**（带 `_` 前缀、仅 `tools/robust_eval_sweep.py` 使用），让它在**单个注册 env 上运行时覆盖 scale**，从而避免为每个 `(env × scale)` 四元组注册上百个 env。详见 §12 决议 7 与 §5.2。
+**已决议（§12 决议 7，2026-06-27）**：**不**向一般用户暴露公开的 `eval_noise_scale_override`（遵循与 `safety_config` 一样的"只在 registry 配置"哲学）；但**为 sweep tool 保留一个私有 kwarg `_eval_noise_scale_override=`**（带 `_` 前缀、仅 `examples/robust_eval_sweep.py` 使用），让它在**单个注册 env 上运行时覆盖 scale**，从而避免为每个 `(env × scale)` 四元组注册上百个 env。详见 §12 决议 7 与 §5.2。
 
 **0.3 — RobustWrapper 中加 reward noise 注入**（`omnipiano/wrappers/robust_wrapper.py`）
 
@@ -630,7 +630,7 @@ wrapper 数据流(已代码核对):
   - SB3 **`EvalCallback`**(周期性 deterministic eval,`run_sb3_baseline.py:435`)—— 其 `mean_reward` 来自 **Monitor**,写进 `evaluations.npz` / tensorboard / best_model 选择;
   - SB3 **`_final_eval`**(手写 deterministic rollout,`run_sb3_baseline.py:313`,`ep_return` 手动累加);
   - **`SafeRecordEpisodeStatistics`**(旁挂 CSV side-effect);
-  - (未来) **`tools/robust_eval_sweep.py`**(§5.2,`make(mode="eval", _eval_noise_scale_override=...)`)。
+  - (未来) **`examples/robust_eval_sweep.py`**(§5.2,`make(mode="eval", _eval_noise_scale_override=...)`)。
 
   一旦 reward 噪声在 make() 里被置零,RobustWrapper 原样透传 reward → **无论上面哪个驱动器、在 RobustWrapper 内层还是外层累加,拿到的都是 true return**。因此 `ep_return`/`mean_reward` 都是真值,**不需要 `ep_true_return` 列、也不需要 logger 做任何 reward 特判**。
 
@@ -643,7 +643,7 @@ wrapper 数据流(已代码核对):
 
 ### 0.6.4 CVaR / worst-case / drop% —— 分析层,不是 logging 层
 
-这些是 **post-hoc 从 per-episode F1/return 算的**(在 `tools/plot_robustness_curves.py`,Phase 1)。只要每 episode 记了 F1 和 return(现有列已有),分析工具就能算出 CVaR、worst-case-over-seeds、clean-vs-noised drop%。**不需要任何额外 per-step 记录**。RG 连这些都没算(只画 mean-return 曲线的 gap),我们在分析层补上即可。
+这些是 **post-hoc 从 per-episode F1/return 算的**(在 `examples/plot_robustness_curves.py`,Phase 1)。只要每 episode 记了 F1 和 return(现有列已有),分析工具就能算出 CVaR、worst-case-over-seeds、clean-vs-noised drop%。**不需要任何额外 per-step 记录**。RG 连这些都没算(只画 mean-return 曲线的 gap),我们在分析层补上即可。
 
 ### 0.6.5 数据源审计 —— 全 CSV 列 × 噪声通道正确性(2026-07-04 代码复核)
 
@@ -1319,7 +1319,7 @@ register(
 
 (c) **Shift 分布 —— v1 包含**（§12 决议 6）：语义为 program-run-level 恒定 `+shift_value`（与决议 2 一致），成本极低且给 paper 3-way 分布 sweep 与 RG 直接对照。v1 = **27 robust + 1 clean = 28 tasks**。
 
-### 5.2 Eval harness —— `tools/robust_eval_sweep.py`
+### 5.2 Eval harness —— `examples/robust_eval_sweep.py`
 
 现有 `examples/checkpoint_replay_eval.py` 的姊妹。给定：
 
@@ -1369,11 +1369,19 @@ else:
 
 ### 5.3 Phase 1 交付物
 
-- 27（或 28）个注册 robust task id
-- `tools/robust_eval_sweep.py`
-- 每 channel 1 个 baseline 实验 = PPO + PPOLag 在 `OmniPiano-ClairDeLune-{A,O,R}-Gauss-P05-v0`，seed=0，5M 完整训练。共 6 个 run。
-- 每个 algo × task 的 1 次 robustness sweep = 对每个 ckpt 在 scale ∈ {0, 0.5, 1.0, 2.0, 4.0} 上跑 `robust_eval_sweep.py`。
-- 绘图脚本 `tools/plot_robustness_curves.py` 读取 sweep CSV → 每 task 一张图，每 algo 一条曲线。
+**代码交付物（as-built ✅，2026-07-04）**：
+
+- ✅ **28 个注册 robust task id**（`OmniPiano-ClairDeLune-{A,O,R}-{Gauss,Uniform,Shift}-P{XX}-v0` × 27 + `-Clean-v0`）。均 matched-eval 默认（`eval_noise_scale=1.0`，决议 10/11——**注意 §5.1 代码片段里的 `eval_noise_scale=0.0` 是决议前旧值，实现按默认 1.0 走**）。gate: `test_robust_phase1_registration.py`（14 例）。
+- ✅ **`make()` 私有 kwarg `_eval_noise_scale_override=`**（§12 决议 7）——仅 sweep tool 用，train 模式或负值 fail-fast。gate: `test_eval_noise_scale_override.py`（8 例）。
+- ✅ **`examples/robust_eval_sweep.py`**（SB3；三通道对称扫 scale grid，决议 11，无 Clean-v0 分支）。gate: `test_robust_eval_sweep.py`（4 例，dummy policy 端到端）。
+- ✅ **`examples/plot_robustness_curves.py`**（F1 + return(received/true) vs `eval_noise_scale`）。gate: `test_plot_robustness_curves.py`（4 例）。
+
+**实验交付物（compute，待跑，非本次代码范围）**：
+
+- 每 channel 1 个 baseline 实验 = PPO（+ 可选 PPOLag）在 `OmniPiano-ClairDeLune-{A,O,R}-Gauss-P05-v0`，seed=0，完整训练。
+  - ⚠️ **待澄清**：§5.3 原写 "PPO + PPOLag"，但 robust 任务无 cost（§5.2 定性为 "SB3 地盘"），PPOLag（OmniSafe，cost-based）在无 cost 任务上退化为 PPO。跑实验前需用户确认是否仍要 PPOLag 对照（或改纯 PPO / 多 seed）。
+- 每个 algo × task 的 1 次 robustness sweep = 对每个 ckpt 在 scale ∈ {0, 0.5, 1.0, 2.0, 4.0} 上跑 `examples/robust_eval_sweep.py`。
+- 绘图：`examples/plot_robustness_curves.py` 读取 sweep CSV → 每 task 一张图，每 algo 一条曲线。
 
 ---
 
@@ -1406,7 +1414,7 @@ else:
 
 > ⚠️ **已被决议 11（2026-07-04）取代**：reward 与 action/obs **完全对称**——默认 matched eval、横轴用 `eval_noise_scale`（不再是训练档位轴）、不换 Clean-v0；真实 return 用 `ep_return_true`/`ep_return_noised` 两列，F1 仍是干净 headline。详见 §12 决议 11。以下原文作废。
 
-**Reward 通道的 eval / 曲线语义（与 action/obs 不同，决定 2026-07-04）**：reward 噪声是**训练期专属**扰动，eval 时被 `make(mode="eval")` 强制置零(§0.2 guard)，`eval_noise_scale` 对 R 任务无效（若请求非零则 warn 指路 Clean-v0）。**canonical 评估协议:每个 reward-trained checkpoint(来自 P10/P30/P50 训练 env)一律在 `OmniPiano-ClairDeLune-Clean-v0` 上 eval**（force-zeroed R-env 与 Clean-v0 byte-equivalent,以 Clean-v0 为准最无歧义）。robustness 曲线横轴是**训练噪声档位**（P10→P30→P50），纵轴是 **F1 on Clean-v0**，对照 `Clean-v0`(clean-trained) 基线 —— 衡量"训练在多脏的 reward 信号下，学出来的策略退化多少"（训练期鲁棒性）。这与 action/obs 的"部署期鲁棒性曲线"（x=`eval_noise_scale`，同一策略在不同 eval 噪声下）互补。`**tools/robust_eval_sweep.py`（§5.2）对 R 任务不做 scale grid，直接在 Clean-v0 上评估各训练档位的 checkpoint**。
+**Reward 通道的 eval / 曲线语义（与 action/obs 不同，决定 2026-07-04）**：reward 噪声是**训练期专属**扰动，eval 时被 `make(mode="eval")` 强制置零(§0.2 guard)，`eval_noise_scale` 对 R 任务无效（若请求非零则 warn 指路 Clean-v0）。**canonical 评估协议:每个 reward-trained checkpoint(来自 P10/P30/P50 训练 env)一律在 `OmniPiano-ClairDeLune-Clean-v0` 上 eval**（force-zeroed R-env 与 Clean-v0 byte-equivalent,以 Clean-v0 为准最无歧义）。robustness 曲线横轴是**训练噪声档位**（P10→P30→P50），纵轴是 **F1 on Clean-v0**，对照 `Clean-v0`(clean-trained) 基线 —— 衡量"训练在多脏的 reward 信号下，学出来的策略退化多少"（训练期鲁棒性）。这与 action/obs 的"部署期鲁棒性曲线"（x=`eval_noise_scale`，同一策略在不同 eval 噪声下）互补。`**examples/robust_eval_sweep.py`（§5.2）对 R 任务不做 scale grid，直接在 Clean-v0 上评估各训练档位的 checkpoint**。
 
 ### Clean baseline
 
@@ -1478,9 +1486,10 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 | `examples/checkpoint_replay_eval.py`               | 0     | 修改（`_CSV_HEADER` + 写入同步加同样 4 列，schema 与 logger_wrapper 锁定，见 §0.6.1）             |
 | `omnipiano/utils/info_keys.py`                  | 0     | 修改（加 ROBUST_NOISE_REWARD）                                                       |
 | `omnipiano/tests/test_robust_v1_equivalence.py` | 0     | 新建（bit-exact 回归测试）                                                              |
-| `omnipiano/envs/__init__.py`                    | 1     | 修改（追加约 28 个 robust task 注册）                                                     |
-| `tools/robust_eval_sweep.py`                    | 1     | 新建（sweep harness，约 150 LOC）                                                     |
-| `tools/plot_robustness_curves.py`               | 1     | 新建（曲线绘图，约 100 LOC）                                                              |
+| `omnipiano/envs/__init__.py`                    | 1     | ✅ 修改（追加 27 robust + 1 Clean = 28 个 ClairDeLune task，`_register_clairdelune_robust_v1()`） |
+| `omnipiano/envs/registration.py`                | 1     | ✅ 修改（`make()` 加私有 `_eval_noise_scale_override=`，§12 决议 7；docstring 去掉过时 reward force-zero 措辞） |
+| `examples/robust_eval_sweep.py`                    | 1     | ✅ 新建（SB3 sweep harness；复用 SafeRecord 写 schema-locked CSV 再合并。原计划 `tools/`，随姊妹 `checkpoint_replay_eval.py` 放 `examples/` 以纳入 git） |
+| `examples/plot_robustness_curves.py`               | 1     | ✅ 新建（robustness 曲线；`load_series`/`aggregate` 纯函数已单测。放 `examples/` 同上） |
 | `omnipiano/docs/robust_task_design.md`          | （本文档） | 已存在                                                                             |
 
 
@@ -1578,7 +1587,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 6. **§5.1(c)（包含 Shift 分布）**：v1 包含 "Shift" 分布（27 个 task 而不是 18 个）—— OK 还是砍掉？
   ✅ **已决定（2026-06-27）**：**保留** Shift 分布，v1 = 27 task（+ 1 Clean = 28）。语义采用 **program-run-level 恒定 `+shift_value`**（与 Q2 决议一致），其中 `shift_value` 是 `RobustConfig.*_noise_shift` 字段（Option C.3 独立字段，**与 `*_noise_std` 无关**）。加入的成本极低（无 RNG，无 reset 逻辑），且给 paper 提供 3-way 分布 sweep 与 Robust-Gymnasium 的直接对照（RG `noise_shift` 直接对齐），值得纳入。**注**：v1 registered shift tasks 用**正值**（`shift = +level_value`），符合 RG paper 惯例；非对称/负值 shift 由 infrastructure 支持但 v1 不默认注册。
 7. **§5.2（eval scale 覆盖路径）**：允许 sweep tool 通过 `_eval_noise_scale_override=` 私有 kwarg 在 make() 时覆盖，而不是为每个 `(env × scale)` 对注册一个 env —— OK 吗？
-  ✅ **已决定（2026-06-27）**：**采用 `_eval_noise_scale_override=` 私有 kwarg** 方案（B1）。仅 `tools/robust_eval_sweep.py` 使用，不暴露给一般用户。理由：
+  ✅ **已决定（2026-06-27）**：**采用 `_eval_noise_scale_override=` 私有 kwarg** 方案（B1）。仅 `examples/robust_eval_sweep.py` 使用，不暴露给一般用户。理由：
   - **避免 env 数爆炸**：不这样做则要注册 28 × 5 scale = 140 env
   - **eval scale 是"评估行为"**：概念上不属于"env 属性"（同一策略在不同 scale 下应有不同表现）
   - `**_` 前缀清晰标示"内部 API"**：普通用户不会误用
@@ -1683,24 +1692,40 @@ Phase 1 获批后：
   - **污染-as-measurement**：记录的数字 **≠ 该轨迹的真实值**（尺子被弄脏）。
   - **值随扰动轨迹变化（诚实）**：噪声改变策略行为 → 轨迹真变 → 指标如实反映**被扰动轨迹**。这**不是污染**。
 
-### 14.1 指标来源（决定是否被污染；re-verified，与文档既有结论一致）
+### 14.1 指标来源 + SB3 / OmniSafe 列名映射（source 决定是否被污染；框架无关）
+
+**关键点**：一个指标"是否被污染"只由它的**来源**决定，**与哪个框架、叫什么列名无关**。SB3 与 OmniSafe 的同名指标（`ep_return`↔`Metrics/EpRet`、`ep_cost`↔`Metrics/EpCost`）**来源完全相同** → 污染结论一致。**框架差异只体现在"哪个 logger 里有这列"（§14.3，已分框架列），不体现在来源/污染上。**
+
+**框架列名映射**（`progress.csv` = 各框架 native training rollout CSV；SafeRecord/replay = eval CSV）：
+
+| 通用名 | SB3 列名 | OmniSafe 列名 | 来源（代码核实 2026-07-04） |
+|---|---|---|---|
+| **ep_return** | `ep_rew_mean`（`progress.csv`, native） | `Metrics/EpRet`（`progress.csv`, native） | 均 = Σ 流经 wrapper 的**实收 reward 标量**。OmniSafe CMDP adapter **原样透传** reward（`run_omnisafe_template.py:194`），SB3 Monitor 累加 env reward → 二者同源 |
+| **ep_cost** | `ep_cost`（仅 SafeRecord **eval** CSV；SB3 native `progress.csv` **无** cost 列） | `Metrics/EpCost`（`progress.csv`, native） | 均 = Σ `info[STEP_SAFETY_COST_TOTAL]`（`SafetyWrapper`）。OmniSafe adapter 从 info 取 cost（`run_omnisafe_template.py:191`）→ 二者同源 |
+| **F1 / prec / recall** | `ep_f1` …（仅 SafeRecord **eval** CSV） | 仅 `replay` / `_final_eval`（training `progress.csv` **无**，`Evaluator` 不 surface terminal info） | `MidiEvaluationWrapper` 读 physics |
+
+> OmniSafe 目前主要跑 safety 任务（**不开 robust 噪声**）→ 实践中 `Metrics/EpRet`/`Metrics/EpCost` 本就是 clean。下表是**假设该框架读到带噪轨迹时**的通用结论（同源 → 与 SB3 一致），保证任一框架接 robust 时分析都成立。
+
+**来源表**（决定是否被污染；框架无关，通用名）：
 
 | 指标 | 来源 | 读 obs? | 结论 |
 |---|---|---|---|
 | **F1 / precision / recall** | `MidiEvaluationWrapper` 读 physics（`task.piano.activation` + MIDI `task._notes`，`robopianist/wrappers/evaluation.py:70/117`） | ❌ | 永不污染（§0.6.5(a) 已验证，仍正确） |
-| **ep_cost** | `SafetyWrapper` 的 constraint 读 physics 或 a_exec；`constraints.py` 全 `del obs`；reward 噪声不碰 cost；`RobustWrapper` 不改 `info[*_SAFETY_COST_*]` | ❌ | 永不污染（决议 11 CSV 规格已验证，仍正确） |
-| **ep_return** | Σ 流经 wrapper 的 reward 标量；`RobustWrapper` 仅在 reward 通道对它加噪（S4） | — | **仅 reward 噪声污染** |
+| **ep_cost** / `Metrics/EpCost` | `SafetyWrapper` 的 constraint 读 physics 或 a_exec；`constraints.py` 全 `del obs`；reward 噪声不碰 cost；`RobustWrapper` 不改 `info[*_SAFETY_COST_*]`；OmniSafe adapter 仅从 `info` 搬运（`:191`） | ❌ | 永不污染（决议 11 CSV 规格已验证，仍正确） |
+| **ep_return** / `Metrics/EpRet` | Σ 流经 wrapper 的 reward 标量；`RobustWrapper` 仅在 reward 通道对它加噪（S4）；OmniSafe adapter 原样透传（`:194`） | — | **仅 reward 噪声污染** |
 | reward 分解列 | `MetricsWrapper` 读加噪前 `reward_terms`（§0.6.5(c)） | ❌ | 永远 clean；其和 = clean return = `ep_return_true` |
 
-### 14.2 核心表：指标 × 噪声通道 → 是否**污染-as-measurement**
+### 14.2 核心表：指标 × 噪声通道 → 是否**污染-as-measurement**（SB3 与 OmniSafe 同源，合表成立）
 
-| 指标 | action 噪声 | obs 噪声 | reward 噪声 |
+下表对 **SB3 与 OmniSafe 同时成立**（同名指标同源，§14.1 已验证）；列名对照见 §14.1，各栏用"SB3 名 / OmniSafe 名"标注。
+
+| 指标（SB3 / OmniSafe） | action 噪声 | obs 噪声 | reward 噪声 |
 |---|---|---|---|
 | **F1 / precision / recall** | ❌ 不污染 | ❌ 不污染 | ❌ 不污染 |
-| **ep_cost** | ❌ 不污染 | ❌ 不污染 | ❌ 不污染 |
-| **ep_return** | ❌ 不污染（实收 = 被扰动轨迹真 return） | ❌ 不污染 | ✅ **污染**（= 真值 + Σ噪声） |
+| **ep_cost** / `Metrics/EpCost` | ❌ 不污染 | ❌ 不污染 | ❌ 不污染 |
+| **ep_return** / `Metrics/EpRet` | ❌ 不污染（实收 = 被扰动轨迹真 return） | ❌ 不污染 | ✅ **污染**（= 真值 + Σ噪声） |
 
-**唯一被污染-as-measurement 的组合：reward 噪声下的 `ep_return`。** 其余任何组合要么不受影响、要么诚实反映被扰动轨迹。
+**唯一被污染-as-measurement 的组合：reward 噪声下的 `ep_return` / `Metrics/EpRet`。** 其余任何组合要么不受影响、要么诚实反映被扰动轨迹。
 
 **值变化维度（非污染，补充）**：
 - action / obs 噪声改变轨迹 → F1 / cost / ep_return 数值都会变（诚实，是被扰动轨迹的真值）。
@@ -1711,7 +1736,7 @@ Phase 1 获批后：
 | Logger | 框架 | ep_return | ep_cost | F1 / prec / recall | 分解列 | S6 列 |
 |---|---|---|---|---|---|---|
 | **training rollout** `progress.csv`（SB3-native Monitor/logger） | SB3 | ✓ `ep_rew_mean` | ✗ | ✗ | ✗ | ✗ |
-| **training rollout** `progress.csv` | OmniSafe | ✓ EpRet | ✓ EpCost | ❌（`Evaluator` 不 surface terminal info，`run_omnisafe_template.py:74-76`） | ❌ | ✗ |
+| **training rollout** `progress.csv` | OmniSafe | ✓ `Metrics/EpRet` | ✓ `Metrics/EpCost` | ❌（`Evaluator` 不 surface terminal info，`run_omnisafe_template.py:74-76`） | ❌ | ✗ |
 | **deterministic eval** = `SafeRecordEpisodeStatistics` CSV | SB3 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **replay CSV** `examples/checkpoint_replay_eval.py` | OmniSafe | ✓ | ✓ | ✓（自写 rollout 读 terminal info） | ✓ | ✓（schema-lock；safety→nominal） |
 
@@ -1721,6 +1746,8 @@ Phase 1 获批后：
 3. 只有**两个 eval CSV**（SafeRecord + replay）有 S6 的 `ep_return_true` / `eval_noise_scale` / `ep_noise_*`。`SafeRecordEpisodeStatistics` **就是** deterministic eval CSV 的 writer（表中同一行）。
 
 ### 14.4 逐 logger × 逐指标的具体影响
+
+> 本节用通用名叙述；OmniSafe 中 `ep_return` = `Metrics/EpRet`、`ep_cost` = `Metrics/EpCost`（§14.1 映射），结论对两框架同名指标一致。
 
 "是否污染"由**指标来源**决定、**与 logger 无关**。所以在**任一** logger 里：
 
