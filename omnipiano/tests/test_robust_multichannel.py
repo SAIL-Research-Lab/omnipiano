@@ -1,0 +1,137 @@
+"""Multi-channel / combined-channel compatibility gate (Phase 2 readiness audit,
+2026-07-05).
+
+v1 registers only single-channel tasks (§5.1.0), but the core wrapper / config /
+logger logic is already multi-channel-safe. This test locks that in so a future
+combined-channel registration (e.g. A+O) cannot silently regress:
+
+  - A+O: both action AND obs noise inject in the same step; reward untouched.
+  - A+R: both action AND reward inject; BOTH obs slots override independently
+    (obs["action"] = clean physical a_cmd, obs["reward"] = noised reward).
+  - §14 cross-check holds per-step under simultaneous action+reward noise:
+    received reward == clean(decomposition sum) + reward_noise.
+  - RNG determinism: action + reward share the gym stream but are sampled in a
+    FIXED order (action→reward, §12 decision 8), so a combined task is bit-exact
+    reproducible under the same seed.
+  - Per-channel DIFFERENT distribution is NOT expressible (global noise_dist);
+    mixing raises — that path is the frozen per-channel-dist item (§16).
+  - frame_stack>1 with any override channel still fails fast under multi-channel.
+"""
+import numpy as np
+import pytest
+
+from omnipiano.configs import BenchmarkEnvConfig, RobustConfig
+from omnipiano.envs import registration
+from omnipiano.utils.info_keys import InfoKeys
+from omnipiano.wrappers.robust_wrapper import RobustWrapper
+
+_BASE = "RoboPianist-repertoire-150-ClairDeLune-v0"
+
+
+def _reg(env_id, cfg, **kw):
+    if env_id not in registration._registry:
+        registration.register(id=env_id, base_env_name=_BASE, robust_config=cfg, **kw)
+
+
+def _robust(env) -> RobustWrapper:
+    p = env
+    while not isinstance(p, RobustWrapper):
+        p = p.env
+    return p
+
+
+def _clean_decomp(info) -> float:
+    return float(sum(
+        v for k, v in info.items()
+        if isinstance(k, str) and k.startswith("task/") and k.endswith("_reward")
+    ))
+
+
+def _first_step(env_id, seed=0):
+    env = registration.make(env_id, seed=seed)
+    env.reset(seed=seed)
+    obs, reward, term, trunc, info = env.step(env.action_space.sample())
+    return env, obs, float(reward), info
+
+
+# --------------------------------------------------------------------------
+# A+O: two channels inject simultaneously, reward untouched
+# --------------------------------------------------------------------------
+def test_action_plus_obs_both_inject():
+    _reg("OmniPianoTest-MC-AO-v0",
+         RobustConfig(noise_dist="gaussian", action_noise_std=0.10, obs_noise_std=0.10))
+    env, obs, reward, info = _first_step("OmniPianoTest-MC-AO-v0")
+    try:
+        assert info[InfoKeys.ROBUST_NOISE_ACTION_L2] > 0.0
+        assert info[InfoKeys.ROBUST_NOISE_OBS_L2] > 0.0
+        assert info[InfoKeys.ROBUST_NOISE_REWARD] == 0.0   # reward channel inactive
+    finally:
+        env.close()
+
+
+# --------------------------------------------------------------------------
+# A+R: two channels inject; both obs slots override independently
+# --------------------------------------------------------------------------
+def test_action_plus_reward_both_inject_and_override():
+    _reg("OmniPianoTest-MC-AR-v0",
+         RobustConfig(noise_dist="gaussian", action_noise_std=0.10, reward_noise_std=0.50))
+    env, obs, reward, info = _first_step("OmniPianoTest-MC-AR-v0")
+    try:
+        rn = float(info[InfoKeys.ROBUST_NOISE_REWARD])
+        assert info[InfoKeys.ROBUST_NOISE_ACTION_L2] > 0.0
+        assert rn != 0.0
+        # §14 cross-check per step: received == clean decomposition + reward noise
+        assert reward == pytest.approx(_clean_decomp(info) + rn, abs=1e-4)
+        # obs["reward"] slot overridden to the noised received reward
+        rw = _robust(env)
+        assert rw._action_slice is not None and rw._reward_slice is not None
+        slot = float(np.asarray(obs[rw._reward_slice]).ravel()[0])
+        assert slot == pytest.approx(reward, abs=1e-4)
+    finally:
+        env.close()
+
+
+# --------------------------------------------------------------------------
+# RNG determinism under the shared gym stream (fixed action→reward order)
+# --------------------------------------------------------------------------
+def test_multichannel_rng_reproducible():
+    _reg("OmniPianoTest-MC-AR-repro-v0",
+         RobustConfig(noise_dist="gaussian", action_noise_std=0.10, reward_noise_std=0.50))
+
+    def run():
+        env, obs, reward, info = _first_step("OmniPianoTest-MC-AR-repro-v0", seed=0)
+        out = (float(info[InfoKeys.ROBUST_NOISE_ACTION_L2]),
+               float(info[InfoKeys.ROBUST_NOISE_REWARD]))
+        env.close()
+        return out
+
+    assert run() == run()   # bit-identical: same seed + fixed consumption order
+
+
+# --------------------------------------------------------------------------
+# Per-channel DIFFERENT distribution is NOT expressible (global noise_dist)
+# --------------------------------------------------------------------------
+def test_mixed_per_channel_dist_raises():
+    # action gaussian + obs uniform in one config → rejected (frozen per-channel
+    # dist item, §16). Same-dist multi-channel is the supported path.
+    with pytest.raises(ValueError, match="noise_dist='gaussian'"):
+        RobustConfig(noise_dist="gaussian",
+                     action_noise_std=0.10,
+                     obs_noise_uniform_low=-0.10, obs_noise_uniform_high=0.10)
+
+
+def test_same_dist_multichannel_config_valid():
+    # A+O both gaussian, A+R both shift — same dist across channels is fine.
+    RobustConfig(noise_dist="gaussian", action_noise_std=0.10, obs_noise_std=0.10)
+    RobustConfig(noise_dist="shift", action_noise_shift=0.10, reward_noise_shift=0.30)
+
+
+# --------------------------------------------------------------------------
+# frame_stack>1 with a multi-channel override still fails fast
+# --------------------------------------------------------------------------
+def test_multichannel_frame_stack_gt1_raises():
+    _reg("OmniPianoTest-MC-AR-fs-v0",
+         RobustConfig(noise_dist="gaussian", action_noise_std=0.10, reward_noise_std=0.50),
+         env_config=BenchmarkEnvConfig(frame_stack=4))
+    with pytest.raises(NotImplementedError, match="frame_stack"):
+        registration.make("OmniPianoTest-MC-AR-fs-v0")

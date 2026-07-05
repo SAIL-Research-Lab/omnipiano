@@ -11,6 +11,8 @@ Verifies (§5.1 / §6):
     stale 0.0 in the design-doc §5.1 snippet;
   - a representative env constructs + resets (smoke).
 """
+import re
+
 import numpy as np
 import pytest
 
@@ -23,12 +25,16 @@ _ACTION_OBS_LEVELS = {"P05": 0.05, "P10": 0.10, "P15": 0.15}
 _REWARD_LEVELS = {"P10": 0.10, "P30": 0.30, "P50": 0.50}
 
 
+# Canonical v1 matrix ids only: <C>-<Dist>-P<XX>-v0 or Clean-v0. Diagnostic /
+# ablation envs (e.g. the negative-shift twin A-Shift-N15, §10 claim 5) are
+# intentionally OUTSIDE the matrix and must not be counted here.
+_CANONICAL_RE = re.compile(r"^OmniPiano-ClairDeLune-[AOR]-(Gauss|Uniform|Shift)-P\d{2}-v0$")
+
+
 def _robust_ids():
     return sorted(
         i for i in registration._registry
-        if i.startswith(_PREFIX) and registration._registry[i].robust_config
-        is not None and i.endswith("-v0")
-        and any(tok in i for tok in ("-A-", "-O-", "-R-", "-Clean-"))
+        if _CANONICAL_RE.match(i) or i == f"{_PREFIX}Clean-v0"
     )
 
 

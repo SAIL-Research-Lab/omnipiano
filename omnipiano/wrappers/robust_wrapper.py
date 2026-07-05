@@ -57,10 +57,13 @@ from ``dm_env_wrappers._src`` is deliberate: reimplementing the
 formula risks 1-ulp dtype-promotion differences that the A6 gate test
 (``omnipiano/tests/test_robust_v1_method6.py``) would flag.
 
-The override only runs when action noise is actually injected
-(``action_noise_std > 0``); non-robust envs take a code path that
-never touches (or copies) the observation, so all existing baselines
-are *structurally* unaffected — not merely numerically.
+The override runs only when the relevant channel is active
+(``is_channel_active("action")`` → obs["action"]; ``…("reward")`` →
+obs["reward"]) — for ANY distribution (gaussian / uniform / shift), and
+**independently per channel**, so a combined-channel task overrides both
+slots in the same step. Non-robust envs take a code path that never
+touches (or copies) the observation, so all existing baselines are
+*structurally* unaffected — not merely numerically.
 
 Layout caching is rebuild-safe: ``DmEnvToGymnasium.reset(seed=X)``
 rebuilds the dm_env chain, but the obs-key structure, physical action
@@ -245,9 +248,13 @@ class RobustWrapper(gym.Wrapper):
 
         # 3. Reward noise (decision 11: matched at eval, NOT force-zeroed).
         #    Add noise to the scalar reward the agent receives and trains on.
-        #    Shares the gym np_random stream with action noise; v1 tasks are
-        #    single-channel, so only one of action/reward is ever active and
-        #    the two never interleave the stream (equivalence gate §0.7).
+        #    Shares the gym np_random stream with action noise. v1 tasks are
+        #    single-channel (only one of action/reward active), but a
+        #    combined-channel task (both active) is ALSO correct: action noise
+        #    is sampled above BEFORE reward noise here, so the two consume the
+        #    shared stream in a FIXED order → deterministic + reproducible
+        #    (§12 decision 8, verified by test_robust_multichannel). Obs noise
+        #    uses a separate dm_env-layer stream, so it never interferes.
         reward_noise = 0.0
         reward_active = self._channel_active("reward")
         if reward_active:
