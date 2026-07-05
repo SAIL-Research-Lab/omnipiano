@@ -1526,19 +1526,20 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 ### Phase 1 首批实测数字（matched eval，纯 PPO，seed=0，5M，2026-07-05）
 
-首批跑了 **9 个 run**：Action/Obs 的 **P15**（0.15）× {Gauss,Uniform,Shift} + Reward 的 **P50**（0.50）× {Gauss,Uniform,Shift}。数字来自各 run 的 **final eval CSV**（`mode="eval"`，`eval_noise_scale=1.0` matched，1 episode，deterministic）。**headline = F1**（noise-immune，读物理）。
+首批跑了 **9 个 run** + **1 个 Clean 参照**：Action/Obs 的 **P15**（0.15）× {Gauss,Uniform,Shift} + Reward 的 **P50**（0.50）× {Gauss,Uniform,Shift}，外加 `OmniPiano-ClairDeLune-Clean-v0`。数字来自各 run 的 **final eval CSV**（`mode="eval"`，`eval_noise_scale=1.0` matched，1 episode，deterministic）。**headline = F1**（noise-immune，读物理）。`Clean` 已验证真·干净（所有 `ep_noise_*` 列恒 0）。
 
-| 任务（matched eval σ/level=P） | F1 | precision | recall | return（实收）\* |
-|---|---|---|---|---|
-| **A-Gauss-P15** | **0.277** | 0.902 | 0.193 | 1653 |
-| **A-Uniform-P15** | 0.371 | 0.972 | 0.269 | 1663 |
-| **A-Shift-P15** | **0.704** | 0.974 | 0.605 | 1868 |
-| **O-Gauss-P15** | 0.588 | 0.989 | 0.448 | 1846 |
-| **O-Uniform-P15** | 0.599 | 0.981 | 0.476 | 1848 |
-| **O-Shift-P15** | 0.539 | 0.980 | 0.433 | 1832 |
-| **R-Gauss-P50** | **0.117** | 0.994 | 0.075 | 1684 |
-| **R-Uniform-P50** | 0.300 | 0.999 | 0.217 | 1766 |
-| **R-Shift-P50** | 0.589 | 0.971 | 0.475 | **2141** |
+| 任务（matched eval σ/level=P） | F1 | ΔF1 vs clean | precision | recall | return（实收）\* |
+|---|---|---|---|---|---|
+| **Clean-v0**（参照） | **0.626** | — | 0.974 | 0.506 | 1851 |
+| **A-Gauss-P15** | **0.277** | −0.349（−56%） | 0.902 | 0.193 | 1653 |
+| **A-Uniform-P15** | 0.371 | −0.255（−41%） | 0.972 | 0.269 | 1663 |
+| **A-Shift-P15** | **0.704** | **+0.078（+12%）🔺** | 0.974 | 0.605 | 1868 |
+| **O-Gauss-P15** | 0.588 | −0.038（−6%） | 0.989 | 0.448 | 1846 |
+| **O-Uniform-P15** | 0.599 | −0.027（−4%） | 0.981 | 0.476 | 1848 |
+| **O-Shift-P15** | 0.539 | −0.087（−14%） | 0.980 | 0.433 | 1832 |
+| **R-Gauss-P50** | **0.117** | −0.509（−81%） | 0.994 | 0.075 | 1684 |
+| **R-Uniform-P50** | 0.300 | −0.326（−52%） | 0.999 | 0.217 | 1766 |
+| **R-Shift-P50** | 0.589 | −0.037（−6%） | 0.971 | 0.475 | **2141** |
 
 \* return = **实收（带噪）**；reward 任务被污染（§14）。真值用 `ep_return_true`：`R-Shift` 实收 2141 里约 +294（=0.5×588 步的 shift）是噪声灌入，真值 ≈ 1847；`R-Gauss`/`R-Uniform` 噪声零均值，实收 ≈ 真值。
 
@@ -1551,6 +1552,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 2. **通道敏感度：Action ≈ Reward ≫ Obs**。Obs 噪声下 F1 都聚在 0.54–0.60（policy 能滤掉部分传感器噪声，且 obs 噪声只打 141 维本体感觉/键态、不碰 979 维 goal）；Action/Reward 的高斯档跌到 0.12–0.28。
 3. **噪声下 precision 高（0.90–0.999）、recall 低** → policy 变**保守**（漏音多于误按），F1 掉主要来自 recall。
 4. **reward 噪声"污染 return 但不污染 F1"实锤**：`R-Shift` return 虚高（+294 灌入）而 F1 才 0.589；`R-Gauss` return 不虚高（1684）但 F1 崩到 0.117（§14 预测成立）。
+5. **⚠️ Action-Shift 不是 adversarial 扰动——它比 clean 还好**：`A-Shift-P15` F1=0.704 **高于 Clean 0.626（+12%）**，recall 0.605 > clean 0.506。已排除 bug（通道纯度已验证注入了 act_l2=591.66 的恒定噪声）。**机理**：action 是 canonical [-1,1] 位置目标，恒定 +0.15 偏置**把手指整体压向琴键**→ 多按对音（recall↑）。这是 **in-training robustness 协议**（§7 行 1）——policy 训练时就知道有此偏置、学到适配它的策略，而该恒定偏置恰是**有益的归纳偏置**。**paper 含义**：action 通道的 shift（至少 +方向）是**良性/有益**的，挑战"robustness=一定退化"的朴素框架，须显式 disclose。**待验证**：单 seed；方向对照实验（**A-Shift −0.15**，预期若 +0.15 因"压向键"有益、则 −0.15"抬离键"应有害）+ 多 seed 确认幅度。
 
 **Caveats（写作须 disclose）**：(a) 仅 **matched eval**（scale=1.0），部署期鲁棒性曲线（scale sweep）待 `robust_eval_sweep.py` 跑出；(b) 仅 **seed=0 单种子**；(c) 仅 **P15/P50 最脏档**——中间档 P05/P10/P30 待补；(d) obs 噪声**忠实扰动 policy 实际消费的本体感觉通道**（关节角 `joints_pos` + 感知键态 `piano/state` + `sustain_state`）；关节速度不在其中，因为**上游 RoboPianist 基准本就是 position-only 观测**（`joints_vel` observable 上游定义但从未 enable，`piano_with_shadow_hands.py:_add_observables`），policy 从不观测速度、故无速度可扰——这是与 RoboPianist 对齐的 disclosure，非遗漏；(e) baseline 为**纯 PPO**（robust 无 cost，不跑 PPOLag）。
 
