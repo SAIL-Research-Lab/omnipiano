@@ -130,7 +130,25 @@ gym 层 (在 dm_env adapter 之后)：
 
 ### 目标
 
-修复 §1.3 的 6 个问题/改进项（#6 = 决议 9 的 `log_split`→`mode` 纯 rename），**不改变现有任何语义**。Phase 0 完成后，已有的 2 个 robust task（`FantaisieImpromptu-ActionRobust-v0`、`ClairDeLune-ObservationRobust-v0`）**必须** behavior bit-identical（相同的噪声序列、相同的 episode）—— 由一个 equivalence test 验证。
+修复 §1.3 的 6 个问题/改进项（#6 = 决议 9 的 `log_split`→`mode` 纯 rename）。原意"不改变现有任何语义"在**训练路径**成立（action 噪声 bit-identical，§0.7 gate 验证），但有**三处有意的语义变更**（记录在案的例外）：(a) 决议 10 —— eval 默认改 matched（`eval_noise_scale=1.0`）；(b) 决议 11 —— reward eval matched（撤 force-zero）+ `obs["reward"]`=r_obs；(c) S5 —— obs-noise seed 31415→20000（obs 噪声序列有意改变）。
+
+### Phase 0 完成状态（as-built ✅，全绿）
+
+Phase 0 全部子阶段完成（分支 `feat/robust-phase0`）：
+
+| 子阶段 | 内容 | test 文件 |
+|---|---|---|
+| S1 | RobustConfig 14 字段 + 校验 | `test_robust_config.py` |
+| S2 | 噪声语义（`RobustConfig.is_channel_active`/`sample_noise`） | `test_robust_sample_noise.py` |
+| S3a | `eval_noise_scale` 接线 + `log_split→mode` | `test_robust_eval_scale.py` |
+| S3b | obs uniform/shift @ dm_env 层 | `test_robust_obs_dist.py` |
+| S4 | reward noise + Method-6 reward-slot override | `test_robust_reward_noise.py` |
+| S5 | `OBS_NOISE_SEED_OFFSET=20000` 去重 | `test_obs_noise_seed_consistency.py` |
+| S6 | eval CSV robust 列（schema-locked） | `test_robust_eval_csv.py` |
+| §0.7 | 2 个 v1 env equivalence（可复现 + 通道 + gaussian bit-exact） | `test_robust_v1_equivalence.py` |
+| 贯穿 | Method 6 gates | `test_robust_v1_method6.py`（15/15） |
+
+**全套 84 passed。** 语义决策见 §12 决议 9/10/11。（`examples/` SB3 模板已追踪；`tools/checkpoint_replay_eval.py` 的 schema-lock 改动在磁盘但 `tools/` 被 gitignore。）
 
 ### Phase 0 工作项
 
@@ -671,7 +689,9 @@ piano 里 `activation` 有**两个同名定义,别混**:
 - cost 因 (b) 在任何任务下都干净,属"双重安全"(SafeRL 无噪声 + robust 也不污染 cost)。
 - 若 v2 出现 "safe + robust" 合体任务,cost 仍 clean,但 reward 通道那套 `ep_return` 处理需同时生效。
 
-**0.7 — Equivalence test**（新文件 `omnipiano/tests/test_robust_v1_equivalence.py`）
+**0.7 — Equivalence test**（as-built ✅ `omnipiano/tests/test_robust_v1_equivalence.py`，4 passed）
+
+> **as-built**：因 S5 有意改了 obs seed（31415→20000），2 个 v1 env 的 obs 噪声值不再等于 Phase 0 前；gate 改为验证**跨构建可复现**（同 master seed → 同噪声序列）+ 通道正确（action-on/obs-off 与反之）+ gaussian 采样 bit-exact（`RobustConfig.sample_noise` == `rng.normal(0, std)`，证明 14 字段扩展 / dispatch 重构没改 RNG 算术）。
 
 **根据 [feedback_equivalence_test_when_replacing_upstream]**，当我们修改共享行为时必须验证未改动的路径仍然产生 bit-exact 一致的输出。Phase 0 改变了 `RobustConfig` 和 `RobustWrapper` 的公共接口。测试：
 
@@ -1318,7 +1338,7 @@ channel = channel_of(env_id)     # 读 env_id 的 -A- / -O- / -R- 标记
 SEED_BASE = train_seed + EVAL_SEED_OFFSET
 
 if channel == "R":
-    # reward 任务:eval 恒 clean(§0.2 force-zero),不 sweep scale。
+    # reward 任务(决议 11):与 A/O 对称,在自身 env 上 sweep eval_noise_scale。
     # canonical:直接在 Clean-v0 上单点评估;曲线横轴用**训练档位**(P10/P30/P50,由训练 env_id 决定,见 §6)
     eval_env = omnipiano.make("OmniPiano-ClairDeLune-Clean-v0", mode="eval")
     metrics  = replay(policy, eval_env, n_eps=N, seed_base=SEED_BASE)
@@ -1524,7 +1544,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 | **Obs 归一化 wrapper**                          | 加 `VecNormalize` 或类似 wrapper 让 obs → N(0,1) 后再注 σ 会让"跨 key 相对扰动强度对齐"，但破坏与 RG paper 的 baseline 一致性（RG 直接加到 raw obs 上），也需要重跑所有现有 baseline。RG 完全不做这个，v1 保持不做。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 明确**不计划**（除非重构整个 baseline 生态）。                                                                      |
 | **N-hand SA robust**                         | 现有 wrapper 是 morphology-agnostic 的，所以实现成本为零，但实验成本（PPO × PPOLag × seed × N-morphology × 27 task）是 v1 的约 5 倍。v1 的 claim 已经足够；加入 morphology 给一个正交的轴更适合作为单独 paper 探索。                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | v1 paper 之后。                                                                                        |
 | **MA Territorial robust**                    | RobustWrapper 假设单个 action ndarray；PettingZoo `ParallelEnv` 传的是 `Dict[agent_id, action]`。需要新的 `MARobustWrapper` 配 per-agent std（因为每个 agent 的 action 维度不同）。工作量大。                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Phase 2，配合任何 MA 专项 paper 扩展。                                                                        |
-| **跨库统一 eval 阶段的 robust 语义（决定 2026-07-04）**   | eval 阶段的 robust 语义(reward force-zero / eval_noise_scale)**保证锚在 `make(mode='eval')` 这个 env 构造入口**——任何库只要经此入口构造 eval env 就自动继承(SB3 模板即如此)。但**我们控不住每个库怎么构造/驱动它自己的 eval**:OmniSafe 用 `Evaluator.load_saved()` 从训练 config 重建 env,绕过 `make(mode='eval')`,故 Phase 0 的 eval 语义不会自动流入。**对比**:training 阶段的 robust 噪声与库无关(在 wrapper 链里、每 step 必经),完全可保证;eval 阶段则需库 opt-in 我们的入口,无法跨库强制统一。**决定:先不给 OmniSafe eval 阶段做 robust 特殊处理**——OmniSafe 主场是 safety 任务(有 cost 约束、**无 reward 噪声**),eval 天然干净;而 robust 任务(噪声、无 cost)是 SB3/CleanRL 地盘(走 `make(mode='eval')`,保证成立)。"OmniSafe × robust-eval"缺口大概率为空集。                                                    | 若将来真用 OmniSafe 训 robust 任务时再接线(届时 reward 任务 eval 直接换 `Clean-v0` 即可绕开)。                              |
+| **跨库统一 eval 阶段的 robust 语义（决定 2026-07-04）**   | eval 阶段的 robust 语义（`eval_noise_scale` 缩放,三通道对称——含 reward,决议 11）**保证锚在 `make(mode='eval')` 这个 env 构造入口**——任何库只要经此入口构造 eval env 就自动继承(SB3 模板即如此)。但**我们控不住每个库怎么构造/驱动它自己的 eval**:OmniSafe 用 `Evaluator.load_saved()` 从训练 config 重建 env,绕过 `make(mode='eval')`,故 Phase 0 的 eval 语义不会自动流入。**对比**:training 阶段的 robust 噪声与库无关(在 wrapper 链里、每 step 必经),完全可保证;eval 阶段则需库 opt-in 我们的入口,无法跨库强制统一。**决定:先不给 OmniSafe eval 阶段做 robust 特殊处理**——OmniSafe 主场是 safety 任务(有 cost 约束、**无 reward 噪声**),eval 天然干净;而 robust 任务(噪声、无 cost)是 SB3/CleanRL 地盘(走 `make(mode='eval')`,保证成立)。"OmniSafe × robust-eval"缺口大概率为空集。                                                    | 若将来真用 OmniSafe 训 robust 任务时再接线（让 checkpoint_replay 经 `make(mode='eval')` 构造 env,或用 `robust_eval_sweep.py`）。                              |
 
 
 ---
