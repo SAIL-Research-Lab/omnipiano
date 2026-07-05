@@ -1273,28 +1273,32 @@ register(
 # --- Multi-channel / combined-channel experiments (NOT in the v1 matrix) --
 # First combined-channel probes (2026-07-05). Same-dist multi-channel is
 # register-only (audit: §5.1.0(3), verified by test_robust_multichannel).
-# Naming: two channel letters in canonical order (A<O<R) + shared Dist + level
-# (P15 = +0.15, N15 = -0.15). Each id perturbs TWO channels with ONE shared
-# noise_dist (mixed-per-channel-dist is the frozen per-channel-dist item).
+# "Same-dist" = one shared noise_dist across channels; the LEVEL is per-channel
+# (each channel has its own magnitude fields) — so different magnitudes per
+# channel are fine (only per-channel *distribution* is the frozen item).
+# Naming: canonical channel letters (A<O<R) + shared Dist + per-channel level
+# tags (<Chan><Sign?><level×100>, P/absent=+, N=-). Reward uses a larger level
+# (|reward|~2-3, so a small half-range/offset is nearly inert — matches the
+# single-channel reward sweep scale {0.10,0.30,0.50}).
 register(  # Action + Obs, both gaussian σ=0.15
     id="OmniPiano-ClairDeLune-AO-Gauss-P15-v0",
     base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
     robust_config=RobustConfig(
         noise_dist="gaussian", action_noise_std=0.15, obs_noise_std=0.15),
 )
-register(  # Action + Reward, both uniform bounds [-0.15, +0.15]
-    id="OmniPiano-ClairDeLune-AR-Uniform-P15-v0",
+register(  # Action + Reward, both uniform — per-channel: A ±0.15, R ±0.50
+    id="OmniPiano-ClairDeLune-AR-Uniform-A15-R50-v0",
     base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
     robust_config=RobustConfig(
         noise_dist="uniform",
         action_noise_uniform_low=-0.15, action_noise_uniform_high=0.15,
-        reward_noise_uniform_low=-0.15, reward_noise_uniform_high=0.15),
+        reward_noise_uniform_low=-0.50, reward_noise_uniform_high=0.50),
 )
-register(  # Obs + Reward, both constant shift -0.15
-    id="OmniPiano-ClairDeLune-OR-Shift-N15-v0",
+register(  # Obs + Reward, both constant shift — per-channel: O -0.15, R -0.50
+    id="OmniPiano-ClairDeLune-OR-Shift-ON15-RN50-v0",
     base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
     robust_config=RobustConfig(
-        noise_dist="shift", obs_noise_shift=-0.15, reward_noise_shift=-0.15),
+        noise_dist="shift", obs_noise_shift=-0.15, reward_noise_shift=-0.50),
 )
 
 
