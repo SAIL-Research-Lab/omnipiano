@@ -26,7 +26,7 @@ gym layer (OmniPiano modular wrappers):
     → MetricsWrapper           # task reward terms + episode-end musical metrics → info
     → SafetyWrapper            # constraint costs → info
     → RobustWrapper            # action noise (gym layer) + obs noise reporting
-    → [SafeRecordEpisodeStatistics if log_split == "eval"]
+    → [SafeRecordEpisodeStatistics if mode == "eval"]
 
 See `examples/run_sb3_template.py` for a typical SB3 caller.
 """
@@ -75,6 +75,7 @@ _np.array = _np_array_compat  # type: ignore[assignment]
 # Imports
 # ---------------------------------------------------------------------------
 import dataclasses
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Dict, Sequence
 
@@ -172,7 +173,7 @@ def register(id: str, **kwargs):
 def make(
     env_name: str,
     log_dir: Optional[str] = None,
-    log_split: str = "train",
+    mode: str = "train",
     **kwargs,
 ):
     """Build a paper-chain OmniPiano gymnasium env.
@@ -187,9 +188,15 @@ def make(
             them, register a new task id rather than overriding at
             make() time. This keeps every experiment configuration
             tied to a canonical, traceable id.
-        log_dir: If set, eval split writes per-episode CSV here.
-        log_split: ``"train"`` or ``"eval"``. Affects whether
-            SafeRecordEpisodeStatistics is attached.
+        log_dir: If set, eval mode writes per-episode CSV here.
+        mode: ``"train"`` or ``"eval"`` (renamed from ``log_split``,
+            decision 9 — one flag selecting the env's train/eval regime).
+            At ``"eval"``: all RobustConfig magnitude fields are scaled by
+            ``eval_noise_scale`` (0.0=clean default, 1.0=training-level,
+            >1=stress) and reward noise is force-zeroed (reward perturbation
+            is training-only, §0.6.3); additionally, if ``log_dir`` is set,
+            SafeRecordEpisodeStatistics is attached. At ``"train"`` the noise
+            scale is 1.0 (registered training noise).
         **kwargs: Strictly whitelisted to ``_RUNTIME_BYPASS_FIELDS``
             (``seed``, ``record_dir``, ``record_every``,
             ``record_resolution``, ``camera_id``) — none of which
@@ -266,6 +273,59 @@ def make(
         kwargs.setdefault(k, v)
 
     # ------------------------------------------------------------------
+    # 0c. Effective robust config — mode / eval_noise_scale plumbing (§0.2).
+    #     At mode=="eval", every RobustConfig magnitude field is multiplied
+    #     by eval_noise_scale (0.0=clean default, 1.0=training-level,
+    #     >1=stress); at mode=="train" the scale is 1.0 (registered training
+    #     noise). Reward noise is training-only and is force-zeroed at eval
+    #     regardless of scale (§0.6.3) — a fixed policy does not consume
+    #     reward, so reward-eval-noise only corrupts ep_return, not the
+    #     trajectory/F1. Everything downstream (RobustWrapper,
+    #     DmEnvObsNoiseWrapper) consumes effective_robust_config; the raw
+    #     registered robust_config is kept unmodified for reproducibility.
+    # ------------------------------------------------------------------
+    scale = robust_config.eval_noise_scale if mode == "eval" else 1.0
+    effective_robust_config = dataclasses.replace(
+        robust_config,
+        action_noise_std=robust_config.action_noise_std * scale,
+        obs_noise_std=robust_config.obs_noise_std * scale,
+        reward_noise_std=robust_config.reward_noise_std * scale,
+        action_noise_uniform_low=robust_config.action_noise_uniform_low * scale,
+        action_noise_uniform_high=robust_config.action_noise_uniform_high * scale,
+        obs_noise_uniform_low=robust_config.obs_noise_uniform_low * scale,
+        obs_noise_uniform_high=robust_config.obs_noise_uniform_high * scale,
+        reward_noise_uniform_low=robust_config.reward_noise_uniform_low * scale,
+        reward_noise_uniform_high=robust_config.reward_noise_uniform_high * scale,
+        action_noise_shift=robust_config.action_noise_shift * scale,
+        obs_noise_shift=robust_config.obs_noise_shift * scale,
+        reward_noise_shift=robust_config.reward_noise_shift * scale,
+    )
+    if mode == "eval":
+        requested_reward_noise = (
+            robust_config.reward_noise_std != 0.0
+            or robust_config.reward_noise_uniform_low != 0.0
+            or robust_config.reward_noise_uniform_high != 0.0
+            or robust_config.reward_noise_shift != 0.0
+        )
+        effective_robust_config = dataclasses.replace(
+            effective_robust_config,
+            reward_noise_std=0.0,
+            reward_noise_uniform_low=0.0,
+            reward_noise_uniform_high=0.0,
+            reward_noise_shift=0.0,
+        )
+        if scale != 0.0 and requested_reward_noise:
+            warnings.warn(
+                "Reward noise at eval is DISABLED and has been forced to zero: "
+                "a fixed policy does not consume reward, so evaluating a "
+                "reward-noise env is meaningless (it only corrupts ep_return; "
+                "trajectory and F1 are byte-identical to clean). Evaluate "
+                "reward-trained policies on OmniPiano-ClairDeLune-Clean-v0. "
+                "eval_noise_scale affects obs/action only.",
+                stacklevel=2,
+            )
+
+    # ------------------------------------------------------------------
     # 1. Extract suite/wrapper-level fields from kwargs.
     #    The rest is task-level and becomes task_kwargs (forwarded to
     #    OmniPianoTask → PianoWithShadowHands constructor).
@@ -340,14 +400,14 @@ def make(
         # Per-key obs noise (only when ObservationRobust task requests it).
         # Must come BEFORE ConcatObservationWrapper so it can pick keys
         # by name (skip categorical/counter keys like "goal").
-        if robust_config.obs_noise_std > 0:
+        if effective_robust_config.obs_noise_std > 0:
             # Derive obs-noise RNG seed from the master seed but with an
             # offset so the noise stream is independent of the task's
             # internal random_state (used for episode init).
             obs_noise_seed = (_seed + 31415) if _seed is not None else None
             env = DmEnvObsNoiseWrapper(
                 env,
-                noise_std=robust_config.obs_noise_std,
+                noise_std=effective_robust_config.obs_noise_std,
                 seed=obs_noise_seed,
             )
 
@@ -392,17 +452,17 @@ def make(
     # ------------------------------------------------------------------
     env = MetricsWrapper(gym_env)
     env = SafetyWrapper(env, config=safety_config)
-    env = RobustWrapper(env, config=robust_config)
+    env = RobustWrapper(env, config=effective_robust_config)
 
     # ------------------------------------------------------------------
     # 5. Optional eval CSV logger
     # ------------------------------------------------------------------
-    if log_dir is not None and log_split == "eval":
+    if log_dir is not None and mode == "eval":
         from omnipiano.utils.logger_wrapper import SafeRecordEpisodeStatistics
         env = SafeRecordEpisodeStatistics(
             env,
             log_dir=log_dir,
-            split=log_split,
+            split=mode,
         )
 
     return env

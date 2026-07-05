@@ -1,0 +1,155 @@
+"""Phase 0 · S3 gate — mode rename + eval_noise_scale plumbing + reward force-zero.
+
+Verifies registration.make()'s effective-config logic (§0.2 / §0.6.3):
+  - `log_split` param is renamed to `mode` (old kwarg now rejected);
+  - at mode="eval", all magnitude fields are multiplied by eval_noise_scale;
+    eval_noise_scale=0.0 (default) => clean eval;
+  - reward noise is force-zeroed at eval regardless of scale, and a warning
+    is emitted when a reward-channel task is evaluated with nonzero scale;
+  - uniform bounds scale correctly.
+
+Effective config is read off the constructed RobustWrapper's `.config`.
+Uses the shortest piece (ForElise) for fast env builds.
+"""
+import warnings
+
+import numpy as np
+import pytest
+
+from omnipiano.configs import RobustConfig
+from omnipiano.envs import registration
+from omnipiano.wrappers.robust_wrapper import RobustWrapper
+
+_BASE = "RoboPianist-repertoire-150-ForElise-v0"
+
+
+def _register_once(env_id: str, **kwargs) -> None:
+    if env_id not in registration._registry:
+        registration.register(id=env_id, base_env_name=_BASE, **kwargs)
+
+
+_register_once(
+    "OmniPianoTest-S3-ActionScale-v0",
+    robust_config=RobustConfig(action_noise_std=0.10, eval_noise_scale=0.5),
+)
+_register_once(
+    "OmniPianoTest-S3-ActionCleanDefault-v0",
+    robust_config=RobustConfig(action_noise_std=0.10),  # eval_noise_scale=0.0
+)
+_register_once(
+    "OmniPianoTest-S3-Reward-v0",
+    robust_config=RobustConfig(reward_noise_std=0.30, eval_noise_scale=1.0),
+)
+_register_once(
+    "OmniPianoTest-S3-RewardCleanDefault-v0",
+    robust_config=RobustConfig(reward_noise_std=0.30),  # eval_noise_scale=0.0
+)
+_register_once(
+    "OmniPianoTest-S3-UniformScale-v0",
+    robust_config=RobustConfig(
+        noise_dist="uniform",
+        action_noise_uniform_low=-0.10,
+        action_noise_uniform_high=0.10,
+        eval_noise_scale=0.5,
+    ),
+)
+
+
+def _robust_wrapper(env) -> RobustWrapper:
+    ptr = env
+    while not isinstance(ptr, RobustWrapper):
+        ptr = ptr.env
+    return ptr
+
+
+def _config_of(env_id: str, mode: str) -> RobustConfig:
+    env = registration.make(env_id, mode=mode)
+    try:
+        return _robust_wrapper(env).config
+    finally:
+        env.close()
+
+
+# --------------------------------------------------------------------------
+# mode rename
+# --------------------------------------------------------------------------
+def test_old_log_split_kwarg_rejected():
+    # After the rename, `log_split` is no longer a named param → it falls into
+    # **kwargs and is rejected by the runtime-bypass whitelist (ValueError).
+    with pytest.raises(ValueError, match="log_split"):
+        registration.make("OmniPianoTest-S3-ActionScale-v0", log_split="eval")
+
+
+def test_mode_train_and_eval_both_construct():
+    for m in ("train", "eval"):
+        env = registration.make("OmniPianoTest-S3-ActionScale-v0", mode=m)
+        env.close()
+
+
+# --------------------------------------------------------------------------
+# eval_noise_scale — action (gaussian)
+# --------------------------------------------------------------------------
+def test_action_scale_train_is_unscaled():
+    cfg = _config_of("OmniPianoTest-S3-ActionScale-v0", "train")
+    assert cfg.action_noise_std == pytest.approx(0.10)  # scale 1.0
+
+
+def test_action_scale_eval_is_halved():
+    cfg = _config_of("OmniPianoTest-S3-ActionScale-v0", "eval")
+    assert cfg.action_noise_std == pytest.approx(0.05)  # 0.10 * 0.5
+
+
+def test_action_default_scale_zero_is_clean_eval():
+    cfg = _config_of("OmniPianoTest-S3-ActionCleanDefault-v0", "eval")
+    assert cfg.action_noise_std == pytest.approx(0.0)          # 0.10 * 0.0
+    assert _robust_wrapper(
+        registration.make("OmniPianoTest-S3-ActionCleanDefault-v0", mode="eval")
+    )._channel_active("action") is False
+
+
+def test_action_default_scale_train_keeps_noise():
+    cfg = _config_of("OmniPianoTest-S3-ActionCleanDefault-v0", "train")
+    assert cfg.action_noise_std == pytest.approx(0.10)
+
+
+# --------------------------------------------------------------------------
+# reward force-zero at eval (+ warn)
+# --------------------------------------------------------------------------
+def test_reward_noise_present_at_train():
+    cfg = _config_of("OmniPianoTest-S3-Reward-v0", "train")
+    assert cfg.reward_noise_std == pytest.approx(0.30)
+
+
+def test_reward_noise_force_zeroed_at_eval_with_warn():
+    # scale=1.0 + reward requested => force-zero AND warn.
+    with pytest.warns(UserWarning, match="Reward noise at eval is DISABLED"):
+        env = registration.make("OmniPianoTest-S3-Reward-v0", mode="eval")
+    try:
+        assert _robust_wrapper(env).config.reward_noise_std == pytest.approx(0.0)
+    finally:
+        env.close()
+
+
+def test_reward_force_zero_no_warn_at_scale_zero():
+    # eval_noise_scale=0.0 => reward zeroed by scale; no confusion => no warn.
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        env = registration.make("OmniPianoTest-S3-RewardCleanDefault-v0", mode="eval")
+        env.close()
+    reward_warns = [w for w in rec if "Reward noise at eval" in str(w.message)]
+    assert reward_warns == []
+
+
+# --------------------------------------------------------------------------
+# uniform bounds scaling
+# --------------------------------------------------------------------------
+def test_uniform_scale_train_unscaled():
+    cfg = _config_of("OmniPianoTest-S3-UniformScale-v0", "train")
+    assert cfg.action_noise_uniform_low == pytest.approx(-0.10)
+    assert cfg.action_noise_uniform_high == pytest.approx(0.10)
+
+
+def test_uniform_scale_eval_halved():
+    cfg = _config_of("OmniPianoTest-S3-UniformScale-v0", "eval")
+    assert cfg.action_noise_uniform_low == pytest.approx(-0.05)
+    assert cfg.action_noise_uniform_high == pytest.approx(0.05)
