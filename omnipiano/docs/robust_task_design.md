@@ -1149,6 +1149,7 @@ v1 所有注册的 robust task 都是 **single-channel** —— 每个 env id �
    - **CSV 记录无新污染**：F1/cost 恒真值；`ep_return_true`（分解列之和）在 action+reward 同时加噪时仍恢复干净 return（`received = ep_return_true + reward_noise` 逐步成立）；`ep_noise_{action,obs,reward}` 三累加器独立。
    - **RNG 确定性**：obs 用独立 dm_env 流；action/reward 共享 gym 流但**固定顺序（先 action 后 reward）**→ 同 seed 可复现（§12 决议 8）。
    - **⚠️ 唯一约束——同一个 `noise_dist`（全局单值）**：所有活跃通道**共享一种分布**。`A-gaussian + O-uniform` **不可表达、会 raise**。故 **"同分布" multi-channel（A+O 都 gaussian）= 开箱即用、零核心代码**；**"混分布" multi-channel = 需要 per-channel-dist 重构 = §16 冻结项**。
+   - **✅ 每通道不同 LEVEL（幅度）—— 完全支持、已验证无 bug**（2026-07-05，`test_robust_multichannel`）：`noise_dist` 是唯一全局项；**幅度是 per-channel 的**（12 个独立 std/uniform/shift 字段），所以同分布下**各通道可用不同 level**（如 `A ±0.15 + R ±0.50`、`O -0.15 + R -0.50`——reward 通道因 `|reward|~2-3` 需更大 level 才有效）。代码论证：`sample_noise(rng, channel, shape)` 每次 `getattr(self, f"{channel}_noise_*")` 读**本通道**字段，无"level 相等"假设，与同 level 走同一路径。exact 断言已锁：shift 下各通道按自身 level 注入、互不串扰（reward=−0.50、obs 用 −0.15 与 obs-only 参照一致、action 恒 0）；`eval_noise_scale` 对全字段乘同一系数 → **通道间 level 比例守恒**（scale=0.5 → reward −0.50→−0.25）。命名用 per-channel level tag（`A15-R50`、`ON15-RN50`）。
    - **Phase 2 同分布 multi-channel 实际只需**：一个多通道注册 helper + 命名规范（`AO-Gauss-P05`），核心 wrapper/config/logger 逻辑零改动。另注：单个 `eval_noise_scale` 会同时缩放所有活跃通道（不能在一个 env 内独立 sweep 各通道 scale）。
 4. **RNG 简化**（见 §4）：v1 每个 task 只有 1 个 channel 活跃 → action+reward 共享一条 RNG stream 完全无风险，因为 action 或 reward 分支永远只有一个被触发。
 

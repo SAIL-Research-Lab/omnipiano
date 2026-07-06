@@ -127,6 +127,50 @@ def test_same_dist_multichannel_config_valid():
 
 
 # --------------------------------------------------------------------------
+# Per-channel DIFFERENT level (same dist): each channel injects at ITS OWN
+# magnitude, no cross-channel coupling. Only noise_dist is shared; the 12
+# magnitude fields are per-channel, so different levels use the same code path.
+# --------------------------------------------------------------------------
+def test_per_channel_different_levels_shift_exact():
+    # obs-only reference at -0.15 → its deterministic obs L2
+    _reg("OmniPianoTest-MC-Oshift-ref-v0",
+         RobustConfig(noise_dist="shift", obs_noise_shift=-0.15))
+    env_o, _, _, info_o = _first_step("OmniPianoTest-MC-Oshift-ref-v0")
+    obs_l2_ref = float(info_o[InfoKeys.ROBUST_NOISE_OBS_L2])
+    env_o.close()
+    assert obs_l2_ref > 0.0
+
+    # Combined O(-0.15) + R(-0.50): obs must inject at its OWN -0.15 (== ref,
+    # unaffected by reward's -0.50), reward at its OWN -0.50 (not obs's -0.15).
+    _reg("OmniPianoTest-MC-ORshift-diff-v0",
+         RobustConfig(noise_dist="shift", obs_noise_shift=-0.15, reward_noise_shift=-0.50))
+    env, obs, reward, info = _first_step("OmniPianoTest-MC-ORshift-diff-v0")
+    try:
+        assert float(info[InfoKeys.ROBUST_NOISE_REWARD]) == pytest.approx(-0.50)
+        assert float(info[InfoKeys.ROBUST_NOISE_OBS_L2]) == pytest.approx(obs_l2_ref)
+        assert float(info[InfoKeys.ROBUST_NOISE_ACTION_L2]) == 0.0  # action silent
+    finally:
+        env.close()
+
+
+def test_per_channel_levels_scaled_proportionally_at_eval():
+    # eval_noise_scale multiplies EVERY magnitude by the same factor → the
+    # per-channel level ratio is preserved (matched-eval semantics).
+    _reg("OmniPianoTest-MC-ORshift-scale-v0",
+         RobustConfig(noise_dist="shift", obs_noise_shift=-0.15, reward_noise_shift=-0.50))
+    env = registration.make("OmniPianoTest-MC-ORshift-scale-v0",
+                            mode="eval", _eval_noise_scale_override=0.5)
+    env.reset(seed=0)
+    _, _, _, _, info = env.step(env.action_space.sample())
+    try:
+        # -0.50 * 0.5 = -0.25 (reward), obs -0.15 * 0.5 = -0.075 (both halved).
+        assert float(info[InfoKeys.ROBUST_NOISE_REWARD]) == pytest.approx(-0.25)
+        assert float(info[InfoKeys.ROBUST_NOISE_OBS_L2]) > 0.0
+    finally:
+        env.close()
+
+
+# --------------------------------------------------------------------------
 # frame_stack>1 with a multi-channel override still fails fast
 # --------------------------------------------------------------------------
 def test_multichannel_frame_stack_gt1_raises():
