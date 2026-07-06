@@ -1294,6 +1294,15 @@ register(  # Action + Reward, both uniform — per-channel: A ±0.15, R ±0.50
         action_noise_uniform_low=-0.15, action_noise_uniform_high=0.15,
         reward_noise_uniform_low=-0.50, reward_noise_uniform_high=0.50),
 )
+register(  # Clean, but ObservationActionRewardWrapper OFF (no prior action/reward
+           # in obs). Ablation: does the policy need to observe its previous
+           # action + reward to play well? (RoboPianist default is OAR=True.)
+           # Orthogonal to frame_stack (that stacks whole frames temporally).
+    id="OmniPiano-ClairDeLune-Clean-NoOAR-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(),
+    env_config=BenchmarkEnvConfig(action_reward_observation=False),
+)
 register(  # Obs + Reward, both constant shift — per-channel: O -0.15, R -0.50
     id="OmniPiano-ClairDeLune-OR-Shift-ON15-RN50-v0",
     base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
