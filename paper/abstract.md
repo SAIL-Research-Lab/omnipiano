@@ -6,11 +6,41 @@
 |---|---|---|
 | 2026-07-20 | 论文 scope = 整个 OmniPiano benchmark(morphology ladder + safety + robust + multi-agent 四条腿) | ✅ 用户拍板 |
 | 2026-07-20 | 问题定义 = RL 学术界缺少"精细化操作/控制 × {safety, robustness, MA} 评测轴"合一的 benchmark(claims.md C0) | ✅ 用户拍板 |
-| 2026-07-20 | 目标 venue(决定长度/语气/是否 benchmark track) | ⏳ 待用户定(候选:NeurIPS D&B、ICLR、TMLR、CoRL;推荐 NeurIPS D&B 2027) |
-| 2026-07-20 | headline framing:breadth-led(v0-A)vs metric-led(v0-B) | ⏳ 待讨论 |
-| 2026-07-20 | abstract 是否点具体 findings:是,精选 3 条跨腿 finding(C3/C4d/C4e),safety 用能力措辞 | 草稿采用,待确认 |
+| 2026-07-20 | 目标 venue = **AAAI 2027**(main track;~7 页正文;按往年惯例 abstract deadline ≈ 2026-07 月底、全文 ≈ 8 月初——**时间紧**) | ✅ 用户拍板 |
+| 2026-07-20 | framing = **v0-A breadth-led**(缺口→任务→四条腿→F1 性质→findings) | ✅ 用户拍板 |
+| 2026-07-20 | abstract findings = **C3 winner-takes-all + C4d directional bias**(C4e 不进 abstract) | ✅ 用户拍板 |
+| 2026-07-20 | 图表布局:**正文放 EpReward 学习曲线,F1 图表放 supplementary**(training rollout 原生只有 EpReward,F1 来自 periodic eval,见 robust_task_design §14.3) | ✅ 用户拍板 |
+| — | ⚠️ 上一条的连带约束:R-通道任务的正文 EpReward 图必须用 `ep_return_true`(或显式 disclose 实收带噪,§14.2);abstract 中 F1 从 "headline metric" 措辞降为 "every task additionally reports…"(v1 已改),避免与正文图表主次矛盾 | 写作纪律 |
 
-## Draft v0-A(breadth-led:先讲统一 benchmark,再讲 metric 性质)~215 词
+## Draft v1(当前版:AAAI 2027,v0-A framing,findings=C3+C4d)~190 词
+
+> Progress on safe, robust, and multi-agent reinforcement learning is measured on
+> largely disjoint benchmarks whose underlying tasks — point navigation, low-DoF
+> locomotion, abstracted particle worlds — are far simpler than the control problems
+> motivating the field. We present **OmniPiano**, a unified benchmark built on
+> simulated piano playing with Shadow Hands: a fine-grained, contact-rich control
+> problem demanding millisecond-precise coordination of 45 to 111+ actuated degrees
+> of freedom. Within one codebase and one framework-agnostic Gymnasium API, OmniPiano
+> extends RoboPianist along four axes: a **morphology ladder** from two to five hands
+> with optional physically enforced register partitions; **safe-RL** tasks with six
+> constraint families, from collision forces to joint-injury budgets; **robust-RL**
+> tasks injecting observation, action, and reward perturbations under three
+> distributions, protocol-aligned with Robust-Gymnasium; and **cooperative
+> multi-agent** variants with a tunable shared-territory axis. Every task additionally
+> reports a ground-truth, physics-derived note-level F1 that no noise channel can
+> contaminate. Baselines across five algorithms (PPO, SAC, TQC, PPO-Lagrangian,
+> MAPPO) surface findings simpler suites cannot: unpartitioned multi-hand reward
+> collapses to winner-takes-all idling, while a constant action bias can *improve*
+> performance — challenging the perturbation-equals-degradation framing. Code and
+> tasks: <URL>.
+
+### v1 相对 v0-A 的改动(均由决策日志驱动)
+1. F1 句从 "A key design property: the headline metric …" 降格为
+   "Every task additionally reports …" —— 配合正文 EpReward 为主、F1 进 supplementary。
+2. findings 三连删掉 C4e(reward noise cripples learning …),保留 C3 + C4d。
+3. 压到 ~190 词,符合 AAAI 摘要惯例(150–200)。
+
+## Draft v0-A(breadth-led:先讲统一 benchmark,再讲 metric 性质)~215 词【存档】
 
 > Progress on safe, robust, and multi-agent reinforcement learning is measured on
 > largely disjoint benchmarks whose underlying tasks — point navigation, low-DoF

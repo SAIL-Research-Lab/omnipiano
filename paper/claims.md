@@ -121,8 +121,13 @@ MAPPO 5M eval reward 768;F1 surface 修复在 MA bug 队列中)
 - Reduced action space 不启用:全 DoF Shadow Hand 是 benchmark 定义的一部分
   (thumb-budget 安全任务依赖 THJ1/THJ5)。
 
-## Abstract 取舍建议(讨论用)
+## Abstract 取舍(已定,2026-07-20)
 
-- 主干 = C0 + C1;方法论差异化 = C2;findings 精选 2–3 条(候选:C3 winner-takes-all、
-  C4d directional bias、C4e reward-noise invisibility——三条分属三条腿,覆盖面好)。
+- Venue = **AAAI 2027**;framing = v0-A breadth-led;主干 = C0 + C1。
+- Findings 进 abstract:**C3 + C4d**(用户拍板);C4e/C4a 留正文/附录。
+- C2 在 abstract 降格为一句能力措辞("every task additionally reports…"),因为图表
+  布局已定:**正文 EpReward 学习曲线、F1 图表进 supplementary**。C2 的完整论证
+  (污染矩阵、RG 对照)放正文 metric 小节 + 附录。
+- ⚠️ 连带约束:R-通道任务正文 EpReward 图必须画 `ep_return_true`(实收 `ep_return`
+  被噪声污染,§14.2),或图注显式 disclose——否则 C2 的故事自打脸。
 - C5 empirical 未出数前,abstract 安全腿只用能力措辞。
