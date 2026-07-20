@@ -10,10 +10,58 @@
 | 2026-07-20 | framing = **v0-A breadth-led**(缺口→任务→四条腿→F1 性质→findings) | ✅ 用户拍板 |
 | 2026-07-20 | abstract findings = **C3 winner-takes-all + C4d directional bias**(C4e 不进 abstract) | ✅ 用户拍板 |
 | 2026-07-20 | 图表布局:**正文放 EpReward 学习曲线,F1 图表放 supplementary**(training rollout 原生只有 EpReward,F1 来自 periodic eval,见 robust_task_design §14.3) | ✅ 用户拍板 |
+| 2026-07-20 | 新增 **Draft v2 = 用户 task-first framing 修订版**(与 v1 gap-first 并列备选);修 Level-1/-3 术语、duet 单手误述、per-key obs 误述、原稿结尾与 C4d 矛盾的 "systematic degradation" 措辞 | ✅ 当前主推 v2,v1 备选 |
 | 2026-07-20 | ❌ 撤回 "millisecond-precise" 措辞(代码核实:控制步 50 ms/20 Hz,`base.py:31` + `configs/__init__.py:334`;F1 按控制步采键激活,`evaluation.py:67-71`;5 ms 只是物理子步)。改为 "note-accurate timing … at a 20 Hz control rate"。全文写作禁用毫秒级表述 | ✅ 已核实并修正 |
 | — | ⚠️ 上一条的连带约束:R-通道任务的正文 EpReward 图必须用 `ep_return_true`(或显式 disclose 实收带噪,§14.2);abstract 中 F1 从 "headline metric" 措辞降为 "every task additionally reports…"(v1 已改),避免与正文图表主次矛盾 | 写作纪律 |
 
-## Draft v1(当前版:AAAI 2027,v0-A framing,findings=C3+C4d)~190 词
+## Draft v2(用户 task-first framing 修订版,2026-07-20)~200 词
+
+> Robotic piano playing has emerged as a uniquely measurable testbed for dexterous
+> control: high-dimensional continuous action, contact-rich dynamics, and unambiguous
+> MIDI-grounded evaluation. Yet existing piano benchmarks stop at two human-sized
+> hands, impose no safety constraints, and assume noise-free perception — gaps that
+> keep them out of reach for safe, robust, and multi-agent RL research. We introduce
+> **OmniPiano**, an algorithm- and framework-agnostic Gymnasium benchmark that extends
+> RoboPianist along three axes. (i) **Morphology**: a ladder of 2–5 hands (45 to 111+
+> actuated degrees of freedom), each playable either unconstrained or physically
+> partitioned, with every hand hard-clamped to its own non-overlapping keyboard
+> register. (ii) **Safety**: six cost-constraint families — joint-magnitude limits,
+> hand–hand collision forces, actuator power, and joint-injury budgets — exposed
+> through a standard per-step cost signal. (iii) **Robustness**: action, observation,
+> and reward perturbations under three noise distributions, protocol-aligned with
+> Robust-Gymnasium. OmniPiano further provides cooperative duet tasks in which each
+> agent commands a pair of hands within its own keyboard territory, supporting
+> centralized-training-decentralized-execution methods such as MAPPO. Baselines
+> across five algorithms surface benchmark-specific findings: without physical
+> partition, multi-hand reward collapses to winner-takes-all idling, and a constant
+> action bias can *improve* performance — perturbation need not mean degradation.
+
+### v2 相对用户原稿的修改清单
+1. **Level-1/Level-3 术语移除**(用户指出读者必困惑):
+   "unconstrained Level-3 prototypes and hard-clamped Level-1 StaticPartition tasks"
+   → "playable either unconstrained or physically partitioned, with every hand
+   hard-clamped to its own non-overlapping keyboard register"。Level 编号是内部
+   分类法,留给正文定义后再用。
+2. **首句去重**:"high-dimensional … high-dimensional" 出现两次 → 第二处并入冒号列举
+   (action 维度 / contact-rich / MIDI 评测三要素)。
+3. **事实修正:duet 每 agent 控一对手**(secondo=bass 侧 LH+RH,primo=treble 侧
+   LH+RH;README demo + multi_agent_design §3),原稿 "controls one hand" 不实。
+4. **事实修正:"per-key observation" 删掉**——obs 噪声打的是白名单 141 维
+   (joints_pos + piano/state + sustain_state,robust_task_design §10 caveat d),
+   且 per-key σ 校准明确不做(§11)。
+5. **"summed-chain joint-injury budgets" 简化**为 "joint-injury budgets"(链式求和
+   是实现细节)+ 补 "six constraint families" 总数(与 claims.md C1 对齐)。
+6. **结尾 findings 换掉**:原稿 "systematic robustness degradation across policies"
+   **与我们自己的 C4d 发现矛盾**(+0.15 action shift F1 0.704 > clean 0.626,扰动
+   不必然退化——这正是选进 abstract 的卖点);且 "safe RL … constraint satisfaction"
+   的实证还在排队([pending],claims.md C5),abstract 不许引用。按决策日志换成
+   C3 + C4d。
+7. "calibrated" → "protocol-aligned with Robust-Gymnasium"(档位对齐 RG paper 图,
+   claims.md C1 措辞)。
+8. 补 45–111+ DoF 数字(morphology 轴的规模感)。20 Hz 未进本版(task-first 首句
+   已够长;若要可加回)。
+
+## Draft v1(gap-first framing,AAAI 2027,findings=C3+C4d)~190 词【备选】
 
 > Progress on safe, robust, and multi-agent reinforcement learning is measured on
 > largely disjoint benchmarks whose underlying tasks — point navigation, low-DoF
