@@ -10,6 +10,7 @@
 | 2026-07-20 | framing = **v0-A breadth-led**(缺口→任务→四条腿→F1 性质→findings) | ✅ 用户拍板 |
 | 2026-07-20 | abstract findings = **C3 winner-takes-all + C4d directional bias**(C4e 不进 abstract) | ✅ 用户拍板 |
 | 2026-07-20 | 图表布局:**正文放 EpReward 学习曲线,F1 图表放 supplementary**(training rollout 原生只有 EpReward,F1 来自 periodic eval,见 robust_task_design §14.3) | ✅ 用户拍板 |
+| 2026-07-20 | ❌ 撤回 "millisecond-precise" 措辞(代码核实:控制步 50 ms/20 Hz,`base.py:31` + `configs/__init__.py:334`;F1 按控制步采键激活,`evaluation.py:67-71`;5 ms 只是物理子步)。改为 "note-accurate timing … at a 20 Hz control rate"。全文写作禁用毫秒级表述 | ✅ 已核实并修正 |
 | — | ⚠️ 上一条的连带约束:R-通道任务的正文 EpReward 图必须用 `ep_return_true`(或显式 disclose 实收带噪,§14.2);abstract 中 F1 从 "headline metric" 措辞降为 "every task additionally reports…"(v1 已改),避免与正文图表主次矛盾 | 写作纪律 |
 
 ## Draft v1(当前版:AAAI 2027,v0-A framing,findings=C3+C4d)~190 词
@@ -19,8 +20,8 @@
 > locomotion, abstracted particle worlds — are far simpler than the control problems
 > motivating the field. We present **OmniPiano**, a unified benchmark built on
 > simulated piano playing with Shadow Hands: a fine-grained, contact-rich control
-> problem demanding millisecond-precise coordination of 45 to 111+ actuated degrees
-> of freedom. Within one codebase and one framework-agnostic Gymnasium API, OmniPiano
+> problem demanding note-accurate timing from 45 to 111+ actuated degrees
+> of freedom at a 20 Hz control rate. Within one codebase and one framework-agnostic Gymnasium API, OmniPiano
 > extends RoboPianist along four axes: a **morphology ladder** from two to five hands
 > with optional physically enforced register partitions; **safe-RL** tasks with six
 > constraint families, from collision forces to joint-injury budgets; **robust-RL**
@@ -47,8 +48,8 @@
 > locomotion, abstracted particle worlds — are far simpler than the control problems
 > motivating the field. We present **OmniPiano**, a unified benchmark built on
 > simulated piano playing with Shadow Hands: a fine-grained, contact-rich control
-> problem demanding millisecond-precise coordination of 45 to 111+ actuated degrees
-> of freedom. Within one codebase and one framework-agnostic Gymnasium API, OmniPiano
+> problem demanding note-accurate timing from 45 to 111+ actuated degrees
+> of freedom at a 20 Hz control rate. Within one codebase and one framework-agnostic Gymnasium API, OmniPiano
 > extends RoboPianist along four axes: a **morphology ladder** from two to five hands
 > with optional physically enforced register partitions; **safe-RL** tasks with six
 > constraint families, from collision forces to joint-injury budgets; **robust-RL**
