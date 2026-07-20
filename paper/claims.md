@@ -29,8 +29,16 @@ observation/action/reward perturbations aligned with Robust-Gymnasium, and (iv)
 
 - API/framework-agnostic:SB3 / OmniSafe / RLlib / CleanRL 均已实际接入或有模板
   (README "Training + evaluation")。
-- 安全约束族(README):joint magnitude limits、hand-hand collision(binary + 连续力)、
-  actuator power、joint-injury budgets、shared per-joint ceilings、summed-chain budgets。
+- 安全约束:**6 族 / 7 类**(`omnipiano/safety/constraints.py`,代码核实 2026-07-20;
+  collision 两类算一族)。abstract 用 "from … to" 采样措辞,正文列全表:
+  | 族 | 约束类 |
+  |---|---|
+  | joint-magnitude limits | `JointMagnitudeConstraint` |
+  | shared per-joint ceilings | `MultiJointSharedMagnitudeConstraint` |
+  | summed-chain budgets | `MultiJointSummedMagnitudeConstraint` |
+  | hand–hand collisions(binary + 接触力) | `HandCollisionConstraint` + `HandCollisionForceConstraint` |
+  | actuator power | `TotalActuatorPowerConstraint` |
+  | joint-injury power budgets | `InjuredJointPowerConstraint` |
 
 ## C2 — Noise-immune ground-truth metric(方法论卖点,差异化最强)
 

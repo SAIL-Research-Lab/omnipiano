@@ -25,9 +25,9 @@
 > RoboPianist along three axes. (i) **Morphology**: a ladder of 2–5 hands (45 to 111+
 > actuated degrees of freedom), each playable either unconstrained or physically
 > partitioned, with every hand hard-clamped to its own non-overlapping keyboard
-> register. (ii) **Safety**: six cost-constraint families — joint-magnitude limits,
-> hand–hand collision forces, actuator power, and joint-injury budgets — exposed
-> through a standard per-step cost signal. (iii) **Robustness**: action, observation,
+> register. (ii) **Safety**: six cost-constraint families — from hand–hand collision
+> forces to per-joint injury power budgets — exposed through a standard per-step
+> cost signal. (iii) **Robustness**: action, observation,
 > and reward perturbations under three noise distributions, protocol-aligned with
 > Robust-Gymnasium. OmniPiano further provides cooperative duet tasks in which each
 > agent commands a pair of hands within its own keyboard territory, supporting
@@ -49,8 +49,9 @@
 4. **事实修正:"per-key observation" 删掉**——obs 噪声打的是白名单 141 维
    (joints_pos + piano/state + sustain_state,robust_task_design §10 caveat d),
    且 per-key σ 校准明确不做(§11)。
-5. **"summed-chain joint-injury budgets" 简化**为 "joint-injury budgets"(链式求和
-   是实现细节)+ 补 "six constraint families" 总数(与 claims.md C1 对齐)。
+5. **safety 列举改为显式采样措辞** "six … families — from hand–hand collision forces
+   to per-joint injury power budgets"。原稿及 v2 初版都是"说 6 列 4"的半列举,计数
+   与列表打架;全 6 族(7 个约束类)的映射表在 claims.md C1,正文用。
 6. **结尾 findings 换掉**:原稿 "systematic robustness degradation across policies"
    **与我们自己的 C4d 发现矛盾**(+0.15 action shift F1 0.704 > clean 0.626,扰动
    不必然退化——这正是选进 abstract 的卖点);且 "safe RL … constraint satisfaction"
