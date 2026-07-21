@@ -1872,31 +1872,33 @@ Phase 1 获批后：
 ```python
 env = omnipiano.make(env_id, mode="eval", log_dir=my_dir)   # SafeRecord 自动挂
 ```
-**B（自写 eval CSV）**：若库要写自己的 eval CSV，必须（schema-lock 到 SafeRecord 的 24 列，便于统一画图）：
-- 从 terminal info 读：`episode_task/f1`（+ precision/recall/sustain_*）、`episode_safety/cost_total` + `violations`、`episode_task/*_reward`（6 个分解列）。
-- 记录：`ep_return`（实收）、**`ep_return_true` = Σ 分解列**（clean headline）、`eval_noise_scale`、(可选) `ep_noise_{action,obs,reward}` = Σ per-step `info["robust/noise_*"]`。
-- 交叉校验：`ep_return − ep_return_true == ep_noise_reward`。
+**B（自写 eval CSV）**：若库要写自己的 eval CSV（schema-lock 到 SafeRecord 的 24 列，便于统一画图）：
+- 从 terminal info 读：`episode_task/f1`（+ precision/recall/sustain_*）、`episode_safety/cost_total` + `violations`、`episode_task/*_reward`（6 个分解列，原生 schema）。
+- 记录：`ep_return`（实收）、`eval_noise_scale`。
+- **可选诊断列**（2026-07-21 会议决定，从"必加"降级）：`ep_return_true` = Σ 分解列、`ep_noise_{action,obs,reward}` = Σ per-step `info["robust/noise_*"]`。交叉校验 `ep_return − ep_return_true == ep_noise_reward` 属 dev 侧 QA，不是接入义务。
+
+> **原则（2026-07-21 会议明确）**：**benchmark 的 reward 指标 = noisy 实收（与 RG §14.6 完全一致）**——现实中 clean reward 不可观测，agent 也只能看到 noisy。clean 相关列（`ep_return_true`、`ep_noise_*`）为**可选诊断**：路 A 免费自带、路 B 可省略。它们是决议 11 时随 robust-eval 块追加的 5 列中的 4 列（`logger_wrapper.py` header 注释可证）；6 个分解列是 robust 之前的**原生 schema**（reward-term 分析 / safety 实验消费），不在此次降级范围。
 
 ### 15.4 至少要加的列（回答"我理解至少需要加几个 column + ep_return_true"）
 
-✅ 你理解对了。相对一个"只记 `ep_return`/`ep_cost`"的朴素 logger，做 robust baseline 在 **deterministic eval / ckpt eval CSV 至少要加**：
+（2026-07-21 会议更新）相对一个"只记 `ep_return`/`ep_cost`"的朴素 logger，做 robust baseline 在 **deterministic eval / ckpt eval CSV 至少要加的只有一列**：
 
-| 列 | 为什么必须 |
+| 列 | 定位 |
 |---|---|
-| **`ep_return_true`**（= 分解列之和） | reward 任务的真实表现；`ep_return` 带噪时的干净值。**必加** |
 | **`eval_noise_scale`** | robustness 曲线定位——没它无法判断一行属于曲线哪个点。**必加** |
-| `ep_noise_{action,obs,reward}` | dev tripwire，确认噪声真注入了。**建议加** |
+| `ep_return_true`（= 分解列之和） | **可选诊断**（原"必加"，2026-07-21 降级）：benchmark 的 reward 指标就是 noisy 实收，clean 值仅作 QA / R-Shift 恒定灌入修正之用。⚠️ 若未来把 ep_reward 升为主指标，R-Shift 修正需要它——届时重新评估 |
+| `ep_noise_{action,obs,reward}` | **可选诊断**：dev tripwire，确认噪声真注入了 |
 
-前提：F1/precision/recall/cost/分解列 也得从 info key 读全（否则连 `ep_return_true` 都算不出）。
+前提不变：F1/precision/recall/cost/分解列（原生 schema）仍须从 info key 读全。
 
 ### 15.5 Headline + gotchas
 
-- **headline 用 F1**（noise-immune、读物理、与库/噪声无关）；reward 任务的 return 用 `ep_return_true`。
+- **headline 用 F1**（noise-immune、读物理、与库/噪声无关）；**reward 指标 = noisy 实收 `ep_return`**（与 RG 一致，§14.6；`ep_return_true` 仅诊断用）。
 - env **不产 `info["episode"]`**——库若依赖它需自挂 `RecordEpisodeStatistics` / `Monitor`。
 - 向量化 env 下 terminal info 在 `info["final_info"]`。
 - 真值（F1/cost/分解）是**环境层量**（`info` key，见 §14），库无关——写不写进 CSV 取决于库自己的 logger。**用路 A（挂 SafeRecord）最稳。**
 
-一句话：**训练侧啥都不用改（噪声在 env 里）；eval 侧只要 (1) 经 `make(mode="eval")` 建 env、(2) 挂 `SafeRecordEpisodeStatistics`（或自写时补齐 `ep_return_true` + `eval_noise_scale` + noise 列并 schema-lock），headline 看 F1，就能产出 robust-comparable 的结果。**
+一句话：**训练侧啥都不用改（噪声在 env 里）；eval 侧只要 (1) 经 `make(mode="eval")` 建 env、(2) 挂 `SafeRecordEpisodeStatistics`（或自写时补齐 `eval_noise_scale` 并 schema-lock；clean 相关列可省略），headline 看 F1、reward 看 noisy 实收，就能产出 robust-comparable 的结果。**
 
 ---
 
