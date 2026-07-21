@@ -26,7 +26,7 @@ gym layer (OmniPiano modular wrappers):
     → MetricsWrapper           # task reward terms + episode-end musical metrics → info
     → SafetyWrapper            # constraint costs → info
     → RobustWrapper            # action noise (gym layer) + obs noise reporting
-    → [SafeRecordEpisodeStatistics if mode == "eval"]
+    → [SafeRecordEpisodeStatistics if mode == "eval" and log_dir set]
 
 See `examples/run_sb3_template.py` for a typical SB3 caller.
 """
@@ -165,7 +165,17 @@ def register(id: str, **kwargs):
         id: Unique task identifier, e.g. "OmniPiano-ForElise-WristLimit-v0".
         **kwargs: Fields of TaskSpec (base_env_name, safety_config,
             robust_config, task_config, env_config, hand_specs).
+
+    Raises:
+        ValueError: if ``id`` is already registered — a duplicate would
+            silently shadow the earlier registration, which is the most
+            likely failure mode of the bulk registrations in
+            ``omnipiano/envs/__init__.py``.
     """
+    if id in _registry:
+        raise ValueError(
+            f"register(): duplicate env id {id!r} — already registered"
+        )
     _registry[id] = TaskSpec(**kwargs)
 
 
@@ -221,6 +231,15 @@ def make(
         at episode termination also ``episode_task/*`` and
         ``episode_safety/*``.
     """
+    # ------------------------------------------------------------------
+    # 0. Mode validation — a typo like mode="test" would otherwise be
+    #    silently treated as train (scale 1.0, no eval CSV).
+    # ------------------------------------------------------------------
+    if mode not in ("train", "eval"):
+        raise ValueError(
+            f"make(): mode must be 'train' or 'eval', got {mode!r}"
+        )
+
     # ------------------------------------------------------------------
     # 0a. Multi-agent env_id redirect — give a clear error if the user
     #     accidentally passed a `-MA-` env id to the single-agent factory.
@@ -363,8 +382,8 @@ def make(
 
     # ------------------------------------------------------------------
     # 2. dm_env builder closure — called by the adapter at init AND on
-    #    reset(seed=X) whenever the new seed differs from the current
-    #    one.
+    #    every reset(seed=X) with a non-None seed (even an unchanged
+    #    one; see dm_env_adapter.reset()).
     #
     #    Rebuild (not in-place reseed) is required because dm_control's
     #    ``composer_utils.Environment`` fixes ``random_state`` at

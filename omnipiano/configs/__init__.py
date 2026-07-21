@@ -47,8 +47,8 @@ class RobustConfig:
       - ``eval_noise_scale=0.0``           → clean/nominal eval (post-training
         generalization)
       - values in between / >1             → robustness-curve sweep / stress
-    (Reward noise is additionally force-zeroed at eval regardless of scale —
-    see ``registration.make()``; reward perturbation is training-only.)
+    All three channels INCLUDING reward scale identically (decision 11:
+    matched at eval, never force-zeroed — see lines further below).
 
     Uniform bounds use their NATURAL parameters (Option 4a) — **no**
     std-matching conversion:
@@ -101,8 +101,10 @@ class RobustConfig:
         """Validate config integrity (raises ``ValueError`` on violation):
 
         0. noise_dist is a known value; magnitudes (std, eval_noise_scale)
-           are non-negative — fail fast rather than let a typo silently
-           produce a clean env or crash mid-episode.
+           are finite and non-negative, shifts are finite — fail fast
+           rather than let a typo silently produce a clean env or crash
+           mid-episode (NaN passes any ``< 0`` check, so finiteness must
+           be tested explicitly).
         1. Uniform bounds are finite and ordered (``low <= high``).
         2. A channel does not set fields inconsistent with ``noise_dist``
            (e.g. ``noise_dist='gaussian'`` but a ``*_noise_shift`` is
@@ -115,6 +117,11 @@ class RobustConfig:
                 f"RobustConfig: noise_dist must be one of {valid_dists}, "
                 f"got {self.noise_dist!r}"
             )
+        if not np.isfinite(self.eval_noise_scale):
+            raise ValueError(
+                f"RobustConfig: eval_noise_scale must be finite, "
+                f"got {self.eval_noise_scale}"
+            )
         if self.eval_noise_scale < 0.0:
             raise ValueError(
                 f"RobustConfig: eval_noise_scale must be >= 0, "
@@ -122,10 +129,22 @@ class RobustConfig:
             )
         for ch in ("action", "obs", "reward"):
             std = getattr(self, f"{ch}_noise_std")
+            if not np.isfinite(std):
+                raise ValueError(
+                    f"RobustConfig: {ch}_noise_std must be finite, got {std}"
+                )
             if std < 0.0:
                 raise ValueError(
                     f"RobustConfig: {ch}_noise_std must be >= 0 (standard "
                     f"deviation), got {std}"
+                )
+            # Shift may legitimately be negative (e.g. A-Shift-N15 = -0.15),
+            # so only finiteness is enforced.
+            shift = getattr(self, f"{ch}_noise_shift")
+            if not np.isfinite(shift):
+                raise ValueError(
+                    f"RobustConfig: {ch}_noise_shift must be finite, "
+                    f"got {shift}"
                 )
 
         for ch in ("action", "obs", "reward"):
@@ -347,12 +366,6 @@ class BenchmarkEnvConfig:
     # OmniPiano-only — train.py hardcodes True in get_env(), not surfaced
     # as an Args field; OmniPiano elevates to config for symmetry.
     change_color_on_activation: bool = True               # OmniPiano-only (train.py hardcoded True)
-
-@dataclass
-class LoggingConfig:
-    """Configuration for logging."""
-    log_dir: Optional[str] = None
-    log_split: str = "train"
 
 @dataclass
 class BenchmarkProtocolConfig:

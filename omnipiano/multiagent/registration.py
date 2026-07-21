@@ -18,7 +18,6 @@ import numpy as np
 from omnipiano.configs import (
     BenchmarkEnvConfig,
     RobustConfig,
-    SafetyConfig,
     TaskVariantConfig,
 )
 from omnipiano.multiagent.assignment import (
@@ -144,6 +143,33 @@ def make_parallel(
             f"MA env {env_id!r} references unknown SA env id {ma_spec.sa_env_id!r}."
         )
     sa_spec = _sa_registry[ma_spec.sa_env_id]
+
+    # Fail fast: the MA chain has no gym-layer SafetyWrapper / RobustWrapper
+    # equivalent (those are SA-only), so an SA env carrying safety
+    # constraints or action/reward robust channels would train with its
+    # costs / noise SILENTLY dropped — plausible-but-wrong benchmark data.
+    # Obs noise is allowed: DmEnvObsNoiseWrapper lives in the dm_env chain
+    # this factory does build — though with raw train-mode config (no
+    # mode/eval_noise_scale semantics; the MA/SA chain-parity refactor
+    # tracked as MA-review item 6 will lift this guard).
+    if sa_spec.safety_config is not None and sa_spec.safety_config.constraints:
+        raise ValueError(
+            f"MA env {env_id!r}: underlying SA env {ma_spec.sa_env_id!r} has "
+            f"active safety constraints, but the MA chain has no "
+            f"SafetyWrapper — costs would be silently dropped. Register the "
+            f"MA env over a constraint-free SA env instead."
+        )
+    if sa_spec.robust_config is not None:
+        for _ch in ("action", "reward"):
+            if sa_spec.robust_config.is_channel_active(_ch):
+                raise ValueError(
+                    f"MA env {env_id!r}: underlying SA env "
+                    f"{ma_spec.sa_env_id!r} has an active {_ch!r} robust "
+                    f"channel, but the MA chain has no RobustWrapper — the "
+                    f"noise would silently never be injected. Only clean or "
+                    f"obs-noise SA envs are supported."
+                )
+
     hand_specs = sa_spec.hand_specs
     if hand_specs is None:
         raise ValueError(
@@ -185,7 +211,6 @@ def make_parallel(
 
     base_env_name = sa_spec.base_env_name
     robust_config = sa_spec.robust_config or RobustConfig()
-    safety_config = sa_spec.safety_config or SafetyConfig()
     task_config = sa_spec.task_config or TaskVariantConfig()
     env_config = sa_spec.env_config or BenchmarkEnvConfig()
 

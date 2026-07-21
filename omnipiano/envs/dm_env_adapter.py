@@ -58,8 +58,9 @@ class DmEnvToGymnasium(gym.Env):
     Args:
         env_builder: Callable ``(seed: Optional[int]) -> dm_env.Environment``
             that constructs and returns the full dm_env wrapper chain.
-            Called once at adapter init and again on ``reset(seed=X)``
-            when ``X`` differs from the current seed.
+            Called once at adapter init and again on every ``reset(seed=X)``
+            with a non-None seed (even an unchanged one — rebuilding is
+            the only way to rewind the chain-internal RNGs; see reset()).
         seed: Initial seed for the dm_env; passed to ``env_builder(seed)``.
 
     Assumptions about the wrapped chain:
@@ -80,7 +81,6 @@ class DmEnvToGymnasium(gym.Env):
     ) -> None:
         self._builder = env_builder
         self._env = env_builder(seed)
-        self._current_seed = seed
 
         act_spec = self._env.action_spec()
         obs_spec = self._env.observation_spec()
@@ -125,8 +125,8 @@ class DmEnvToGymnasium(gym.Env):
         #       - DmEnvObsNoiseWrapper._rng (set in __init__; advances
         #         per step, never rewound).
         #    The only way to rewind both is to rebuild the chain. So:
-        #    any non-None seed triggers a rebuild, even if it matches
-        #    self._current_seed. Without this, reset(seed=42) called
+        #    any non-None seed triggers a rebuild, even one identical to
+        #    the previous seed. Without this, reset(seed=42) called
         #    twice would give different obs_noise realizations on
         #    ObservationRobust-v0 tasks, violating gymnasium spec.
         #
@@ -136,7 +136,6 @@ class DmEnvToGymnasium(gym.Env):
         #    in the training loop.
         if seed is not None:
             self._env = self._builder(seed)
-            self._current_seed = seed
 
         ts = self._env.reset()
         return np.asarray(ts.observation, dtype=np.float32), {}

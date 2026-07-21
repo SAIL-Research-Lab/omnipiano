@@ -123,7 +123,7 @@ register(
 #
 # Cost = 1 per step if any hand-hand geom contact exists, else 0.
 # ---------------------------------------------------------------------------
-# ClairDeLune: RH G#3-G#5, LH G#2-A4, overlap=13 semitones (597 steps).
+# ClairDeLune: RH G#3-G#5, LH G#2-A4, overlap=13 semitones (588 steps).
 # Debussy's gentle dynamics with hands in overlapping registers make collision
 # avoidance a subtle but persistent challenge.
 #
@@ -268,7 +268,7 @@ register(
 #
 # No safety cost.  Tests policy robustness under sensor noise (std=0.01).
 # ---------------------------------------------------------------------------
-# ClairDeLune: soft dynamics require precise position sensing (597 steps).
+# ClairDeLune: soft dynamics require precise position sensing (588 steps).
 # Observation noise degrades the agent's ability to judge finger-to-key
 # distance, which is critical for the gentle, controlled touch this piece
 # demands.
@@ -631,7 +631,7 @@ register(
 )
 
 # ===========================================================================
-# Task Type 10: Three-Hand Pianist (morphological prototype)
+# Task Type 11: Three-Hand Pianist (morphological prototype)
 #
 # Definition:
 #     A third hand is attached near the keyboard center alongside the canonical
@@ -719,7 +719,7 @@ register(
 )
 
 # ForElise: 3-hand pedagogical NEGATIVE EXAMPLE — registered as Prototype
-# (no StaticPartition variant — see Task 10b).
+# (no StaticPartition variant — see Task 11b).
 #   B0=10.5% / B1=79.1% / B2=10.4%   (min_bkt=10.40%)
 #   geq2=24.06%, eq3=0%   poly_mean=1.88, length=399 steps
 # Genuinely 2-hand repertoire (79% of notes in the middle bucket); under
@@ -791,7 +791,7 @@ register(
 )
 
 # ===========================================================================
-# Task 10b: Level-1 (static partition) variants of the 3-hand morphology.
+# Task 11b: Level-1 (static partition) variants of the 3-hand morphology.
 #
 # Identical to the 3-hand Prototype registrations above (same OT reward,
 # same hand attach positions, same MIDI) EXCEPT each hand carries a
@@ -828,7 +828,7 @@ register(
 # ===========================================================================
 
 
-def _three_hand_partition_specs(*, group_override=None):
+def _three_hand_partition_specs():
     """Inline 3-hand partition specs (29/30/29 keys, positions at
     bucket centers per the N-hand morphology axiom; spec order = spatial
     left→right per the N-hand action-layout axiom for N≥3)."""

@@ -29,14 +29,15 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
     .env_util.make_vec_env`` auto-wraps each sub-env in ``Monitor``
     before we attach this wrapper, so both signals coexist. But any
     handwritten training loop that does ``omnipiano.make(env_id,
-    log_dir=..., log_split="eval")`` and skips ``Monitor`` will get a
+    log_dir=..., mode="eval")`` and skips ``Monitor`` will get a
     CSV but no ``info["episode"]``, silently breaking downstream
     ``EvalCallback``-style code.
 
     Activation
     ----------
     Attached only when ``omnipiano.make()`` is called with
-    ``log_split == "eval"`` (see ``omnipiano/envs/registration.py``).
+    ``mode == "eval"`` AND a ``log_dir``
+    (see ``omnipiano/envs/registration.py``).
     Used by the SB3 baseline templates' eval_env construction; not
     attached on training envs or on OmniSafe runs (OmniSafe eval CSVs
     are produced post-hoc by ``examples/checkpoint_replay_eval.py``).

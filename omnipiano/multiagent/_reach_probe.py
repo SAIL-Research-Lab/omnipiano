@@ -52,16 +52,17 @@ from omnipiano.envs.robopianist.music import midi_file
 from omnipiano.tasks.hand_spec import HandSpec, key_index_to_y
 from robopianist.models.piano import piano_constants as piano_consts
 
-# Imported here only — avoid pulling heavy proto at module load if probe never runs.
+# Module-level import; light-weight because this module itself is only
+# imported lazily (by assignment.compute_agent_reach) when the probe runs.
 try:
     from note_seq import music_pb2
 except ImportError:  # pragma: no cover — note_seq is a hard dep of robopianist
     music_pb2 = None  # type: ignore
 
 
-# Force ctrl values used to push forearm_tx to its clamp extremes. dm_control
-# clips ctrl to the actuator's ctrlrange — passing ±5 deliberately overshoots
-# the typical [−0.5, 0.5] forearm range so the joint pegs against its limit.
+# Direction sentinel for pinning forearm_tx at its clamp extremes. Only the
+# SIGN is ever used (the joint is pinned by direct qpos writes, not ctrl);
+# the magnitude is irrelevant.
 _FOREARM_PUSH_CTRL = 5.0
 
 # Number of env.step() calls between qpos pinning and reading fingertips —

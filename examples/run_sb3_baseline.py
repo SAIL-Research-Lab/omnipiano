@@ -6,9 +6,9 @@ table; per-algorithm tuning is intentionally NOT applied here.
 
 Usage
 -----
-    python examples/run_baseline.py --algo sac --seed 0
-    python examples/run_baseline.py --algo ppo --seed 1
-    python examples/run_baseline.py --algo tqc --seed 2
+    python examples/run_sb3_baseline.py --algo sac --seed 0
+    python examples/run_sb3_baseline.py --algo ppo --seed 1
+    python examples/run_sb3_baseline.py --algo tqc --seed 2
 
 What is held identical across algos
 -----------------------------------
@@ -20,7 +20,8 @@ What differs per algo (deliberately — these are the library defaults)
 - PPO: on-policy, defaults to ``n_envs=16`` on this host (= physical core
   count of the 16C/32T box; PPO needs parallel envs for diverse advantage
   estimates; HT-doubled n_envs=32 is slower due to cache contention).
-- SAC / TQC: off-policy, default ``n_envs=1`` (replay-buffer based).
+- SAC: off-policy, ``n_envs=24`` (2026-06-12 calibration, see registry
+  comment); TQC: off-policy, default ``n_envs=1`` (replay-buffer based).
 - All other hparams (lr, gamma, batch_size, net_arch, ent_coef, ...) are
   whatever the installed sb3 / sb3-contrib version ships as defaults.
 
@@ -128,8 +129,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--n-envs",
         type=int,
         default=None,
-        help="Override library-default n_envs (PPO=8, SAC/TQC=1). Off-policy "
-        "algos: changing this affects sample efficiency interpretation.",
+        help="Override library-default n_envs (PPO=16, SAC=24, TQC=1). "
+        "Off-policy algos: changing this affects sample efficiency "
+        "interpretation.",
     )
     p.add_argument(
         "--smoke-test",

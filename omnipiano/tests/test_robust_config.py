@@ -182,3 +182,27 @@ def test_negative_std_raises(ch):
 def test_negative_eval_noise_scale_raises():
     with pytest.raises(ValueError, match="eval_noise_scale must be >= 0"):
         RobustConfig(eval_noise_scale=-1.0)
+
+
+# --------------------------------------------------------------------------
+# __post_init__ — finiteness (NaN passes any `< 0` check, so it needs its
+# own gate; a NaN magnitude would otherwise poison training mid-episode)
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("ch", ["action", "obs", "reward"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_nonfinite_std_raises(ch, bad):
+    with pytest.raises(ValueError, match="noise_std must be finite"):
+        RobustConfig(**{f"{ch}_noise_std": bad})
+
+
+@pytest.mark.parametrize("ch", ["action", "obs", "reward"])
+@pytest.mark.parametrize("bad", [float("nan"), float("-inf")])
+def test_nonfinite_shift_raises(ch, bad):
+    with pytest.raises(ValueError, match="noise_shift must be finite"):
+        RobustConfig(noise_dist="shift", **{f"{ch}_noise_shift": bad})
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_nonfinite_eval_noise_scale_raises(bad):
+    with pytest.raises(ValueError, match="eval_noise_scale must be finite"):
+        RobustConfig(eval_noise_scale=bad)

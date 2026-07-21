@@ -85,14 +85,16 @@ def _plot(series, out_path):
         s, m, sd = aggregate(rows, _F1_COL)
         if len(s):
             ax_f1.errorbar(s, m, yerr=sd, marker="o", capsize=3, label=label)
-        s, m, sd = aggregate(rows, _RETURN_COL)
+        line = None  # bound per series; a stale binding would steal the
+        s, m, sd = aggregate(rows, _RETURN_COL)  # previous series' color
         if len(s):
             line = ax_ret.errorbar(s, m, yerr=sd, marker="o", capsize=3,
                                    label=f"{label} (received)")
         st, mt, _ = aggregate(rows, _RETURN_TRUE_COL)
         if len(st):
+            color_kw = {"color": line[0].get_color()} if line is not None else {}
             ax_ret.plot(st, mt, marker="x", linestyle="--",
-                        color=line[0].get_color(), label=f"{label} (true)")
+                        label=f"{label} (true)", **color_kw)
 
     ax_f1.set(xlabel="eval_noise_scale", ylabel="F1", title="F1 robustness")
     ax_ret.set(xlabel="eval_noise_scale", ylabel="ep_return",

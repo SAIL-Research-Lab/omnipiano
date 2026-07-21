@@ -1,11 +1,12 @@
-"""Phase 0 · S3 gate — mode rename + eval_noise_scale plumbing + reward force-zero.
+"""Phase 0 · S3 gate — mode rename + eval_noise_scale plumbing (matched eval).
 
-Verifies registration.make()'s effective-config logic (§0.2 / §0.6.3):
+Verifies registration.make()'s effective-config logic (§0.2 / §0.6.3,
+decisions 10/11):
   - `log_split` param is renamed to `mode` (old kwarg now rejected);
   - at mode="eval", all magnitude fields are multiplied by eval_noise_scale;
-    eval_noise_scale=0.0 (default) => clean eval;
-  - reward noise is force-zeroed at eval regardless of scale, and a warning
-    is emitted when a reward-channel task is evaluated with nonzero scale;
+    eval_noise_scale=1.0 (default) => matched eval (same noise as training);
+  - reward is treated like action/obs: scaled by eval_noise_scale, NOT
+    force-zeroed, and no warning is emitted (decision 11);
   - uniform bounds scale correctly.
 
 Effective config is read off the constructed RobustWrapper's `.config`.

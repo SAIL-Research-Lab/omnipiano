@@ -1,18 +1,20 @@
-"""dm_env-layer per-key Gaussian observation noise injection.
+"""dm_env-layer per-key observation noise injection (gaussian/uniform/shift).
 
 This wrapper replaces the per-key obs noise that previously lived in
 `omnipiano/wrappers/robust_wrapper.py`. The move was forced by the
 paper-chain refactor: with `ConcatObservationWrapper` flattening the
 Dict observation into a single ndarray before reaching the gym layer,
 per-key selectivity is only possible BEFORE that flatten — i.e., at the
-dm_env layer.
+dm_env layer. The distribution and magnitude come from ``RobustConfig``
+(``sample_noise("obs", ...)``), so all three distributions are handled
+by the same code path.
 
 Usage (within `omnipiano.envs.registration.make()`):
 
-    if robust_config.obs_noise_std > 0:
+    if effective_robust_config.is_channel_active("obs"):
         dm_env = DmEnvObsNoiseWrapper(
             dm_env,
-            noise_std=robust_config.obs_noise_std,
+            robust_config=effective_robust_config,
             seed=...,
         )
     dm_env = ConcatObservationWrapper(dm_env)

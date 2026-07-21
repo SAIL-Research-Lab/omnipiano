@@ -123,7 +123,8 @@ class HandSpec:
             controls observation keys like ``{name}_shadow_hand/joints_pos``.
             Canonical convention: "rh" / "lh" for the default pair (preserves
             the original RoboPianist obs-key contract), "rh_c" for a third
-            center hand, "rh_t1" / "lh_b1" for future 4-hand bimanual splits.
+            center hand, "lh_b"/"rh_b"/"lh_t"/"rh_t" for the 4-hand
+            bimanual split (see default_four_hand_specs).
             Must be unique across all specs in one task.
         side: Which body-side XML model to load (RIGHT or LEFT). Determines the
             MJCF prefix ("rh_" / "lh_") and the hand geometry.

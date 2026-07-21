@@ -19,8 +19,8 @@ Produces, under ``<log_dir>/``:
 These artefacts let ``tools/plot_eval_metrics.py`` plot OmniSafe and SB3
 learning curves on the same axes without code changes.
 
-Cost: ~5 min for a 5M PPOLag run (100 ckpts × 1 ep × 600 steps @ ~400
-FPS on CPU; num_eval_eps=1 default). Output is idempotent — re-running
+Cost: ~5 min for a 5M PPOLag run (100 ckpts × 1 ep × ~720 steps @ ~400
+FPS on CPU; num_eval_eps=1 default — same heuristic as the ETA print). Output is idempotent — re-running
 overwrites both files.
 
 Usage
@@ -43,8 +43,11 @@ import time
 import uuid
 from typing import Any, Dict, List, Tuple
 
-# SB3 convention: eval RNG decoupled from training by a large offset.
-# Matches ``examples/run_baseline.py:_final_eval`` (``eval_seed + ep * 10000``).
+# Eval RNG decoupled from training by a large offset:
+# replay seed = train_seed + EVAL_SEED_OFFSET + ep_i. NOTE: this is NOT
+# the SB3 templates' scheme (run_sb3_baseline.py:_final_eval uses
+# eval_seed = seed + n_envs + 1, then eval_seed + ep*10_000) — eval
+# episodes are not draw-matched across the two CSV families.
 EVAL_SEED_OFFSET = 10_000
 
 os.environ.setdefault("MUJOCO_GL", "egl")
@@ -164,8 +167,8 @@ def _replay_one_checkpoint(
     Each episode resets with ``seed = train_seed + eval_seed_offset + ep_i``.
     Using the same anchor seed across all checkpoints in a run means the
     learning curve is not noised by env init drift — only policy evolution
-    can move the eval metric. The +offset matches SB3 convention
-    (``run_baseline.py:_final_eval`` uses ``eval_seed + ep * 10_000``).
+    can move the eval metric. (See the ``EVAL_SEED_OFFSET`` note at module
+    top: the SB3 templates use a different per-episode scheme.)
 
     Returns (returns, costs, lengths, terminal_infos).
     """

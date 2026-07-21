@@ -1,9 +1,10 @@
 """OmniSafe (PPOLag by default) template for OmniPiano.
 
-Status: scaffold. The structural pieces — CMDP adapter,
-``@env_register`` hookup, ``BenchmarkProtocolConfig`` wiring, Evaluator
-call, ``eval_summary.json`` dump — are all in place and CLI-driven
-(parallel to ``examples/run_sb3_*_template.py``). Smoke-testing this
+Status: production entry point for the OmniSafe baseline runs (PPOLag).
+The structural pieces — CMDP adapter, ``@env_register`` hookup,
+``BenchmarkProtocolConfig`` wiring, seeded final eval,
+``eval_summary.json`` dump — are all in place and CLI-driven
+(parallel to ``examples/run_sb3_*_template.py``). Running this
 template requires ``pip install omnisafe``; the dependency is
 intentionally NOT declared in OmniPiano's ``setup.py`` because OmniSafe
 is one optional backend among several.
@@ -24,8 +25,12 @@ Demonstrates how an OmniSafe user plugs into OmniPiano:
      hyperparameters (``cost_limit``, ``lagrangian_multiplier_init``,
      ``lambda_lr``, ...) come from CLI flags with paper PPOLag
      defaults — same pattern as the SB3 templates.
-  3. Final benchmark eval goes through ``omnisafe.Evaluator.evaluate``;
-     see ``Limitations`` below.
+  3. Final benchmark eval uses ``omnisafe.Evaluator`` only for
+     ``load_saved`` (env + actor reconstruction); the rollout itself is
+     a bespoke seeded loop in ``_final_eval`` that also captures
+     terminal info dicts — see ``Evaluator caveats`` below and
+     ``_final_eval``'s docstring for why ``Evaluator.evaluate`` is
+     bypassed.
 
 CLI
 ---
@@ -69,16 +74,13 @@ OmniPiano-side glue
   versions of this template wrapped it; the wrap is now redundant given
   OmniPiano's paper-chain layout).
 
-Limitations
------------
-``omnisafe.Evaluator.evaluate()`` returns only ``(rewards, costs)`` — it
-does NOT surface terminal ``info`` dicts, so ``episode_task/f1`` and
-related musical metrics are NOT captured by ``_final_eval`` here. To
-capture them, either subclass ``Evaluator`` and override its rollout to
-stash ``info`` dicts, or do a separate eval loop using
-``Evaluator._actor`` directly against a fresh OmniPiano gym env. Both
-are deferred until the first real OmniSafe baseline run — flagged
-``TODO`` below.
+Evaluator caveats
+-----------------
+``omnisafe.Evaluator.evaluate()`` returns only ``(rewards, costs)`` —
+it neither seeds its resets nor surfaces terminal ``info`` dicts. That
+is exactly why ``_final_eval`` drives its own seeded rollout loop after
+``load_saved``: it captures terminal infos (``episode_task/f1`` and
+friends) and summarizes every scalar key into ``eval_summary.json``.
 """
 from __future__ import annotations
 
@@ -397,10 +399,13 @@ def _final_eval(save_dir: str, num_eval_eps: int, train_seed: int) -> Dict[str, 
     if env is None or actor is None:
         raise RuntimeError(f"Evaluator.load_saved did not initialize env+actor for {pt_files[-1]}")
 
-    # SB3 convention: eval seed = train_seed + 10_000 + ep_i. Decouples
-    # eval RNG from training RNG state; per-ep offset gives 10 distinct
-    # init-pose realizations even though OmniPiano's default config
-    # (`_randomize_hand_positions=False`) makes init pose deterministic.
+    # eval seed = train_seed + 10_000 + ep_i. Decouples eval RNG from
+    # training RNG state; per-ep offset gives distinct realizations even
+    # though OmniPiano's default (`_randomize_hand_positions=False`)
+    # makes init pose deterministic. NOTE: the SB3 templates use a
+    # different scheme (eval_seed = seed + n_envs + 1, then
+    # eval_seed + ep*10_000) — eval episodes are not draw-matched
+    # across the two families.
     eval_seed_offset = 10_000
 
     returns: List[float] = []
@@ -493,6 +498,9 @@ def main():
         existing = [
             d for d in os.listdir(logs_root)
             if d.startswith(args.experiment_name + "_")
+            # Only numeric run suffixes count; sibling dirs like
+            # "<name>_smoke" would crash int() below otherwise.
+            and d.rsplit("_", 1)[-1].isdigit()
         ]
         next_run_id = (
             max(int(d.rsplit("_", 1)[-1]) for d in existing) + 1

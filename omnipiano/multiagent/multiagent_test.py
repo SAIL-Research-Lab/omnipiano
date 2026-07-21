@@ -200,7 +200,7 @@ class TestThreeHandLayoutRegression:
         sz_lo = max(sec_lo, ts_lo)
         sz_hi = min(sec_hi, ts_hi)
         sz_width = sz_hi - sz_lo + 1
-        assert sz_width >= 8, f"3-hand shared zone width {sz_width} too narrow (expect ≥10)"
+        assert sz_width >= 8, f"3-hand shared zone width {sz_width} too narrow (expect ≥8)"
 
     def test_per_agent_clamp_secondo_hands_share_joint_range_three_hand(self) -> None:
         """Plan § 2.2 under 3-hand: secondo's lh and rh_c must share forearm_tx joint.range."""
@@ -559,4 +559,44 @@ class TestPlanInvariant:
         sz_lo = max(secondo_reach[0], primo_reach[0])
         sz_hi = min(secondo_reach[1], primo_reach[1])
         sz_width = sz_hi - sz_lo + 1
-        assert sz_width >= 2, f"shared zone width {sz_width} too narrow (expect ≥4)"
+        assert sz_width >= 2, f"shared zone width {sz_width} too narrow (expect ≥2)"
+
+
+# ---------------------------------------------------------------------------
+# make_parallel guard — SA envs carrying safety constraints or action/reward
+# robust channels are rejected (the MA chain has no gym-layer Safety/Robust
+# equivalent; silently dropping them would corrupt benchmark data). Obs-noise
+# SA envs remain allowed (DmEnvObsNoiseWrapper is dm_env-layer).
+# ---------------------------------------------------------------------------
+def test_make_parallel_rejects_safety_sa_env():
+    from omnipiano.multiagent import registration as ma_reg
+
+    ma_id = "OmniPianoTest-MA-GuardSafety-v0"
+    if ma_id not in ma_reg._ma_registry:
+        ma_reg.register_parallel(
+            id=ma_id,
+            sa_env_id="OmniPiano-ClairDeLune-CollisionSafe-v0",
+            morphology="ThreeHand",
+        )
+    try:
+        with pytest.raises(ValueError, match="active safety constraints"):
+            make_parallel(ma_id)
+    finally:
+        ma_reg._ma_registry.pop(ma_id, None)
+
+
+def test_make_parallel_rejects_action_robust_sa_env():
+    from omnipiano.multiagent import registration as ma_reg
+
+    ma_id = "OmniPianoTest-MA-GuardRobustA-v0"
+    if ma_id not in ma_reg._ma_registry:
+        ma_reg.register_parallel(
+            id=ma_id,
+            sa_env_id="OmniPiano-ClairDeLune-A-Gauss-P05-v0",
+            morphology="ThreeHand",
+        )
+    try:
+        with pytest.raises(ValueError, match="robust channel"):
+            make_parallel(ma_id)
+    finally:
+        ma_reg._ma_registry.pop(ma_id, None)

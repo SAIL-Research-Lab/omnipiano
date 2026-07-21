@@ -7,7 +7,7 @@ This package wraps the registered single-agent N-hand envs into PettingZoo
 
 Public entrypoints:
     make_parallel(env_id, **kwargs) → pettingzoo.ParallelEnv
-    register_parallel(id, sa_env_id, morphology, **kwargs) → registers an MA env id
+    register_parallel(id, *, sa_env_id, morphology)        → registers an MA env id
     AGENT_ASSIGNMENTS                                       → morphology → agent layout
 """
 

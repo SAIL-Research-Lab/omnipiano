@@ -140,3 +140,33 @@ def test_smoke_make_reset():
         assert np.all(np.isfinite(obs))
     finally:
         env.close()
+
+
+# --------------------------------------------------------------------------
+# Registry hygiene — duplicate ids rejected, make() validates mode
+# --------------------------------------------------------------------------
+def test_duplicate_register_raises():
+    # Silent overwrite is the most likely failure mode of the bulk
+    # registrations in envs/__init__.py; register() must reject it.
+    dup_id = "OmniPianoTest-DupCheck-v0"
+    if dup_id not in registration._registry:
+        registration.register(
+            id=dup_id,
+            base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+            robust_config=RobustConfig(),
+        )
+    try:
+        with pytest.raises(ValueError, match="duplicate env id"):
+            registration.register(
+                id=dup_id,
+                base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+                robust_config=RobustConfig(),
+            )
+    finally:
+        registration._registry.pop(dup_id, None)
+
+
+def test_make_invalid_mode_raises():
+    # mode="test" must not silently behave as train (scale 1.0, no CSV).
+    with pytest.raises(ValueError, match="mode must be 'train' or 'eval'"):
+        registration.make(f"{_PREFIX}Clean-v0", mode="test")

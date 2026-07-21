@@ -33,7 +33,7 @@ import json
 import os
 from typing import Any, Dict, List, Tuple
 
-os.environ["MUJOCO_GL"] = "egl"
+os.environ.setdefault("MUJOCO_GL", "egl")
 
 import numpy as np
 from stable_baselines3 import SAC
@@ -70,7 +70,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--smoke-test",
         action="store_true",
         help="Tiny budget for pipeline validation only (NOT a benchmark result). "
-        "Forces total_timesteps=2M and num_eval_eps=1.",
+        "Forces total_timesteps=20k and num_eval_eps=1.",
     )
 
     # --- protocol ---
@@ -184,7 +184,7 @@ def main():
     args = _build_arg_parser().parse_args()
 
     if args.smoke_test:
-        args.total_steps = 2_000_000
+        args.total_steps = 20_000
         args.num_eval_eps = 1
 
     logs_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
