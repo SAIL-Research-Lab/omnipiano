@@ -1868,6 +1868,8 @@ Phase 1 获批后：
 
 ### 15.3 Eval 记录 —— 两条路
 
+> **发布定位（2026-07-21 用户决定）**：release 前写用户使用文档时**只写路 A**（`make(mode="eval", log_dir=…)` 自动挂 SafeRecord，零步骤）。路 B（自写 CSV + schema-lock）是**开发阶段内部资料**——它定义 schema 契约，供我们自己和未来深度集成场景使用，不进 README / 用户教程。
+
 **A（最省事，推荐）**：给 eval env 传 `log_dir` → make() 自动挂 `SafeRecordEpisodeStatistics` → **所有列（含 `ep_return_true` / `eval_noise_scale` / `ep_noise_*`）免费写好**，新库啥都不用做。
 ```python
 env = omnipiano.make(env_id, mode="eval", log_dir=my_dir)   # SafeRecord 自动挂
