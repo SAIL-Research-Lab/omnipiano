@@ -7,9 +7,9 @@ Verifies (§5.1 / §6):
     set, the other two channels 0) and carries the right distribution/level;
   - level is the natural parameter (Gaussian σ / Uniform ±half-range / Shift
     constant), no cross-dist normalization;
-  - eval_noise_scale == 1.0 (matched-eval default, decisions 10/11) — NOT the
-    stale 0.0 in the design-doc §5.1 snippet;
   - a representative env constructs + resets (smoke).
+  (eval_noise_scale is a make() kwarg since 2026-07-21, no longer a
+  registration property — matched-eval default tested elsewhere.)
 """
 import re
 
@@ -107,15 +107,10 @@ def test_shift_configs(letter):
             assert getattr(cfg, f"{oc}_noise_shift") == 0.0
 
 
-# --------------------------------------------------------------------------
-# Matched-eval default (decisions 10/11): eval_noise_scale == 1.0, NOT 0.0
-# --------------------------------------------------------------------------
-def test_all_robust_ids_matched_eval_default():
-    for i in _robust_ids():
-        cfg = registration._registry[i].robust_config
-        assert cfg.eval_noise_scale == 1.0, (
-            f"{i} has eval_noise_scale={cfg.eval_noise_scale} (expected 1.0 "
-            f"matched default; the doc §5.1 snippet's 0.0 is stale)")
+# (Matched-eval default is no longer a per-registration property:
+# eval_noise_scale left RobustConfig on 2026-07-21 and is a make() kwarg
+# defaulting to 1.0 — covered by test_eval_noise_scale_override.py /
+# test_robust_eval_scale.py.)
 
 
 def test_clean_baseline_all_zero():

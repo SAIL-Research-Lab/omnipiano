@@ -375,7 +375,7 @@ def make(env_name, mode="train", **kwargs):
 
 `replace()` 来自 `dataclasses`（廉价不可变拷贝）。原始 `robust_config`（来自 registry）保持未修改，以便 reproducibility tracing。
 
-**已决议（§12 决议 7，2026-06-27）**：**不**向一般用户暴露公开的 `eval_noise_scale_override`（遵循与 `safety_config` 一样的"只在 registry 配置"哲学）；但**为 sweep tool 保留一个私有 kwarg `_eval_noise_scale_override=`**（带 `_` 前缀、仅 `examples/robust_eval_sweep.py` 使用），让它在**单个注册 env 上运行时覆盖 scale**，从而避免为每个 `(env × scale)` 四元组注册上百个 env。详见 §12 决议 7 与 §5.2。
+**已决议（§12 决议 7，2026-06-27；⚠️ 2026-07-21 被推翻——见决议 7 更新）**：~~不向一般用户暴露公开的 `eval_noise_scale_override`~~ → 现为**公开 kwarg** `make(env_id, mode="eval", eval_noise_scale=...)`，且字段已从 RobustConfig 删除（eval scale=测量参数,非任务身份）。缺省 1.0=matched 不变。
 
 **0.3 — RobustWrapper 中加 reward noise 注入**（`omnipiano/wrappers/robust_wrapper.py`）
 
@@ -630,7 +630,7 @@ wrapper 数据流(已代码核对):
   - SB3 **`EvalCallback`**(周期性 deterministic eval,`run_sb3_baseline.py:435`)—— 其 `mean_reward` 来自 **Monitor**,写进 `evaluations.npz` / tensorboard / best_model 选择;
   - SB3 **`_final_eval`**(手写 deterministic rollout,`run_sb3_baseline.py:313`,`ep_return` 手动累加);
   - **`SafeRecordEpisodeStatistics`**(旁挂 CSV side-effect);
-  - (未来) **`examples/robust_eval_sweep.py`**(§5.2,`make(mode="eval", _eval_noise_scale_override=...)`)。
+  - (未来) **`examples/robust_eval_sweep.py`**(§5.2,`make(mode="eval", eval_noise_scale=...)`(2026-07-21 起公开 kwarg))。
 
   一旦 reward 噪声在 make() 里被置零,RobustWrapper 原样透传 reward → **无论上面哪个驱动器、在 RobustWrapper 内层还是外层累加,拿到的都是 true return**。因此 `ep_return`/`mean_reward` 都是真值,**不需要 `ep_true_return` 列、也不需要 logger 做任何 reward 特判**。
 
@@ -1368,7 +1368,7 @@ else:
     # action / obs 任务:在 eval env 自身上扫 scale grid
     for scale in noise_grid:                       # 例如 [0.0, 0.5, 1.0, 2.0, 4.0]
         eval_env = omnipiano.make(
-            env_id, mode="eval", _eval_noise_scale_override=scale)
+            env_id, mode="eval", eval_noise_scale=scale)
         metrics = replay(policy, eval_env, n_eps=N, seed_base=SEED_BASE)  # ← 同一 SEED_BASE
         write_csv_row(env_id, scale, metrics)
 ```
@@ -1649,7 +1649,10 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 6. **§5.1(c)（包含 Shift 分布）**：v1 包含 "Shift" 分布（27 个 task 而不是 18 个）—— OK 还是砍掉？
   ✅ **已决定（2026-06-27）**：**保留** Shift 分布，v1 = 27 task（+ 1 Clean = 28）。语义采用 **program-run-level 恒定 `+shift_value`**（与 Q2 决议一致），其中 `shift_value` 是 `RobustConfig.*_noise_shift` 字段（Option C.3 独立字段，**与 `*_noise_std` 无关**）。加入的成本极低（无 RNG，无 reset 逻辑），且给 paper 提供 3-way 分布 sweep 与 Robust-Gymnasium 的直接对照（RG `noise_shift` 直接对齐），值得纳入。**注**：v1 registered shift tasks 用**正值**（`shift = +level_value`），符合 RG paper 惯例；非对称/负值 shift 由 infrastructure 支持但 v1 不默认注册。
 7. **§5.2（eval scale 覆盖路径）**：允许 sweep tool 通过 `_eval_noise_scale_override=` 私有 kwarg 在 make() 时覆盖，而不是为每个 `(env × scale)` 对注册一个 env —— OK 吗？
-  ✅ **已决定（2026-06-27）**：**采用 `_eval_noise_scale_override=` 私有 kwarg** 方案（B1）。仅 `examples/robust_eval_sweep.py` 使用，不暴露给一般用户。理由：
+
+  > **⚠️ 2026-07-21 更新（与博后会议决定）**：私有 kwarg **转正为公开参数** `make(env_id, mode="eval", eval_noise_scale=...)`，同时 `eval_noise_scale` 字段**从 RobustConfig 删除**（14→13 字段）。理由：eval scale 是**测量参数**（同一 policy 在曲线不同点上测），不是实验身份（RobustConfig=训练期噪声定义=注册身份）——用户想测 2 倍就传 2.0,无需重注册任务。原"不向一般用户暴露"的立场作废;缺省 1.0=matched(决议 10/11 不变);校验(仅 eval、有限、≥0)移入 make()。以下为原决议存档。
+
+  ✅ ~~已决定（2026-06-27）~~：**采用 `_eval_noise_scale_override=` 私有 kwarg** 方案（B1）。仅 `examples/robust_eval_sweep.py` 使用，不暴露给一般用户。理由：
   - **避免 env 数爆炸**：不这样做则要注册 28 × 5 scale = 140 env
   - **eval scale 是"评估行为"**：概念上不属于"env 属性"（同一策略在不同 scale 下应有不同表现）
   - `**_` 前缀清晰标示"内部 API"**：普通用户不会误用
@@ -1864,11 +1867,9 @@ Phase 1 获批后：
 
 - 只有经 `omnipiano.make(env_id, mode="eval")` 才**自动继承 eval 语义**（按 `eval_noise_scale` 缩放，matched 默认，决议 10/11）。
 - **反例**：像 OmniSafe `checkpoint_replay` 那样用框架自己的 Evaluator 从训练 config 重建 env（**绕过 make**）→ **不继承** eval 语义（§11 deferred 记的缺口）。新库要么走 `make(mode="eval")`，要么显式复刻缩放。
-- sweep：用 `make(env_id, mode="eval", _eval_noise_scale_override=scale)`（Phase 1 实现的私有 kwarg，§12 决议 7）遍历 scale；或注册 per-scale env。
+- eval scale：用公开 kwarg `make(env_id, mode="eval", eval_noise_scale=scale)` 设定任意倍率（2026-07-21 决定:eval scale 是**测量参数**而非任务身份,已从 RobustConfig 移除并由私有 `_eval_noise_scale_override` 转正;缺省=1.0 matched,决议 10/11 协议默认不变）。sweep 直接遍历该 kwarg,**永远不要**注册 per-scale env。
 
 ### 15.3 Eval 记录 —— 两条路
-
-> **发布定位（2026-07-21 用户决定）**：release 前写用户使用文档时**只写路 A**（`make(mode="eval", log_dir=…)` 自动挂 SafeRecord，零步骤）。路 B（自写 CSV + schema-lock）是**开发阶段内部资料**——它定义 schema 契约，供我们自己和未来深度集成场景使用，不进 README / 用户教程。
 
 **A（最省事，推荐）**：给 eval env 传 `log_dir` → make() 自动挂 `SafeRecordEpisodeStatistics` → **所有列（含 `ep_return_true` / `eval_noise_scale` / `ep_noise_*`）免费写好**，新库啥都不用做。
 ```python

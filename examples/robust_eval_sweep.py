@@ -10,7 +10,7 @@ the SAME policy over a grid of eval noise magnitudes (``eval_noise_scale``) and
 produces the robustness curve's data points:
 
     for scale in scales:
-        env = make(env_id, mode="eval", _eval_noise_scale_override=scale)
+        env = make(env_id, mode="eval", eval_noise_scale=scale)
         run N deterministic episodes   # env's own SafeRecordEpisodeStatistics
                                         # writes the schema-locked per-ep CSV
     concat per-scale CSVs → robust_sweep_<env>.csv
@@ -89,7 +89,7 @@ def _run_one_scale(model, env_id, scale, scale_dir, num_eval_eps, seed_base):
         env_id,
         log_dir=scale_dir,           # → SafeRecordEpisodeStatistics attaches
         mode="eval",
-        _eval_noise_scale_override=scale,
+        eval_noise_scale=scale,
         seed=seed_base,
     )
     try:

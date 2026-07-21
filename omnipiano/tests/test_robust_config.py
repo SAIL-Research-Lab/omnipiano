@@ -34,13 +34,13 @@ def test_default_config_all_zero_gaussian():
     assert cfg.action_noise_shift == 0.0
     assert cfg.obs_noise_shift == 0.0
     assert cfg.reward_noise_shift == 0.0
-    # Meta — eval_noise_scale is a multiplier (not a magnitude); its default is
-    # 1.0 = matched eval (same noise as training), the RG-comparable default.
+    # Meta — dist selector only; eval scale is a make() kwarg (2026-07-21),
+    # not a config field.
     assert cfg.noise_dist == "gaussian"
-    assert cfg.eval_noise_scale == 1.0
 
 
-def test_exactly_14_fields():
+def test_exactly_13_fields():
+    # eval_noise_scale left the config on 2026-07-21 (make() kwarg now).
     from dataclasses import fields
     names = {f.name for f in fields(RobustConfig)}
     expected = {
@@ -49,10 +49,10 @@ def test_exactly_14_fields():
         "obs_noise_uniform_low", "obs_noise_uniform_high",
         "reward_noise_uniform_low", "reward_noise_uniform_high",
         "action_noise_shift", "obs_noise_shift", "reward_noise_shift",
-        "noise_dist", "eval_noise_scale",
+        "noise_dist",
     }
     assert names == expected, f"field set drift: {names ^ expected}"
-    assert len(names) == 14
+    assert len(names) == 13
 
 
 # --------------------------------------------------------------------------
@@ -159,11 +159,6 @@ def test_valid_shift():
     assert cfg.reward_noise_shift == 0.30
 
 
-def test_eval_noise_scale_settable():
-    cfg = RobustConfig(action_noise_std=0.05, eval_noise_scale=0.5)
-    assert cfg.eval_noise_scale == 0.5
-
-
 # --------------------------------------------------------------------------
 # __post_init__ — fail-fast validation of noise_dist + non-negative magnitudes
 # --------------------------------------------------------------------------
@@ -179,9 +174,9 @@ def test_negative_std_raises(ch):
         RobustConfig(**{f"{ch}_noise_std": -0.05})
 
 
-def test_negative_eval_noise_scale_raises():
-    with pytest.raises(ValueError, match="eval_noise_scale must be >= 0"):
-        RobustConfig(eval_noise_scale=-1.0)
+# (eval_noise_scale is no longer a RobustConfig field — 2026-07-21 decision;
+# its validation now lives in make() and is tested in
+# test_eval_noise_scale_override.py.)
 
 
 # --------------------------------------------------------------------------
@@ -202,7 +197,3 @@ def test_nonfinite_shift_raises(ch, bad):
         RobustConfig(noise_dist="shift", **{f"{ch}_noise_shift": bad})
 
 
-@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
-def test_nonfinite_eval_noise_scale_raises(bad):
-    with pytest.raises(ValueError, match="eval_noise_scale must be finite"):
-        RobustConfig(eval_noise_scale=bad)

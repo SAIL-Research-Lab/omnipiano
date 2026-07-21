@@ -33,22 +33,18 @@ class RobustConfig:
       - Uniform [low, high]: ``{action,obs,reward}_noise_uniform_{low,high}``(6)
       - Shift constant:      ``{action,obs,reward}_noise_shift``             (3)
       - Distribution knob:   ``noise_dist``                                  (1)
-      - Eval scale:          ``eval_noise_scale``                           (1)
-    Total: 14 fields. Each field name maps strictly to its distribution's
+    Total: 13 fields. Each field name maps strictly to its distribution's
     mathematical parameter, mirroring Robust-Gymnasium's ``--noise-sigma`` /
     ``--uniform-low/high`` / ``--noise-shift`` parameterization.
 
-    At training time, ``RobustWrapper`` reads (channel, noise_dist) → picks
-    the corresponding field(s). At evaluation time (via
-    ``omnipiano.make(env_name, mode="eval")``), all magnitude fields are
-    multiplied by ``eval_noise_scale``:
-      - ``eval_noise_scale=1.0`` (default) → matched eval (same noise level as
-        training) — the RG-comparable robustness number
-      - ``eval_noise_scale=0.0``           → clean/nominal eval (post-training
-        generalization)
-      - values in between / >1             → robustness-curve sweep / stress
-    All three channels INCLUDING reward scale identically (decision 11:
-    matched at eval, never force-zeroed — see lines further below).
+    This config defines the TRAINING-time noise only — it is part of the
+    registered task's identity. The eval-time noise multiplier is NOT a
+    field here (2026-07-21 decision): it is a measurement parameter, not
+    an experiment-identity parameter, and lives as a public ``make()``
+    kwarg instead — ``omnipiano.make(env_id, mode="eval",
+    eval_noise_scale=...)`` (default 1.0 = matched eval; 0.0 = clean;
+    >1 = stress). All three channels INCLUDING reward scale identically
+    (decision 11: matched at eval, never force-zeroed).
 
     Uniform bounds use their NATURAL parameters (Option 4a) — **no**
     std-matching conversion:
@@ -84,27 +80,13 @@ class RobustConfig:
     # === Distribution selector (shared across channels) ===
     noise_dist: Literal["gaussian", "uniform", "shift"] = "gaussian"
 
-    # === Eval-time noise multiplier (applied to ALL magnitude fields) ===
-    # effective eval noise = registered training noise × eval_noise_scale.
-    # DEFAULT 1.0 = matched eval (same noise level as training) — the
-    # RG-comparable robustness measurement (Robust-Gymnasium evaluates under
-    # the training-level perturbation; it has no clean-eval concept). Set to
-    # 0.0 for a clean/nominal eval (post-training generalization), or sweep
-    # {0, 0.5, 1, 2, ...} for the robustness curve. Reward is treated the same
-    # as action/obs (decision 11): matched at eval, so obs["reward"] (fed back
-    # to the policy by ObservationActionRewardWrapper) stays in the training
-    # distribution; the true (denoised) return is a separate CSV column
-    # (ep_return_true), NOT obtained by suppressing reward noise at eval.
-    eval_noise_scale: float = 1.0
-
     def __post_init__(self):
         """Validate config integrity (raises ``ValueError`` on violation):
 
-        0. noise_dist is a known value; magnitudes (std, eval_noise_scale)
-           are finite and non-negative, shifts are finite — fail fast
-           rather than let a typo silently produce a clean env or crash
-           mid-episode (NaN passes any ``< 0`` check, so finiteness must
-           be tested explicitly).
+        0. noise_dist is a known value; stds are finite and non-negative,
+           shifts are finite — fail fast rather than let a typo silently
+           produce a clean env or crash mid-episode (NaN passes any
+           ``< 0`` check, so finiteness must be tested explicitly).
         1. Uniform bounds are finite and ordered (``low <= high``).
         2. A channel does not set fields inconsistent with ``noise_dist``
            (e.g. ``noise_dist='gaussian'`` but a ``*_noise_shift`` is
@@ -116,16 +98,6 @@ class RobustConfig:
             raise ValueError(
                 f"RobustConfig: noise_dist must be one of {valid_dists}, "
                 f"got {self.noise_dist!r}"
-            )
-        if not np.isfinite(self.eval_noise_scale):
-            raise ValueError(
-                f"RobustConfig: eval_noise_scale must be finite, "
-                f"got {self.eval_noise_scale}"
-            )
-        if self.eval_noise_scale < 0.0:
-            raise ValueError(
-                f"RobustConfig: eval_noise_scale must be >= 0, "
-                f"got {self.eval_noise_scale}"
             )
         for ch in ("action", "obs", "reward"):
             std = getattr(self, f"{ch}_noise_std")

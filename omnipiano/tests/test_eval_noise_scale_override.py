@@ -1,13 +1,15 @@
-"""Phase 1 · gate — private make() kwarg `_eval_noise_scale_override` (§12 decision 7).
+"""Gate — public make() kwarg `eval_noise_scale` (§12 decision 7; promoted
+from the private `_eval_noise_scale_override` on 2026-07-21: eval scale is a
+measurement parameter, not part of the registered task identity, so it lives
+at the call site — users test any scale without registering extra ids).
 
-The robustness sweep harness scans a grid of eval noise magnitudes on ONE
-registered training env without registering ~135 extra ids. Verifies:
-  - override scales every effective magnitude field (action/obs/reward share the
-    single effective_robust_config passed to RobustWrapper);
-  - override=0.0 → clean eval (a valid override, distinct from None);
-  - override=None → falls back to the registered eval_noise_scale (=1.0 matched);
-  - override at mode="train" raises (misuse);
-  - negative override raises.
+Verifies:
+  - the kwarg scales every effective magnitude field (action/obs/reward share
+    the single effective_robust_config passed to RobustWrapper);
+  - 0.0 → clean eval (a valid value, distinct from omitted);
+  - omitted → 1.0 matched eval (protocol default, decisions 10/11);
+  - passing it at mode="train" raises (misuse);
+  - negative / non-finite values raise.
 """
 import numpy as np
 import pytest
@@ -42,33 +44,33 @@ def _cfg(env_id, **make_kw):
 # Override scales the effective magnitude
 # --------------------------------------------------------------------------
 def test_override_scales_action_std():
-    cfg = _cfg(_A, mode="eval", _eval_noise_scale_override=2.0)
+    cfg = _cfg(_A, mode="eval", eval_noise_scale=2.0)
     assert cfg.action_noise_std == pytest.approx(0.10 * 2.0)
 
 
 def test_override_scales_reward_std():
-    cfg = _cfg(_R, mode="eval", _eval_noise_scale_override=2.0)
+    cfg = _cfg(_R, mode="eval", eval_noise_scale=2.0)
     assert cfg.reward_noise_std == pytest.approx(0.30 * 2.0)
 
 
 def test_override_scales_uniform_bounds():
-    cfg = _cfg(_O, mode="eval", _eval_noise_scale_override=0.5)
+    cfg = _cfg(_O, mode="eval", eval_noise_scale=0.5)
     assert cfg.obs_noise_uniform_low == pytest.approx(-0.10 * 0.5)
     assert cfg.obs_noise_uniform_high == pytest.approx(+0.10 * 0.5)
 
 
 def test_override_zero_is_clean():
     # 0.0 is a valid override (distinct from None) → clean eval.
-    cfg = _cfg(_A, mode="eval", _eval_noise_scale_override=0.0)
+    cfg = _cfg(_A, mode="eval", eval_noise_scale=0.0)
     assert cfg.action_noise_std == 0.0
     assert not cfg.is_channel_active("action")
 
 
 # --------------------------------------------------------------------------
-# Fallback to registered eval_noise_scale when not passed
+# Omitted kwarg → matched default (1.0)
 # --------------------------------------------------------------------------
 def test_no_override_uses_matched_default():
-    # eval_noise_scale defaults to 1.0 → matched → std unchanged.
+    # Omitted eval_noise_scale → 1.0 → matched → std unchanged.
     cfg = _cfg(_A, mode="eval")
     assert cfg.action_noise_std == pytest.approx(0.10)
 
@@ -83,9 +85,17 @@ def test_train_mode_ignores_scale_field():
 # --------------------------------------------------------------------------
 def test_override_at_train_raises():
     with pytest.raises(ValueError, match="only valid with mode='eval'"):
-        registration.make(_A, mode="train", _eval_noise_scale_override=2.0)
+        registration.make(_A, mode="train", eval_noise_scale=2.0)
 
 
 def test_negative_override_raises():
     with pytest.raises(ValueError, match="must be >= 0"):
-        registration.make(_A, mode="eval", _eval_noise_scale_override=-1.0)
+        registration.make(_A, mode="eval", eval_noise_scale=-1.0)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_nonfinite_scale_raises(bad):
+    # Validation moved here from RobustConfig.__post_init__ when the field
+    # became a make() kwarg (2026-07-21).
+    with pytest.raises(ValueError, match="must be finite"):
+        registration.make(_A, mode="eval", eval_noise_scale=bad)

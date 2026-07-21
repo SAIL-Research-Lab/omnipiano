@@ -3,7 +3,7 @@
 Exercises the sweep harness end-to-end WITHOUT a trained checkpoint, using a
 dummy zero-action policy:
   - `_run_one_scale` builds the eval env via make(mode="eval",
-    _eval_noise_scale_override=scale), runs episodes, and its
+    eval_noise_scale=scale), runs episodes, and its
     SafeRecordEpisodeStatistics writes a schema-locked per-scale CSV whose
     `eval_noise_scale` column equals the requested scale and which carries the
     S6 robust columns;

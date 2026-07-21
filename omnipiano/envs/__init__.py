@@ -1192,10 +1192,10 @@ register(
 # empirical std — the 3 dists differ in empirical strength at the same P
 # (§5.1.4).
 #
-# eval semantics: eval_noise_scale defaults to 1.0 (matched eval, decisions
-# 10/11) — NOT force-zeroed, reward symmetric with action/obs. The stale
-# `eval_noise_scale=0.0` in the design-doc §5.1 code snippet predates
-# decisions 10/11; we intentionally use the RobustConfig default here.
+# eval semantics: eval_noise_scale is a make() kwarg (2026-07-21 decision,
+# not a RobustConfig field / registration property). Omitted → 1.0 matched
+# eval (decisions 10/11) — NOT force-zeroed, reward symmetric with
+# action/obs. Users pass make(id, mode="eval", eval_noise_scale=X) freely.
 # ===========================================================================
 _CLAIRDELUNE_BASE = "RoboPianist-repertoire-150-ClairDeLune-v0"
 _ROBUST_CHANNEL_LETTERS = {"action": "A", "obs": "O", "reward": "R"}
@@ -1213,7 +1213,7 @@ _ROBUST_DISTS = (("Gauss", "gaussian"), ("Uniform", "uniform"), ("Shift", "shift
 def _robust_cfg_for_task(channel: str, dist_key: str, level: float) -> RobustConfig:
     """Single-channel RobustConfig with only `dist_key`'s field(s) set to
     `level` (Option 4a: level is the natural parameter, no cross-dist
-    normalization). eval_noise_scale left at its 1.0 default (matched eval)."""
+    normalization). Training-time noise only; eval scale is a make() kwarg."""
     kwargs = {"noise_dist": dist_key}
     if dist_key == "gaussian":
         kwargs[f"{channel}_noise_std"] = level

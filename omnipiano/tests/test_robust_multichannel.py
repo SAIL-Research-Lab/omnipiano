@@ -161,7 +161,7 @@ def test_per_channel_levels_scaled_proportionally_at_eval():
     _reg("OmniPianoTest-MC-ORshift-scale-v0",
          RobustConfig(noise_dist="shift", obs_noise_shift=-0.15, reward_noise_shift=-0.50))
     env = registration.make("OmniPianoTest-MC-ORshift-scale-v0",
-                            mode="eval", _eval_noise_scale_override=0.5)
+                            mode="eval", eval_noise_scale=0.5)
     env.reset(seed=0)
     _, _, _, _, info = env.step(env.action_space.sample())
     try:
