@@ -1886,7 +1886,7 @@ env = omnipiano.make(env_id, mode="eval", log_dir=my_dir)   # SafeRecord 自动�
 | 列 | 定位 |
 |---|---|
 | **`eval_noise_scale`** | robustness 曲线定位——没它无法判断一行属于曲线哪个点。**必加** |
-| `ep_return_true`（= 分解列之和） | **可选诊断**（原"必加"，2026-07-21 降级）：benchmark 的 reward 指标就是 noisy 实收，clean 值仅作 QA / R-Shift 恒定灌入修正之用。⚠️ 若未来把 ep_reward 升为主指标，R-Shift 修正需要它——届时重新评估 |
+| `ep_return_true`（= 分解列之和） | **可选诊断**（原"必加"，2026-07-21 降级）：benchmark 的 reward 指标就是 noisy 实收，clean 值仅作 dev QA 之用。**定论（2026-07-21）：即使未来 ep_reward 升为主指标，画图/报告也一律用 noisy `ep_return`**——现实中 ep_return_true 不可获得，与现实应用保持一致（RG 同此做法，§14.6）。R-Shift 的恒定灌入不做修正、如实呈现（属扰动本身的效应，图注说明即可） |
 | `ep_noise_{action,obs,reward}` | **可选诊断**：dev tripwire，确认噪声真注入了 |
 
 前提不变：F1/precision/recall/cost/分解列（原生 schema）仍须从 info key 读全。
