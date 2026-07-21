@@ -129,13 +129,16 @@ MAPPO 5M eval reward 768;F1 surface 修复在 MA bug 队列中)
 - Reduced action space 不启用:全 DoF Shadow Hand 是 benchmark 定义的一部分
   (thumb-budget 安全任务依赖 THJ1/THJ5)。
 
-## Abstract 取舍(已定,2026-07-20)
+## Abstract 取舍(已定,2026-07-20,三轮)
 
-- Venue = **AAAI 2027**;framing = v0-A breadth-led;主干 = C0 + C1。
-- Findings 进 abstract:**C3 + C4d**(用户拍板);C4e/C4a 留正文/附录。
-- C2 在 abstract 降格为一句能力措辞("every task additionally reports…"),因为图表
-  布局已定:**正文 EpReward 学习曲线、F1 图表进 supplementary**。C2 的完整论证
-  (污染矩阵、RG 对照)放正文 metric 小节 + 附录。
+- Venue = **AAAI 2027**;当前主推 **Draft v2**(用户 task-first framing 修订版)。
+- **Abstract 不写任何具体 empirical finding**(第三轮推翻第二轮的 C3+C4d 方案:
+  winner-takes-all / action-bias-improves 这类反直觉结论放 abstract 会让 reviewer
+  困惑并节外生枝)。结尾只写 baseline 覆盖(PPO/SAC/TQC/PPOLag/MAPPO)+ 统一协议 +
+  MIDI-grounded 指标。C3/C4x 全部留正文。
+- v0-B(metric-led)已删:叙事与主线不符。C2 只作正文 metric 小节的性质论证
+  (污染矩阵、RG 对照),不作论文 hook;图表布局:**正文 EpReward 学习曲线、
+  F1 图表进 supplementary**。
 - ⚠️ 连带约束:R-通道任务正文 EpReward 图必须画 `ep_return_true`(实收 `ep_return`
   被噪声污染,§14.2),或图注显式 disclose——否则 C2 的故事自打脸。
 - C5 empirical 未出数前,abstract 安全腿只用能力措辞。
