@@ -6,8 +6,9 @@ logger logic is already multi-channel-safe. This test locks that in so a future
 combined-channel registration (e.g. A+O) cannot silently regress:
 
   - A+O: both action AND obs noise inject in the same step; reward untouched.
-  - A+R: both action AND reward inject; BOTH obs slots override independently
-    (obs["action"] = clean physical a_cmd, obs["reward"] = noised reward).
+  - A+R: both action AND reward inject; the reward obs slot is overridden to
+    the noised received reward (the action slot keeps upstream OAR's noised
+    executed action — decision 2026-07-21, no override).
   - §14 cross-check holds per-step under simultaneous action+reward noise:
     received reward == clean(decomposition sum) + reward_noise.
   - RNG determinism: action + reward share the gym stream but are sampled in a
@@ -70,7 +71,7 @@ def test_action_plus_obs_both_inject():
 
 
 # --------------------------------------------------------------------------
-# A+R: two channels inject; both obs slots override independently
+# A+R: two channels inject; the reward obs slot overrides to noised reward
 # --------------------------------------------------------------------------
 def test_action_plus_reward_both_inject_and_override():
     _reg("OmniPianoTest-MC-AR-v0",
@@ -83,8 +84,9 @@ def test_action_plus_reward_both_inject_and_override():
         # §14 cross-check per step: received == clean decomposition + reward noise
         assert reward == pytest.approx(_clean_decomp(info) + rn, abs=1e-4)
         # obs["reward"] slot overridden to the noised received reward
+        # (the action slot needs no override — decision 2026-07-21).
         rw = _robust(env)
-        assert rw._action_slice is not None and rw._reward_slice is not None
+        assert rw._reward_slice is not None
         slot = float(np.asarray(obs[rw._reward_slice]).ravel()[0])
         assert slot == pytest.approx(reward, abs=1e-4)
     finally:

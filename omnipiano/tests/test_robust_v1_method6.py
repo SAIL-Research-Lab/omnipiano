@@ -1,29 +1,39 @@
-"""Method 6 (Option B) prototype gate tests — robust_task_design.md §4.7.
+"""OAR slot semantics gate tests — robust_task_design.md §4.7.
 
-Validates the obs["action"] principled-semantics fix in
-``omnipiano/wrappers/robust_wrapper.py``:
+Decision 2026-07-21 (supersedes Method 6 Option B): under the
+hardware-wear threat model, ``obs["action"]`` keeps upstream OAR's
+natural value — the **noised executed** action in physical units
+(``physical(a_exec)``). The former clean-``a_cmd`` override was removed.
+``obs["reward"]`` is still overridden to the noised observed reward when
+the reward channel is active (reward noise is injected at the gym layer
+*above* OAR, so the slot would otherwise stay clean).
 
-* A1  — the obs "action" slot stores PHYSICAL values (post-CanonicalSpec),
-        and our ``_clean_physical`` replicates that transform bit-exactly
-        on the clean (no-noise) path.
-* A2  — tree.flatten iterates dict keys alphabetically (the ConcatObs
-        layout assumption behind slice computation).
-* A3  — slice layout + cached physical spec match the live chain.
-* A4  — non-robust envs: the returned obs IS the inner obs object
-        (identity ⇒ never copied/modified ⇒ existing baselines are
-        structurally unaffected).
-* A5  — with action noise, obs[action_slice] equals the clean commanded
-        action's physical version (bit-exact), and noise was injected.
-* A6★ — THE cross-condition invariant: feeding the SAME fixed action
-        sequence to a clean env and a noised env, obs[action_slice] must
-        be bit-identical every step (clean env → CanonicalSpec's own
-        arithmetic; noised env → our override arithmetic). Any formula /
-        dtype / slice divergence fails here. Other obs slots MUST
-        diverge (physics runs on the noised action) — checked as a
-        sanity guard that noise is actually active.
+Gates:
 
-Plus fail-fast coverage: frame_stack>1 raises; action_reward_observation
-=False skips the override cleanly.
+* N1 — tree.flatten iterates dict keys alphabetically (the ConcatObs
+       layout assumption behind the reward-slice computation).
+* N2 — reward-slice layout matches the live chain.
+* N3 — non-robust env: the returned obs IS the inner obs object
+       (identity ⇒ never copied ⇒ baselines structurally unaffected).
+* N4 — action-noise env: SAME identity guarantee (no override runs at
+       all for the action channel — the strongest structural proof the
+       clean-a_cmd override is gone).
+* N5 — action slot == physical(a_exec) bit-exact: spy-capture the
+       noised action RobustWrapper passes down, replay the executed
+       path's arithmetic (float32 cast → upstream _scale_nested_action
+       with the live chain's spec/clip), assert equality; and assert the
+       slot ≠ physical(a_cmd) (the leak is now BY DESIGN).
+* N6 — same fixed action sequence into clean vs noised env → action
+       slot DIVERGES nearly every step (inverse of the old A6
+       invariant), other slots diverge too.
+* N7 — reward-slot override survives reset(seed) chain rebuilds
+       (cached slice is rebuild-safe).
+* N8 — action-noise env: reward slot naturally equals the returned
+       reward (no reward inconsistency, no override needed).
+* Fail-fast / fallback: frame_stack>1 now constructs fine for
+  action-channel tasks (no slot fix needed) but still raises for
+  reward-channel tasks; action_reward_observation=False skips the
+  reward override cleanly; SB3 DummyVecEnv smoke.
 
 Run:
     /home/accelerator/miniforge3/envs/pianist/bin/python -m pytest \
@@ -57,6 +67,10 @@ _register_once(
     robust_config=RobustConfig(action_noise_std=0.05),
 )
 _register_once(
+    "OmniPianoTest-M6-RewardNoise-v0",
+    robust_config=RobustConfig(reward_noise_std=0.5),
+)
+_register_once(
     "OmniPianoTest-M6-NoAR-v0",
     env_config=BenchmarkEnvConfig(action_reward_observation=False),
     robust_config=RobustConfig(action_noise_std=0.05),
@@ -66,6 +80,11 @@ _register_once(
     env_config=BenchmarkEnvConfig(frame_stack=4),
     robust_config=RobustConfig(action_noise_std=0.05),
 )
+_register_once(
+    "OmniPianoTest-M6-RewardFrameStack-v0",
+    env_config=BenchmarkEnvConfig(frame_stack=4),
+    robust_config=RobustConfig(reward_noise_std=0.5),
+)
 
 
 def _find_robust_wrapper(env) -> RobustWrapper:
@@ -73,6 +92,47 @@ def _find_robust_wrapper(env) -> RobustWrapper:
     while not isinstance(ptr, RobustWrapper):
         ptr = ptr.env
     return ptr
+
+
+def _chain_parts(env):
+    """(concat, canonical) wrappers of the live dm_env chain."""
+    from dm_env_wrappers import CanonicalSpecWrapper, ConcatObservationWrapper
+
+    from omnipiano.utils.env_unwrap import (
+        find_dm_env_wrapper,
+        get_dm_env_from_gym,
+    )
+
+    dm_env = get_dm_env_from_gym(env)
+    return (
+        find_dm_env_wrapper(dm_env, ConcatObservationWrapper),
+        find_dm_env_wrapper(dm_env, CanonicalSpecWrapper),
+    )
+
+
+def _action_slice_of(env):
+    """Alphabetical-concat action slice, computed independently in-test
+    (the wrapper no longer tracks it — only the test needs it)."""
+    concat, _ = _chain_parts(env)
+    spec = concat._environment.observation_spec()
+    offset = 0
+    for key in sorted(concat._obs_names):
+        dim = int(np.prod(spec[key].shape)) if spec[key].shape else 1
+        if key == "action":
+            return slice(offset, offset + dim)
+        offset += dim
+    return None
+
+
+def _physical(env, action):
+    """Replay the executed path's arithmetic for a given (already noised)
+    action: DmEnvToGymnasium's float32 cast → upstream _scale_nested_action
+    with the live chain's spec object and clip flag."""
+    from dm_env_wrappers._src.canonical_spec import _scale_nested_action
+
+    _, canon = _chain_parts(env)
+    a = np.asarray(action, dtype=np.float32)
+    return _scale_nested_action(a, canon._action_spec, canon._clip)
 
 
 def _fixed_actions(n: int, dim: int, seed: int = 2024):
@@ -97,11 +157,11 @@ def noise_env():
 
 
 # ==========================================================================
-# Gate tests A1-A6
+# Layout gates
 # ==========================================================================
 
 
-def test_A2_tree_flatten_alphabetical_order():
+def test_N1_tree_flatten_alphabetical_order():
     d = {
         "reward": 1.0,
         "action": 2.0,
@@ -113,69 +173,24 @@ def test_A2_tree_flatten_alphabetical_order():
     assert tree.flatten(d) == [2.0, 3.0, 4.0, 5.0, 1.0]
 
 
-def test_A3_layout_and_physical_spec(clean_env):
+def test_N2_reward_slice_layout(clean_env):
     rw = _find_robust_wrapper(clean_env)
-    act_dim = clean_env.action_space.shape[0]
-
-    assert rw._action_slice is not None
     assert rw._reward_slice is not None
-    assert rw._action_slice.stop - rw._action_slice.start == act_dim
     assert rw._reward_slice.stop - rw._reward_slice.start == 1
     obs_dim = clean_env.observation_space.shape[0]
-    assert rw._action_slice.stop <= obs_dim
     assert rw._reward_slice.stop <= obs_dim
 
-    # Cached physical spec must match the live CanonicalSpecWrapper's.
-    from dm_env_wrappers import CanonicalSpecWrapper
 
-    from omnipiano.utils.env_unwrap import (
-        find_dm_env_wrapper,
-        get_dm_env_from_gym,
-    )
-
-    canon = find_dm_env_wrapper(
-        get_dm_env_from_gym(rw.env), CanonicalSpecWrapper
-    )
-    assert canon is not None
-    np.testing.assert_array_equal(
-        np.asarray(rw._physical_action_spec.minimum),
-        np.asarray(canon._action_spec.minimum),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(rw._physical_action_spec.maximum),
-        np.asarray(canon._action_spec.maximum),
-    )
-    assert rw._canonical_clip == canon._clip
-    assert np.all(
-        np.asarray(rw._physical_action_spec.minimum)
-        < np.asarray(rw._physical_action_spec.maximum)
-    )
+# ==========================================================================
+# Structural no-op gates — obs object identity
+# ==========================================================================
 
 
-def test_A1_action_slot_is_physical_and_formula_matches(clean_env):
-    """Clean path: obs[action_slice] is produced by CanonicalSpec's own
-    arithmetic. Our _clean_physical must reproduce it bit-exactly."""
-    rw = _find_robust_wrapper(clean_env)
-    clean_env.reset(seed=7)
-    a = _fixed_actions(1, clean_env.action_space.shape[0], seed=7)[0]
-    obs, *_ = clean_env.step(a)
-
-    expected = np.asarray(rw._clean_physical(a), dtype=np.float32)
-    np.testing.assert_array_equal(obs[rw._action_slice], expected)
-
-    # Sanity: a physical rescale actually happened (the slot is NOT the raw
-    # canonical command) — guards against a degenerate [-1,1] spec.
-    assert not np.array_equal(
-        obs[rw._action_slice], np.asarray(a, dtype=np.float32)
-    )
-
-
-def test_A4_non_robust_obs_object_untouched(clean_env):
-    """[GATE] Zero-noise env: RobustWrapper must return the inner obs
-    OBJECT itself (identity) — proving the override branch never runs and
-    existing baselines are structurally unaffected (bit-exact trivially)."""
-    rw = _find_robust_wrapper(clean_env)
-    clean_env.reset(seed=11)
+def _assert_obs_identity(env, seed):
+    """Step once with a spy on the inner step; assert the wrapper returned
+    the inner obs OBJECT itself (never copied/modified)."""
+    rw = _find_robust_wrapper(env)
+    env.reset(seed=seed)
 
     captured = {}
     orig_step = rw.env.step
@@ -187,84 +202,131 @@ def test_A4_non_robust_obs_object_untouched(clean_env):
 
     rw.env.step = spy
     try:
-        a = _fixed_actions(1, clean_env.action_space.shape[0], seed=11)[0]
-        obs, *_ = clean_env.step(a)
+        a = _fixed_actions(1, env.action_space.shape[0], seed=seed)[0]
+        obs, *_ = env.step(a)
     finally:
         del rw.env.step  # remove instance attr, restore bound method
 
     assert obs is captured["obs"], (
-        "RobustWrapper copied/modified obs on a zero-noise env — "
-        "breaks the structural no-op guarantee for existing baselines"
+        "RobustWrapper copied/modified obs — breaks the structural no-op "
+        "guarantee (only reward-channel tasks may copy)"
     )
 
 
-def test_A5_action_slot_clean_physical_under_noise(noise_env):
+def test_N3_non_robust_obs_object_untouched(clean_env):
+    _assert_obs_identity(clean_env, seed=11)
+
+
+def test_N4_action_noise_obs_object_untouched(noise_env):
+    """[GATE] Action-channel env: NO override runs at all — the returned
+    obs is the inner object. Structural proof the clean-a_cmd override is
+    gone (decision 2026-07-21)."""
+    _assert_obs_identity(noise_env, seed=13)
+
+
+# ==========================================================================
+# Action-slot semantics — noised executed action, by design
+# ==========================================================================
+
+
+def test_N5_action_slot_is_noised_executed_physical(noise_env):
+    """obs[action_slice] == physical(a_exec) bit-exact, and != physical(
+    a_cmd): the slot reflects what was EXECUTED (hardware-wear model)."""
     rw = _find_robust_wrapper(noise_env)
-    noise_env.reset(seed=13)
-    a = _fixed_actions(1, noise_env.action_space.shape[0], seed=13)[0]
-    obs, _r, _t, _tr, info = noise_env.step(a)
+    sl = _action_slice_of(noise_env)
+    noise_env.reset(seed=17)
+
+    captured = {}
+    orig_step = rw.env.step
+
+    def spy(action):
+        captured["a_exec"] = np.asarray(action).copy()
+        return orig_step(action)
+
+    rw.env.step = spy
+    try:
+        a_cmd = _fixed_actions(1, noise_env.action_space.shape[0], seed=17)[0]
+        obs, _r, _t, _tr, info = noise_env.step(a_cmd)
+    finally:
+        del rw.env.step
 
     assert info[InfoKeys.ROBUST_NOISE_ACTION_L2] > 0.0, "noise not injected?"
-    expected = np.asarray(rw._clean_physical(a), dtype=np.float32)
+    expected = np.asarray(_physical(noise_env, captured["a_exec"]),
+                          dtype=np.float32)
     np.testing.assert_array_equal(
-        obs[rw._action_slice],
-        expected,
-        err_msg=(
-            "obs[action_slice] != physical(a_cmd): override missing or "
-            "formula mismatch"
-        ),
+        obs[sl], expected,
+        err_msg="obs[action_slice] != physical(executed action)",
     )
+    # The leak is by design now: slot must NOT equal physical(a_cmd).
+    assert not np.array_equal(
+        obs[sl], np.asarray(_physical(noise_env, a_cmd), dtype=np.float32)
+    ), "slot equals physical(a_cmd) — the removed override seems active"
 
 
-def test_A6_action_slot_invariant_across_noise_levels(clean_env, noise_env):
-    """[GATE ★★★] Same fixed action sequence into a clean env and a noised
-    env → obs[action_slice] must be bit-identical every step. The clean
-    env's value comes from CanonicalSpec's own computation; the noised
-    env's from our override. Equality proves the two arithmetic paths are
-    bit-exact twins. Other obs slots MUST diverge (physics executes the
-    noised action) — sanity check that noise is genuinely active."""
-    rw_c = _find_robust_wrapper(clean_env)
-    rw_n = _find_robust_wrapper(noise_env)
-    assert rw_c._action_slice == rw_n._action_slice, "layout mismatch"
-    sl = rw_c._action_slice
+def test_N6_action_slot_diverges_from_clean_env(clean_env, noise_env):
+    """[Inverse of the old A6] Same fixed action sequence into clean vs
+    noised env: the action slot must DIVERGE nearly every step (noise is
+    visible in the slot by design), and other slots diverge too (physics
+    runs on the noised action)."""
+    sl = _action_slice_of(clean_env)
+    assert sl == _action_slice_of(noise_env), "layout mismatch"
 
     clean_env.reset(seed=42)
     noise_env.reset(seed=42)
 
     dim = clean_env.action_space.shape[0]
-    actions = _fixed_actions(100, dim, seed=2024)
+    actions = _fixed_actions(30, dim, seed=2024)
 
-    obs_dim = clean_env.observation_space.shape[0]
-    other_mask = np.ones(obs_dim, dtype=bool)
-    other_mask[sl] = False
-
-    mismatched_steps = []
-    other_diverged = 0
-
-    for i, a in enumerate(actions):
+    slot_diverged = 0
+    for a in actions:
         obs_c, _rc, tc, trc, _ = clean_env.step(a)
         obs_n, _rn, tn, trn, _ = noise_env.step(a)
-
         if not np.array_equal(obs_c[sl], obs_n[sl]):
-            mismatched_steps.append(
-                (i, float(np.max(np.abs(obs_c[sl] - obs_n[sl]))))
-            )
-        if not np.array_equal(obs_c[other_mask], obs_n[other_mask]):
-            other_diverged += 1
+            slot_diverged += 1
         if tc or trc or tn or trn:
             break
 
-    assert not mismatched_steps, (
-        f"[A6 FAILED] obs[action_slice] must be invariant to action noise "
-        f"(both = physical(a_cmd)), but diverged at "
-        f"{mismatched_steps[:5]} (step, max_abs_diff). Causes to check: "
-        f"dtype promotion mismatch, clip semantics, wrong cached spec, "
-        f"wrong slice indices."
+    assert slot_diverged >= 25, (
+        f"action slot diverged in only {slot_diverged}/30 steps — gaussian "
+        f"noise should make it differ essentially every step; is the "
+        f"removed clean-a_cmd override somehow back?"
     )
-    assert other_diverged > 10, (
-        f"[A6 sanity] other obs slots diverged in only {other_diverged} "
-        f"steps — action noise may not be affecting physics at all."
-    )
+
+
+# ==========================================================================
+# Reward-slot override — retained behavior
+# ==========================================================================
+
+
+def test_N7_reward_override_survives_seed_rebuild():
+    """reset(seed=X) rebuilds the dm_env chain; the reward slice cached at
+    __init__ must remain valid (static-config determinism)."""
+    env = registration.make("OmniPianoTest-M6-RewardNoise-v0")
+    try:
+        rw = _find_robust_wrapper(env)
+        assert rw._reward_slice is not None
+        dim = env.action_space.shape[0]
+        for rebuild_seed in (101, 202):
+            env.reset(seed=rebuild_seed)
+            for a in _fixed_actions(3, dim, seed=rebuild_seed):
+                obs, reward, *_ = env.step(a)
+                assert obs[rw._reward_slice][0] == np.float32(reward), (
+                    f"reward slot != returned reward after "
+                    f"reset(seed={rebuild_seed}) rebuild — cached slice stale?"
+                )
+    finally:
+        env.close()
+
+
+def test_N8_reward_slot_consistent_under_action_noise(noise_env):
+    """Action-channel tasks create no reward inconsistency: the obs
+    'reward' slot (recorded by OAR from raw physics reward) equals the
+    reward returned to the policy — with NO override involved."""
+    rw = _find_robust_wrapper(noise_env)
+    noise_env.reset(seed=51)
+    a = _fixed_actions(1, noise_env.action_space.shape[0], seed=51)[0]
+    obs, reward, *_ = noise_env.step(a)
+    assert obs[rw._reward_slice][0] == np.float32(reward)
 
 
 # ==========================================================================
@@ -272,16 +334,28 @@ def test_A6_action_slot_invariant_across_noise_levels(clean_env, noise_env):
 # ==========================================================================
 
 
-def test_frame_stack_gt1_raises():
+def test_action_frame_stack_gt1_constructs():
+    """Action noise needs no obs-slot fix, so frame_stack>1 is now allowed
+    for action-channel tasks (decision 2026-07-21)."""
+    env = registration.make("OmniPianoTest-M6-FrameStack-v0")
+    try:
+        env.reset(seed=3)
+        a = _fixed_actions(1, env.action_space.shape[0], seed=3)[0]
+        _obs, _r, _t, _tr, info = env.step(a)
+        assert info[InfoKeys.ROBUST_NOISE_ACTION_L2] > 0.0
+    finally:
+        env.close()
+
+
+def test_reward_frame_stack_gt1_raises():
     with pytest.raises(NotImplementedError, match="frame_stack"):
-        registration.make("OmniPianoTest-M6-FrameStack-v0")
+        registration.make("OmniPianoTest-M6-RewardFrameStack-v0")
 
 
 def test_no_action_reward_obs_skips_override():
     env = registration.make("OmniPianoTest-M6-NoAR-v0")
     try:
         rw = _find_robust_wrapper(env)
-        assert rw._action_slice is None
         assert rw._reward_slice is None
 
         env.reset(seed=3)
@@ -294,92 +368,9 @@ def test_no_action_reward_obs_skips_override():
         env.close()
 
 
-# ==========================================================================
-# Extended gates G1-G6, G11 — episode boundaries, rebuilds, dtypes,
-# out-of-range actions, vec-env, reward-slot consistency
-# ==========================================================================
-
-
-def test_G1_invariant_across_episode_reset(clean_env, noise_env):
-    """Action-slot invariant must survive a reset() WITHOUT seed (no chain
-    rebuild; ObservationActionReward re-zeroes its slots). Note the
-    assertion is state-independent: the slot depends only on a_cmd, so it
-    must hold even if the two envs' physics have long diverged."""
-    rw_c = _find_robust_wrapper(clean_env)
-    sl = rw_c._action_slice
-    clean_env.reset(seed=21)
-    noise_env.reset(seed=21)
-    dim = clean_env.action_space.shape[0]
-    actions = _fixed_actions(60, dim, seed=555)
-
-    for a in actions[:30]:
-        obs_c, *_ = clean_env.step(a)
-        obs_n, *_ = noise_env.step(a)
-        assert np.array_equal(obs_c[sl], obs_n[sl])
-
-    # Mid-episode reset without seed — no dm_env rebuild.
-    obs_c0, _ = clean_env.reset()
-    obs_n0, _ = noise_env.reset()
-    # OAR re-zeroes the action slot on reset in both envs.
-    assert np.array_equal(obs_c0[sl], obs_n0[sl])
-
-    for a in actions[30:]:
-        obs_c, *_ = clean_env.step(a)
-        obs_n, *_ = noise_env.step(a)
-        assert np.array_equal(obs_c[sl], obs_n[sl])
-
-
-def test_G2_invariant_after_seed_rebuild(clean_env, noise_env):
-    """reset(seed=X) rebuilds the dm_env chain. Layout/spec were cached at
-    __init__ from the ORIGINAL chain — this test proves the cached values
-    remain valid against a rebuilt chain (static-config determinism)."""
-    rw_n = _find_robust_wrapper(noise_env)
-    sl = rw_n._action_slice
-    dim = clean_env.action_space.shape[0]
-
-    for rebuild_seed in (101, 202):
-        clean_env.reset(seed=rebuild_seed)
-        noise_env.reset(seed=rebuild_seed)
-        for a in _fixed_actions(5, dim, seed=rebuild_seed):
-            obs_c, *_ = clean_env.step(a)
-            obs_n, *_ = noise_env.step(a)
-            assert np.array_equal(obs_c[sl], obs_n[sl]), (
-                f"cached layout stale after reset(seed={rebuild_seed}) rebuild"
-            )
-
-
-def test_G3_out_of_range_caller_actions(clean_env, noise_env):
-    """Callers (e.g. unsquashed Gaussian PPO actors) may emit |a| > 1.
-    Both paths clip inside the SAME shared function (CanonicalSpec's
-    clip=True), so the slot must stay bit-identical."""
-    rw_c = _find_robust_wrapper(clean_env)
-    sl = rw_c._action_slice
-    clean_env.reset(seed=31)
-    noise_env.reset(seed=31)
-    dim = clean_env.action_space.shape[0]
-    rng = np.random.default_rng(31)
-    for _ in range(10):
-        a = rng.uniform(-1.7, 1.7, size=dim)  # deliberately out of range
-        obs_c, *_ = clean_env.step(a)
-        obs_n, *_ = noise_env.step(a)
-        assert np.array_equal(obs_c[sl], obs_n[sl])
-
-
-def test_G4_float32_caller_dtype(noise_env):
-    """SB3 passes float32 actions (OmniSafe float64 — covered by A5/A6).
-    The float32→float32 asarray is a no-op; override must stay exact."""
-    rw = _find_robust_wrapper(noise_env)
-    noise_env.reset(seed=41)
-    a = _fixed_actions(1, noise_env.action_space.shape[0], seed=41)[0]
-    a32 = a.astype(np.float32)
-    obs, *_rest = noise_env.step(a32)
-    expected = np.asarray(rw._clean_physical(a32), dtype=np.float32)
-    np.testing.assert_array_equal(obs[rw._action_slice], expected)
-
-
-def test_G5_sb3_dummy_vecenv_smoke():
-    """DummyVecEnv copies/stacks obs — ensure the override survives SB3's
-    vec plumbing (no aliasing surprises, info keys intact)."""
+def test_sb3_dummy_vecenv_smoke():
+    """DummyVecEnv copies/stacks obs — ensure the chain survives SB3's
+    vec plumbing (info keys intact)."""
     from stable_baselines3.common.vec_env import DummyVecEnv
 
     def _mk():
@@ -399,20 +390,3 @@ def test_G5_sb3_dummy_vecenv_smoke():
                 assert info[InfoKeys.ROBUST_NOISE_ACTION_L2] > 0.0
     finally:
         vec.close()
-
-
-def test_G6_reward_slot_consistent_under_action_noise(noise_env):
-    """Action-channel tasks must NOT create a reward inconsistency: the
-    obs 'reward' slot (recorded by OAR from raw physics reward) must equal
-    the reward returned to the policy (float32 round-trip exact)."""
-    rw = _find_robust_wrapper(noise_env)
-    noise_env.reset(seed=51)
-    a = _fixed_actions(1, noise_env.action_space.shape[0], seed=51)[0]
-    obs, reward, *_ = noise_env.step(a)
-    assert obs[rw._reward_slice][0] == np.float32(reward)
-
-
-def test_G11_slices_disjoint(clean_env):
-    rw = _find_robust_wrapper(clean_env)
-    a, r = rw._action_slice, rw._reward_slice
-    assert a.stop <= r.start or r.stop <= a.start

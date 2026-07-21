@@ -835,7 +835,19 @@ Paper 的 Methods 里可以简洁描述：
 
 ## 4.7 obs["action"] / obs["reward"] 的 principled semantics 修正（方案 6）
 
-### ✅ Step 1 Prototype 已完成 —— 15/15 gate 全绿（2026-07-03）
+> ### ⚠️ 语义变更（2026-07-21,与博后会议决定)——本节 action 部分已被推翻,以下为历史存档
+>
+> **新决定**:`obs["action"]` 槽采用 **noised executed action(a_exec 的 physical 版本)**——即上游 OAR 的天然行为,**方案 6 的 clean-a_cmd 覆写已从代码中移除**。威胁模型从 Disrupted-MDP(噪声不可观测、须隐藏)改为**硬件磨损模型**:关节老化/磨损使真实执行的动作就是带噪动作,agent 的本体感觉动作记忆理应反映实际执行值;策略部分学会补偿被视为现实合理行为,不再视为"泄漏"。
+>
+> **保留**:`obs["reward"]` 槽的 noised 覆写**不变**(reward 噪声在 OAR 之上的 gym 层注入,上游槽天然是 clean,须覆写成 r_obs 才符合"磨损 reward 传感器:观测=学习=记忆同一污染值"语义,同时保证 matched-eval 分布一致,决议 11)。
+>
+> **代码变更**(robust_wrapper.py):删除 `_clean_physical`、action slice / physical spec / clip 缓存、a_cmd 保存与 action 槽覆写;`_compute_override_layout` 简化为 `_compute_reward_slice`;frame_stack>1 的 fail-fast 收窄为仅 reward 通道(action 通道不再需要槽定位,与 stacking 兼容)。测试 `test_robust_v1_method6.py` 重写为新语义 gate(N1-N8:action 槽=physical(a_exec) 位级验证、action-only env 的 obs 对象 identity、reward 覆写保留 gate)。
+>
+> **实验影响(重要)**:2026-07-21 之前跑的所有含 action 通道的 run(A-Gauss/A-Uniform/A-Shift±、AO-Gauss、AR-Uniform)是在**旧语义(clean a_cmd 槽)下训练的**,与新语义环境不可比;论文若采用新语义,这些 A 通道 run 需重跑(§10 有对应 caveat)。O/R 单通道与 Clean run 不受影响(action 覆写从未在其上触发,结构性 no-op 有 A4/N3 gate 保证)。
+>
+> **下方全部内容(Prototype 状态表、A1-A6/G1-G11 gate、数据流追踪、Option A/B 对比、替代架构评估、paper 段落草稿)为旧决策的历史存档,勿再引用其中的论文措辞。**
+
+### ✅ Step 1 Prototype 已完成 —— 15/15 gate 全绿（2026-07-03）[历史存档]
 
 
 | 项            | 状态                                                                                                                                         |
@@ -1145,7 +1157,7 @@ v1 所有注册的 robust task 都是 **single-channel** —— 每个 env id �
 
    **Multi-channel 兼容性审计（2026-07-05，端到端实测确认，`test_robust_multichannel.py`）**：核心逻辑**已是 multi-channel 安全的、无 bug**——单通道开发时写得足够防御性：
    - **两通道同时注入正确**：A+O 时 `action_l2>0` 且 `obs_l2>0`、reward 不受扰；A+R 时 action 与 reward 都注入。
-   - **obs slot 双 override 独立正确**：`override_action` / `override_reward` 是**独立布尔**（非互斥），A+R 时同一步内两个 slot 都覆盖（`obs["action"]`=clean physical，`obs["reward"]`=noised）。
+   - **obs slot override（2026-07-21 更新）**：仅 `obs["reward"]` 在 reward 通道激活时覆写为 noised r_obs；`obs["action"]` 保持上游 OAR 天然值（noised executed a_exec，硬件磨损语义,§4.7 supersession）——A+R 时同一步内 reward 槽覆写、action 槽不动。
    - **CSV 记录无新污染**：F1/cost 恒真值；`ep_return_true`（分解列之和）在 action+reward 同时加噪时仍恢复干净 return（`received = ep_return_true + reward_noise` 逐步成立）；`ep_noise_{action,obs,reward}` 三累加器独立。
    - **RNG 确定性**：obs 用独立 dm_env 流；action/reward 共享 gym 流但**固定顺序（先 action 后 reward）**→ 同 seed 可复现（§12 决议 8）。
    - **⚠️ 唯一约束——同一个 `noise_dist`（全局单值）**：所有活跃通道**共享一种分布**。`A-gaussian + O-uniform` **不可表达、会 raise**。故 **"同分布" multi-channel（A+O 都 gaussian）= 开箱即用、零核心代码**；**"混分布" multi-channel = 需要 per-channel-dist 重构 = §16 冻结项**。
@@ -1526,6 +1538,8 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 ## 10. Paper 写作笔记（边做边记）
 
+> **⚠️ 语义版本 caveat(2026-07-21)**:本节记录的全部含 **action 通道**的实验数字(A-Gauss/A-Uniform/A-Shift±0.15、AO-Gauss-P15、AR-Uniform-A15-R50)是在**旧 obs["action"] 语义(clean a_cmd 覆写,§4.7 已废除)下训练的**。新语义(noised executed a_exec)下环境不同,这些数字**不可与新语义 run 混排对比**;论文定稿采用新语义时 A 通道 run 全部需重跑。O/R 单通道、Clean、Clean-NoOAR 的数字不受影响(action 覆写从未在其上触发)。
+
 根据 `feedback_paper_writing_notes`，本节随实现进展累积实验数字和草拟 claim。初始种子：
 
 ### 我们预期会写的 claim
@@ -1643,9 +1657,11 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
   - **保留了 registry-only philosophy 的 90%**：只在一处（eval sweep）打小口子，`SafeRoboPianist` 的 SB3 / OmniSafe 集成 + 复现性追溯 + 现有 safety task 传统惯例都不受影响
    实现细节（在 `omnipiano.make()` 里）：
 
-**决议 8（2026-06-27 决定；2026-07-03 Step 1 完成 ✅）：obs["action"] / obs["reward"] principled semantics 修正（§4.7 方案 6 Option B）**
+**决议 8（2026-06-27 决定；2026-07-03 Step 1 完成；⚠️ 2026-07-21 action 部分被推翻）：obs["action"] / obs["reward"] semantics（§4.7）**
 
-✅ **已决定并完成 prototype**：正式采纳 **方案 6 Option B（physical override）**。RobustWrapper 在 step 的 POST 阶段覆盖 obs 里 action / reward 两个 slot（action：clean commanded 的 physical 版本；reward：noised observed，Phase 0 接线）。
+> **⚠️ 2026-07-21 与博后会议决定,本决议 action 部分作废**:`obs["action"]` 改为保留上游 OAR 天然值(noised executed a_exec,硬件磨损威胁模型),clean-a_cmd 覆写已从代码移除;`obs["reward"]` 的 noised 覆写保留。详见 §4.7 顶部 supersession 说明。以下为原决议存档。
+
+✅ ~~已决定并完成 prototype~~：正式采纳 **方案 6 Option B（physical override）**。RobustWrapper 在 step 的 POST 阶段覆盖 obs 里 action / reward 两个 slot（action：clean commanded 的 physical 版本；reward：noised observed，Phase 0 接线）。
 
 **Step 1 Prototype 结果（2026-07-03）**：
 
@@ -1807,6 +1823,32 @@ Phase 1 获批后：
 ### 14.5 一句话总结
 
 **除了"reward 噪声污染 `ep_return`"这一个组合，所有 logger 里的 `ep_cost` / `F1` / `precision` / `recall` 都恒为真实轨迹的真值（不被任何噪声污染，只会随扰动轨迹诚实变化）。`ep_return` 在 reward 任务下是实收带噪值，其真值另有来源（`ep_return_true` / 分解列之和 / F1）。** F1 是全程 noise-immune 的 headline。
+
+### 14.6 上游对照：Robust-Gymnasium 的记录语义（代码核实 2026-07-07）
+
+> 版本：本地 `Robust-Gymnasium/` 已 fast-forward 至 **origin/main HEAD `af6de64`**（github.com/SafeRL-Lab/Robust-Gymnasium 最新，末次提交 2026-03-19），以下结论全部对照该版本源码，标注 文件:行。核实对象：`half_cheetah_v5.py` / `ant_v4.py` / `ant_v5.py` 的 `step()`，框架 `RecordEpisodeStatistics`，以及全部带记录功能的示例脚本。
+
+**先说记录管道本身**：RG 仓库对 robust MuJoCo 任务**没有统一的 CSV 管道**。官方三个通道示例（`examples/robust_{action,reward,state}/mujoco/test.py`）只是随机动作冒烟脚本——逐步 `print(reward)`，落盘只有 `config.json`（仓库里 committed 的 `data/` 目录可证）。真正的 episode-return 记录路径有三条，**全部累计 `env.step()` 的返回值**：
+
+| 记录路径 | 累计逻辑 | 落盘 |
+|---|---|---|
+| 框架自带 `RecordEpisodeStatistics`（fork 自 Gymnasium） | `episode_returns += reward` → `info["episode"]["r"]`（`robust_gymnasium/wrappers/common.py:522,531-535`；`make()` **不**自动挂，registration.py:817-828 只挂 Checker/OrderEnforcing/TimeLimit） | info dict |
+| 示例训练循环（如 `examples/robust_nonstationary_env/main_non_stationary.py:144,158`） | `episode_reward += reward` → `writer.add_scalar('train/reward', …)` | TensorBoard |
+| 示例 CSV（`examples/LunarLander_A2C`：SB3 `Monitor` → `main.py:128` 读 `info["episode"]["r"]` → `experiment_logger.py` 写 `training_metrics.csv` 的 `mean_reward`） | 同源 `info["episode"]["r"]` | CSV |
+
+**三通道逐一（env 侧证据以 `half_cheetah_v5.py:228-275` 为主，`ant_v4.py:137-246` 同构）**：
+
+1. **Reward 加噪 → 记录的就是加噪后的 reward，clean reward 不被记录。** 噪声在 `info` 构建**之后**直接加到返回标量上（half_cheetah_v5.py:265-274；ant_v4.py:228-246），所有记录路径累计的都是这个带噪返回值。干净 reward **没有任何标量被记录**——唯一残留是 per-step `info` 里的干净分解项（`reward_forward`/`reward_ctrl`/`reward_survive`，在加噪前构建，half_cheetah_v5.py:259-260），但**框架和全部示例都没有累计/落盘它们**。⇒ 我们的 `ep_return`＝实收带噪（§14.2）与 RG 完全一致；我们**额外**提供的 `ep_return_true`（分解列之和）是超出上游的增强，RG 无对应物。
+2. **Action 加噪 → ep_reward 就是"加噪 action 真实在环境执行"得到的 reward。** 噪声在 `do_simulation` **之前**加到 action 上（half_cheetah_v5.py:236-245），物理仿真跑的是带噪 action；reward 由仿真结果 + `control_cost(带噪 action)` 计算（half_cheetah_v5.py:259；ant_v4.py:181,206）。不存在任何"以干净 commanded action 反事实计算"的 reward。⇒ 与我们一致（§14.2：action 任务的 ep_return 是被扰动轨迹的真 return）。
+3. **Obs 加噪 → 指标按环境物理真值计算记录，不按加噪 obs 重算。** 噪声只加在**返回给 agent 的 observation** 上（half_cheetah_v5.py:249-258；ant_v5.py:375-379）；reward 独立地由物理真值算出（`data.qpos` 位移 → `x_velocity`，half_cheetah_v5.py:244-247,259；ant_v4 用 `get_body_com("torso")`，:169-206），`info` 里的 `x_position`/`x_velocity` 等指标同样取自物理真值。加噪 obs 只**间接**影响记录值——policy 看到坏 obs → 出坏 action → 真实 return 下降。⇒ 与我们一致（F1/precision/recall/cost 读物理真值，§14.2）。
+
+**顺带核实的上游实现细节（与我们的实现差异，写 paper 对比时可用）**：
+
+- **标量广播噪声**：RG 的 `random.gauss(mu, sigma)` 每步只抽**一个标量**加到整个 action/obs 向量上（所有维度同一个值），且用 Python 全局 `random` 模块——**不经** env 的 `np_random`，`reset(seed=)` 不能复现噪声序列。我们是 per-dim iid + 专用可复现 RNG 流（§4/§12），两者语义不同,对比数据点时需注明。
+- **v4/v5 噪声频率不一致**：v4 族（ant_v4/hopper_v4/walker2d_v4）噪声被 `llm_disturb_iteration % llm_disturb_interval == 0` gate（默认 500，`configs/robust_setting.py` → **默认每 500 步才注一次**）；v5 族（ant_v5/half_cheetah_v5）无 gate、每步注入。官方示例用的 `Ant-v4` 属于前者。我们固定 per-step（§3），对齐 v5 语义。
+- RG 的 `make()` 不自动挂 episode 统计 wrapper（同上游 Gymnasium 惯例，opt-in）；我们 eval 侧由 `make(mode="eval", log_dir=…)` 自动挂 `SafeRecordEpisodeStatistics`（§15.3 路 A）。
+
+**一句话**：RG 上游的记录约定与我们 §14.2 的结论逐通道一致——reward 任务记带噪实收、action 任务记带噪执行的真实所得、obs 任务按物理真值记——且 RG **没有**任何 clean-reward 记录通道；我们的 `ep_return_true`/`ep_noise_*` 列是严格超集。
 
 ---
 
