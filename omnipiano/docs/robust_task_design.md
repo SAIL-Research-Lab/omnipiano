@@ -1538,7 +1538,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 ## 10. Paper 写作笔记（边做边记）
 
-> **⚠️ 语义版本 caveat(2026-07-21)**:本节记录的全部含 **action 通道**的实验数字(A-Gauss/A-Uniform/A-Shift±0.15、AO-Gauss-P15、AR-Uniform-A15-R50)是在**旧 obs["action"] 语义(clean a_cmd 覆写,§4.7 已废除)下训练的**。新语义(noised executed a_exec)下环境不同,这些数字**不可与新语义 run 混排对比**;论文定稿采用新语义时 A 通道 run 全部需重跑。O/R 单通道、Clean、Clean-NoOAR 的数字不受影响(action 覆写从未在其上触发)。
+> **✅ 语义版本(2026-07-21,已重跑完毕)**:本节全部 action 通道数字**已是新语义**(`obs["action"]` = noised executed action,§4.7 supersession)。旧语义(clean a_cmd 覆写)的 6 个 run 已删除并在新语义下按相同参数(PPO / seed=0 / 5M / n_envs=16 / gamma=0.8)重跑,新旧对照见下表"旧语义"列。O/R 单通道、Clean、Clean-NoOAR 从未受影响(action 覆写在其上结构性不触发,A4/N3 identity gate 保证),数字沿用首批。
 
 根据 `feedback_paper_writing_notes`，本节随实现进展累积实验数字和草拟 claim。初始种子：
 
@@ -1551,39 +1551,64 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 首批跑了 **9 个 run** + **1 个 Clean 参照**：Action/Obs 的 **P15**（0.15）× {Gauss,Uniform,Shift} + Reward 的 **P50**（0.50）× {Gauss,Uniform,Shift}，外加 `OmniPiano-ClairDeLune-Clean-v0`。数字来自各 run 的 **final eval CSV**（`mode="eval"`，`eval_noise_scale=1.0` matched，1 episode，deterministic）。**headline = F1**（noise-immune，读物理）。`Clean` 已验证真·干净（所有 `ep_noise_*` 列恒 0）。
 
-| 任务（matched eval σ/level=P） | F1 | ΔF1 vs clean | precision | recall | return（实收）\* |
-|---|---|---|---|---|---|
-| **Clean-v0**（参照） | **0.626** | — | 0.974 | 0.506 | 1851 |
-| **A-Gauss-P15** | **0.277** | −0.349（−56%） | 0.902 | 0.193 | 1653 |
-| **A-Uniform-P15** | 0.371 | −0.255（−41%） | 0.972 | 0.269 | 1663 |
-| **A-Shift-P15** | **0.704** | **+0.078（+12%）🔺** | 0.974 | 0.605 | 1868 |
-| **O-Gauss-P15** | 0.588 | −0.038（−6%） | 0.989 | 0.448 | 1846 |
-| **O-Uniform-P15** | 0.599 | −0.027（−4%） | 0.981 | 0.476 | 1848 |
-| **O-Shift-P15** | 0.539 | −0.087（−14%） | 0.980 | 0.433 | 1832 |
-| **R-Gauss-P50** | **0.117** | −0.509（−81%） | 0.994 | 0.075 | 1684 |
-| **R-Uniform-P50** | 0.300 | −0.326（−52%） | 0.999 | 0.217 | 1766 |
-| **R-Shift-P50** | 0.589 | −0.037（−6%） | 0.971 | 0.475 | **2141** |
+| 任务（matched eval σ/level=P） | F1 | ΔF1 vs clean | precision | recall | return（实收）\* | 旧语义 F1 †|
+|---|---|---|---|---|---|---|
+| **Clean-v0**（参照） | **0.626** | — | 0.974 | 0.506 | 1851 | 同（未受影响） |
+| **A-Gauss-P15** | **0.266** | −0.360（−58%） | 0.951 | 0.184 | 1658 | 0.277（−0.011） |
+| **A-Uniform-P15** | 0.491 | −0.135（−22%） | 0.973 | 0.369 | 1802 | 0.371（**+0.120**） |
+| **A-Shift-P15** | 0.628 | +0.002（持平） | 0.987 | 0.505 | 1860 | 0.704（**−0.076**） |
+| **O-Gauss-P15** | 0.588 | −0.038（−6%） | 0.989 | 0.448 | 1846 | 同（未受影响） |
+| **O-Uniform-P15** | 0.599 | −0.027（−4%） | 0.981 | 0.476 | 1848 | 同（未受影响） |
+| **O-Shift-P15** | 0.539 | −0.087（−14%） | 0.980 | 0.433 | 1832 | 同（未受影响） |
+| **R-Gauss-P50** | **0.117** | −0.509（−81%） | 0.994 | 0.075 | 1684 | 同（未受影响） |
+| **R-Uniform-P50** | 0.300 | −0.326（−52%） | 0.999 | 0.217 | 1766 | 同（未受影响） |
+| **R-Shift-P50** | 0.589 | −0.037（−6%） | 0.971 | 0.475 | **2141** | 同（未受影响） |
 
 \* return = **实收（带噪）**；reward 任务被污染（§14）。真值用 `ep_return_true`：`R-Shift` 实收 2141 里约 +294（=0.5×588 步的 shift）是噪声灌入，真值 ≈ 1847；`R-Gauss`/`R-Uniform` 噪声零均值，实收 ≈ 真值。
 
+† **旧语义 F1** = 2026-07-21 前 `obs["action"]` 放 clean a_cmd 时的数字（§4.7 supersession）。仅 action 通道受影响。**新旧差异本身是一个 result**（见 claim 6）。
+
+**Combined-channel（同分布、每通道独立 level；新语义，2026-07-21）**：
+
+| 任务 | F1 | precision | recall | 两个单通道分量 | 旧语义 F1 |
+|---|---|---|---|---|---|
+| **AO-Gauss-P15**（A σ=.15 + O σ=.15） | **0.163** | 0.920 | 0.113 | A-Gauss .266 / O-Gauss .588 | 0.134（+0.029） |
+| **AR-Uniform-A15-R50**（A ±.15 + R ±.50） | **0.187** | 0.983 | 0.122 | A-Uniform .491 / R-Uniform .300 | 0.156（+0.031） |
+| **OR-Shift-ON15-RN50**（O −.15 + R −.50） | 见首批记录 | — | — | O-Shift .539 / R-Shift .589 | 同（未受影响） |
+
 **已观测到的 claim（可入 paper）**：
 
-1. **分布难度排序在 Action 与 Reward 上一致：Shift（易）> Uniform > Gauss（难）**。
-   - Action：Shift 0.704 ≫ Uniform 0.371 > Gauss 0.277。
+1. **分布难度排序在 Action 与 Reward 上一致：Shift（易）> Uniform > Gauss（难）**（新语义下依然成立）。
+   - Action：Shift 0.628 > Uniform 0.491 > Gauss 0.266。
    - Reward：Shift 0.589 ≫ Uniform 0.300 > Gauss **0.117**。
    - 机理：**shift 是可学习的恒定偏置**（policy 学会补偿）；uniform 经验 std=level/√3 < gaussian=level；gaussian 白噪声最难。**证据**：三分布同 numerical level 下噪声 L2 实测 Gauss:Uniform=√3、Shift 完全确定性（§9 分析）。
 2. **通道敏感度：Action ≈ Reward ≫ Obs**。Obs 噪声下 F1 都聚在 0.54–0.60（policy 能滤掉部分传感器噪声，且 obs 噪声只打 141 维本体感觉/键态、不碰 979 维 goal）；Action/Reward 的高斯档跌到 0.12–0.28。
 3. **噪声下 precision 高（0.90–0.999）、recall 低** → policy 变**保守**（漏音多于误按），F1 掉主要来自 recall。
 4. **reward 噪声"污染 return 但不污染 F1"实锤**：`R-Shift` return 虚高（+294 灌入）而 F1 才 0.589；`R-Gauss` return 不虚高（1684）但 F1 崩到 0.117（§14 预测成立）。
-5. **⚠️ Action-Shift 不是 adversarial 扰动——效果由符号决定，围绕 clean 单调（方向对照已确认，2026-07-05）**：三点单调，precision 恒定 ~0.975：
+5. **⚠️ Action-Shift 的效果由符号决定，且强烈不对称：负向伤害、正向持平（新语义，2026-07-21 重跑）**：precision 恒定 ~0.987：
 
-   | task | action shift | F1 | recall | ΔF1 vs clean |
+   | task | action shift | F1 | recall | ΔF1 vs clean | 旧语义 F1 |
+   |---|---|---|---|---|---|
+   | **A-Shift-N15** | **−0.15** | 0.459 | 0.345 | **−0.167** | 0.553（−0.073） |
+   | **Clean-v0** | 0 | 0.626 | 0.506 | — | 0.626 |
+   | **A-Shift-P15** | **+0.15** | 0.628 | 0.505 | **+0.002（持平）** | 0.704（+0.078） |
+
+   **符号仍然决定一切**（−0.167 vs +0.002），但**"正向超过 clean"在新语义下消失**——旧语义那个 +12% 增益是"噪声对策略不可见"的产物。
+
+   **机理假说（待验证）——action 范围裁剪的不对称性**：`RobustWrapper.step` 在加噪后 `np.clip(a_cmd + shift, −1, 1)`。shift = +0.15 把可达范围压成 [−0.85, +1.0]（损失"完全抬起"端）；shift = −0.15 压成 [−1.0, +0.85]（**损失"完全按下"端**）。弹琴需要的是按下端 → 负向 shift 造成**能力性损失**（策略再聪明也够不到满按），正向 shift 只损失无关紧要的抬起端 → 可被完全补偿。新语义下策略能看到执行后的动作,因此对可补偿的一侧(+)补偿到位、对不可补偿的一侧(−)无能为力。**验证方法**：统计两个 run 的 action 触顶/触底裁剪率与按键力度分布。（旧语义下策略看不到偏置,+0.15 成了"免费把手指推向琴键"的偏置 → recall↑ → F1 超 clean。）
+
+   **paper 含义**：(a) action-shift 是**系统性方向偏置**、非退化型扰动——只测 +方向会漏掉一半图景；(b) shift 与零均值噪声（gaussian/uniform 纯退化）**本质不同**；(c) **扰动是否可观测（威胁模型选择）会定性改变结论**——同一个 +0.15 shift，在"隐藏扰动"模型下是 +12% 增益、在"硬件磨损/可观测"模型下是零效应。**诊断 env**：`OmniPiano-ClairDeLune-A-Shift-N15-v0`（ablation，不在 v1 矩阵）。**仍待**：多 seed 确认幅度 + 裁剪率验证。
+
+6. **威胁模型对照（新旧语义,OmniPiano 独有的对照组）**：同一批任务在"扰动对策略隐藏"(旧: `obs["action"]`=clean a_cmd) vs "扰动可观测"(新: =noised a_exec) 两种威胁模型下各跑一次,是 RG 结构上无法产生的对照(RG 无 OAR / 无此覆写概念)。观测到的模式:
+
+   | 通道/分布 | 隐藏扰动 | 可观测扰动 | Δ | 解读 |
    |---|---|---|---|---|
-   | **A-Shift-N15** | **−0.15** | 0.553 | 0.436 | **−0.073** |
-   | **Clean-v0** | 0 | 0.626 | 0.506 | — |
-   | **A-Shift-P15** | **+0.15** | 0.704 | 0.605 | **+0.078** |
+   | A-Uniform-P15（有界、经验 std=.087） | 0.371 | **0.491** | **+0.120** | 可观测 → 策略能补偿有界扰动 |
+   | A-Gauss-P15（白噪、std=.15） | 0.277 | 0.266 | −0.011 | 白噪声即使可见也无从补偿 |
+   | A-Shift-P15（恒定偏置） | 0.704 | 0.628 | −0.076 | 隐藏时是"免费助推"；可见后被补偿回 clean |
+   | A-Shift-N15 | 0.553 | 0.459 | −0.094 | 负向本就不可补偿（裁剪损失），可见性帮不上 |
 
-   **机理确认**：action 是 canonical [-1,1] 位置目标——**+0.15 把手指压向琴键 → 多按对音（recall↑）→ F1↑（超 clean）；−0.15 抬离琴键 → recall↓ → F1↓（低于 clean）**。方向决定 help/harm，围绕 clean 近似线性（+0.078 / −0.073 近对称）。已排除 bug（通道纯度验证注入 act_l2=591.66 的恒定噪声）。这是 **in-training robustness 协议**（§7 行 1，policy 训练时已知偏置、学到适配）。**paper 含义**：(a) action-shift 是**系统性方向偏置**、非退化型扰动——只测 +方向会漏掉一半图景；(b) shift 与零均值噪声（gaussian/uniform 纯退化）**本质不同**；(c) 挑战"robustness=一定退化"的朴素框架，须显式 disclose。**诊断 env**：`OmniPiano-ClairDeLune-A-Shift-N15-v0`（ablation，不在 v1 矩阵）。**仍待**：多 seed 确认幅度。
+   **初步结论（单 seed，谨慎）**：可观测性的收益随扰动的**可补偿性**递增——有界零均值扰动收益最大（+0.12），白噪声无收益，恒定偏置在正向反而"失去"了原本的偶然增益。**这是一个 paper 级 finding**：robustness 数字对威胁模型的选择高度敏感，基准必须显式声明用的是哪一种。
 
 **Caveats（写作须 disclose）**：(a) 仅 **matched eval**（scale=1.0），部署期鲁棒性曲线（scale sweep）待 `robust_eval_sweep.py` 跑出；(b) 仅 **seed=0 单种子**；(c) 仅 **P15/P50 最脏档**——中间档 P05/P10/P30 待补；(d) obs 噪声**忠实扰动 policy 实际消费的本体感觉通道**（关节角 `joints_pos` + 感知键态 `piano/state` + `sustain_state`）；关节速度不在其中，因为**上游 RoboPianist 基准本就是 position-only 观测**（`joints_vel` observable 上游定义但从未 enable，`piano_with_shadow_hands.py:_add_observables`），policy 从不观测速度、故无速度可扰——这是与 RoboPianist 对齐的 disclosure，非遗漏；(e) baseline 为**纯 PPO**（robust 无 cost，不跑 PPOLag）。
 
@@ -1595,7 +1620,7 @@ Reviewer 至少想看前 2 种（in-training + post-training）。第 3 种（�
 
 ### 负结果 / 预期验证（首批已给答案，2026-07-05）
 
-- **"shift 与 Gaussian 同 numerical level 是否表现相似？" → 答案：显著不同，是个 result。** A-Shift-P15 F1=0.704 vs A-Gauss-P15 0.277（2.5×）；R-Shift-P50 0.589 vs R-Gauss-P50 0.117（5×）。policy 能学会补偿恒定 bias（shift，empirical std=0），但对 white noise（gaussian）无能为力。**这不是原预期的"相似"负结果，而是分布轴的正向发现**——支持 v1 保留 3-way 分布 sweep 的价值。
+- **"shift 与 Gaussian 同 numerical level 是否表现相似？" → 答案：显著不同，是个 result。** A-Shift-P15 F1=0.628 vs A-Gauss-P15 0.266（2.4×，新语义）；R-Shift-P50 0.589 vs R-Gauss-P50 0.117（5×）。policy 能学会补偿恒定 bias（shift，empirical std=0），但对 white noise（gaussian）无能为力。**这不是原预期的"相似"负结果，而是分布轴的正向发现**——支持 v1 保留 3-way 分布 sweep 的价值。
 - **"σ=0.5 的 reward noise 是否严重降低学习？" → 是（严重）。** R-Gauss-P50 F1 崩到 0.117、`explained_variance` 只有 0.27（value function 拟合被高方差 reward 噪声破坏）。**对 paper 意味着**：reward 高斯档在 P50 可能过狠（曲线接近地板），中间档 P10/P30 更能给出可分辨的退化曲线；R-Shift-P50 反而 F1=0.589 说明"档位狠不狠"高度依赖分布。
 
 ---
