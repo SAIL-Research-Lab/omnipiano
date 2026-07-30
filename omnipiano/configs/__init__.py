@@ -33,9 +33,11 @@ class RobustConfig:
       - Uniform [low, high]: ``{action,obs,reward}_noise_uniform_{low,high}``(6)
       - Shift constant:      ``{action,obs,reward}_noise_shift``             (3)
       - Distribution knob:   ``noise_dist``                                  (1)
-    Total: 13 fields. Each field name maps strictly to its distribution's
-    mathematical parameter, mirroring Robust-Gymnasium's ``--noise-sigma`` /
-    ``--uniform-low/high`` / ``--noise-shift`` parameterization.
+      - Per-channel dist:    ``{action,obs,reward}_noise_dist``              (3)
+    Total: 16 fields. Each magnitude field name maps strictly to its
+    distribution's mathematical parameter, mirroring Robust-Gymnasium's
+    ``--noise-sigma`` / ``--uniform-low/high`` / ``--noise-shift``
+    parameterization.
 
     This config defines the TRAINING-time noise only — it is part of the
     registered task's identity. The eval-time noise multiplier is NOT a
@@ -51,9 +53,14 @@ class RobustConfig:
       - Symmetric (v1 default registrations): ``low = -level, high = +level``.
       - Asymmetric (advanced users may register): e.g.
         ``low=-0.02, high=+0.10`` to model biased sensor drift.
-    ``noise_dist`` is a single scalar shared across channels (one noise type
-    per registered env, mirroring RG's ``--noise-type``); per-channel distinct
-    distributions are not supported in v1.
+    ``noise_dist`` is the shared default (mirroring RG's ``--noise-type``,
+    which is likewise a single global knob). Since 2026-07-21 a channel may
+    override it via ``{channel}_noise_dist``, so ONE env can mix
+    distributions across channels (e.g. action=shift + obs=gaussian) —
+    a capability Robust-Gymnasium has no equivalent for. Resolution goes
+    through ``dist_for(channel)``; a channel that names its own distribution
+    must also set a nonzero magnitude for it (else ``__post_init__`` raises,
+    since a declared-but-empty channel would silently inject nothing).
 
     ``__post_init__`` validates uniform bounds (finite, low <= high) and
     raises if a channel sets fields inconsistent with ``noise_dist``.
@@ -77,8 +84,23 @@ class RobustConfig:
     obs_noise_shift: float = 0.0
     reward_noise_shift: float = 0.0
 
-    # === Distribution selector (shared across channels) ===
+    # === Distribution selector ===
+    # Global default, used by any channel that does not name its own.
     noise_dist: Literal["gaussian", "uniform", "shift"] = "gaussian"
+    # Per-channel override (2026-07-21). None = inherit ``noise_dist``.
+    # Setting these lets one env mix distributions across channels, e.g.
+    # action=shift + obs=gaussian. CONVENTION: in a mixed-distribution env
+    # name EVERY active channel explicitly rather than half-relying on the
+    # global fallback — the config's meaning should be readable per line.
+    action_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
+    obs_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
+    reward_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
+
+    def dist_for(self, channel: str) -> str:
+        """The distribution governing ``channel``: its own override if set,
+        otherwise the global ``noise_dist``. Single source of truth — every
+        dispatch below and both noise-injecting wrappers resolve through it."""
+        return getattr(self, f"{channel}_noise_dist") or self.noise_dist
 
     def __post_init__(self):
         """Validate config integrity (raises ``ValueError`` on violation):
@@ -99,6 +121,13 @@ class RobustConfig:
                 f"RobustConfig: noise_dist must be one of {valid_dists}, "
                 f"got {self.noise_dist!r}"
             )
+        for ch in ("action", "obs", "reward"):
+            per_ch = getattr(self, f"{ch}_noise_dist")
+            if per_ch is not None and per_ch not in valid_dists:
+                raise ValueError(
+                    f"RobustConfig: {ch}_noise_dist must be one of "
+                    f"{valid_dists} or None, got {per_ch!r}"
+                )
         for ch in ("action", "obs", "reward"):
             std = getattr(self, f"{ch}_noise_std")
             if not np.isfinite(std):
@@ -133,8 +162,11 @@ class RobustConfig:
                     f"<= high ({hi})"
                 )
 
-        active_dist = self.noise_dist
         for ch in ("action", "obs", "reward"):
+            # Per-channel: each channel is validated against ITS OWN resolved
+            # distribution, so a mixed-distribution config is checked exactly
+            # as strictly as a same-distribution one.
+            active_dist = self.dist_for(ch)
             std_set = getattr(self, f"{ch}_noise_std") != 0.0
             unif_set = (
                 getattr(self, f"{ch}_noise_uniform_low") != 0.0
@@ -161,22 +193,37 @@ class RobustConfig:
                     f"Use {ch}_noise_shift instead."
                 )
 
+            # "Declared but empty" — naming a distribution for a channel
+            # whose magnitude is zero silently yields NO noise on that
+            # channel, i.e. a task that looks configured but trains clean.
+            # Only fires on an EXPLICIT per-channel declaration; channels
+            # that simply inherit the global default may stay silent.
+            if (getattr(self, f"{ch}_noise_dist") is not None
+                    and not (std_set or unif_set or shift_set)):
+                raise ValueError(
+                    f"RobustConfig: {ch}_noise_dist={active_dist!r} is "
+                    f"declared but every {ch} magnitude is zero — that "
+                    f"channel would inject NO noise. Set the matching "
+                    f"magnitude field, or drop {ch}_noise_dist."
+                )
+
     # ------------------------------------------------------------------
     # Noise semantics — single source of truth, used by BOTH the gym-layer
     # RobustWrapper (action / reward channels) and the dm_env-layer
     # DmEnvObsNoiseWrapper (obs channel), so the two layers never diverge.
     # ------------------------------------------------------------------
     def is_channel_active(self, channel: str) -> bool:
-        """True if ``channel`` has nonzero noise magnitude under noise_dist
-        (gaussian→std, uniform→low/high, shift→shift)."""
-        if self.noise_dist == "gaussian":
+        """True if ``channel`` has nonzero noise magnitude under ITS resolved
+        distribution (gaussian→std, uniform→low/high, shift→shift)."""
+        dist = self.dist_for(channel)
+        if dist == "gaussian":
             return getattr(self, f"{channel}_noise_std") != 0.0
-        if self.noise_dist == "uniform":
+        if dist == "uniform":
             return (getattr(self, f"{channel}_noise_uniform_low") != 0.0
                     or getattr(self, f"{channel}_noise_uniform_high") != 0.0)
-        if self.noise_dist == "shift":
+        if dist == "shift":
             return getattr(self, f"{channel}_noise_shift") != 0.0
-        raise ValueError(f"Unknown noise_dist: {self.noise_dist!r}")
+        raise ValueError(f"Unknown noise_dist: {dist!r}")
 
     def sample_noise(self, rng, channel: str, shape):
         """Sample noise for ``channel`` from the active distribution.
@@ -189,17 +236,18 @@ class RobustConfig:
         - shift:    read ``{channel}_noise_shift`` → constant offset broadcast
           to all dims; **NO rng draw** (deterministic, program-run-level).
         """
-        if self.noise_dist == "gaussian":
+        dist = self.dist_for(channel)
+        if dist == "gaussian":
             std = getattr(self, f"{channel}_noise_std")
             return rng.normal(0.0, std, size=shape)
-        if self.noise_dist == "uniform":
+        if dist == "uniform":
             lo = getattr(self, f"{channel}_noise_uniform_low")
             hi = getattr(self, f"{channel}_noise_uniform_high")
             return rng.uniform(lo, hi, size=shape)
-        if self.noise_dist == "shift":
+        if dist == "shift":
             shift = getattr(self, f"{channel}_noise_shift")
             return np.full(shape, shift, dtype=float)
-        raise ValueError(f"Unknown noise_dist: {self.noise_dist!r}")
+        raise ValueError(f"Unknown noise_dist: {dist!r}")
 
 @dataclass
 class TaskVariantConfig:

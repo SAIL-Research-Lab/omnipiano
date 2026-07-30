@@ -39,8 +39,9 @@ def test_default_config_all_zero_gaussian():
     assert cfg.noise_dist == "gaussian"
 
 
-def test_exactly_13_fields():
-    # eval_noise_scale left the config on 2026-07-21 (make() kwarg now).
+def test_exactly_16_fields():
+    # 2026-07-21: eval_noise_scale left the config (make() kwarg now);
+    # the 3 optional per-channel dist overrides arrived.
     from dataclasses import fields
     names = {f.name for f in fields(RobustConfig)}
     expected = {
@@ -50,9 +51,10 @@ def test_exactly_13_fields():
         "reward_noise_uniform_low", "reward_noise_uniform_high",
         "action_noise_shift", "obs_noise_shift", "reward_noise_shift",
         "noise_dist",
+        "action_noise_dist", "obs_noise_dist", "reward_noise_dist",
     }
     assert names == expected, f"field set drift: {names ^ expected}"
-    assert len(names) == 13
+    assert len(names) == 16
 
 
 # --------------------------------------------------------------------------

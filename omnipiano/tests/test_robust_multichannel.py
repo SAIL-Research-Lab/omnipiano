@@ -14,8 +14,11 @@ combined-channel registration (e.g. A+O) cannot silently regress:
   - RNG determinism: action + reward share the gym stream but are sampled in a
     FIXED order (action→reward, §12 decision 8), so a combined task is bit-exact
     reproducible under the same seed.
-  - Per-channel DIFFERENT distribution is NOT expressible (global noise_dist);
-    mixing raises — that path is the frozen per-channel-dist item (§16).
+  - Mixing distributions by MAGNITUDE FIELDS ALONE still raises: a channel
+    inherits the global noise_dist unless it declares its own
+    ``{channel}_noise_dist`` (per-channel dist landed 2026-07-21; its own
+    gates live in test_robust_per_channel_dist.py). This keeps accidental
+    mixing an error while the deliberate form is explicit.
   - frame_stack>1 with any override channel still fails fast under multi-channel.
 """
 import numpy as np
@@ -111,11 +114,13 @@ def test_multichannel_rng_reproducible():
 
 
 # --------------------------------------------------------------------------
-# Per-channel DIFFERENT distribution is NOT expressible (global noise_dist)
+# Implicit mixing (magnitude fields only, no declared dist) still raises
 # --------------------------------------------------------------------------
-def test_mixed_per_channel_dist_raises():
-    # action gaussian + obs uniform in one config → rejected (frozen per-channel
-    # dist item, §16). Same-dist multi-channel is the supported path.
+def test_implicit_mixed_dist_raises():
+    # obs did not declare its own dist → it inherits noise_dist='gaussian',
+    # so setting its UNIFORM bounds is a mismatch and must raise. Deliberate
+    # mixing requires obs_noise_dist="uniform" (see
+    # test_robust_per_channel_dist.py::test_P8_cross_dist_check_is_per_channel).
     with pytest.raises(ValueError, match="noise_dist='gaussian'"):
         RobustConfig(noise_dist="gaussian",
                      action_noise_std=0.10,
