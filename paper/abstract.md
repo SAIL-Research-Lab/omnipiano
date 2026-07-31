@@ -1,4 +1,50 @@
-# Abstract — 草稿与决策日志
+# Abstract — 当前版本与决策日志
+
+## 当前版本(v3,用户定稿 2026-07-20,含三处事实性小修)
+
+> Safe, robust, and multi-agent reinforcement learning have largely evolved around
+> separate benchmark ecosystems, leaving their behavior and trade-offs under a shared
+> high-dimensional embodied control problem underexplored. We present **OmniPiano**,
+> an algorithm- and framework-agnostic Gymnasium benchmark built on simulated
+> dexterous piano playing with Shadow Hands. Piano playing provides a contact-rich
+> continuous-control problem that requires precise spatial and temporal coordination,
+> while allowing task complexity to scale systematically through both embodiment and
+> musical content. OmniPiano extends RoboPianist into a unified task family spanning
+> four evaluation settings. First, a **morphology ladder** scales from two to five
+> hands, covering 45 to 111 action dimensions, with optional physically enforced
+> keyboard partitions. Second, **safe RL** variants expose four per-step cost families
+> based on joint magnitude, inter-hand collision force, actuator power, and
+> joint-injury risk. Third, **robust RL** variants introduce observation, action, and
+> reward perturbations under three noise distributions following Robust-Gymnasium
+> protocols. Fourth, **cooperative multi-agent** tasks partition the hands among
+> decentralized agents and vary the amount of shared keyboard territory. Evaluations
+> with standard, constrained, and multi-agent RL algorithms reveal substantial
+> differences in performance, constraint satisfaction, scalability, and sensitivity
+> to perturbations, including coordination failures under shared multi-hand rewards
+> and sign-dependent responses to action perturbations. OmniPiano provides a common
+> testbed for studying capability, safety, robustness, and coordination in
+> high-dimensional dexterous control.
+
+### v3 相对用户定稿原文的三处事实性修正(2026-07-20 代码/文档核对)
+
+1. "45 to **more than 111**" → "45 to **111**"。5-hand 动作维度 = 22×5+1 = **恰好 111**
+   (README morphology ladder;bimanual = 45 同源),无超过 111 的已注册形态。
+2. "assign **individual hands** to decentralized agents" → "**partition the hands
+   among** decentralized agents"。canonical 分解里 agent 拥有**手对**(4-hand duet:
+   secondo/primo 各一对 LH+RH;仅 3/5-hand 各有一个单手 soloist)——
+   `multi_agent_design.md` §3.2–3.4。
+3. "**non-monotonic** responses to action perturbations" → "**sign-dependent**
+   responses"。实测三点**单调**穿过 clean(−0.15→0.553, 0→0.626, +0.15→0.704;
+   `robust_task_design.md` §10 claim 5 原文"围绕 clean 单调"),发现本质是符号
+   决定助益/损害;写 non-monotonic 会与自家附录数据矛盾。
+
+### 口径记录(非修正)
+
+- **cost 归组改为 4 族**(joint magnitude / inter-hand collision force / actuator
+  power / joint-injury risk),取代 README 的 6 族口径——7 个约束类按物理量重新
+  分组,映射表见 claims.md C1。**正文与 README 发布前需统一到 4 族口径。**
+- 结尾重新纳入两条 finding(coordination failures、sign-dependent responses),
+  推翻第三轮"abstract 零 finding"决策——本轮措辞是定性概括、不带数字,风险可控。
 
 ## 决策日志
 
@@ -6,114 +52,13 @@
 |---|---|---|
 | 2026-07-20 | 论文 scope = 整个 OmniPiano benchmark(morphology ladder + safety + robust + multi-agent 四条腿) | ✅ 用户拍板 |
 | 2026-07-20 | 问题定义 = RL 学术界缺少"精细化操作/控制 × {safety, robustness, MA} 评测轴"合一的 benchmark(claims.md C0) | ✅ 用户拍板 |
-| 2026-07-20 | 目标 venue = **AAAI 2027**(main track;~7 页正文;按往年惯例 abstract deadline ≈ 2026-07 月底、全文 ≈ 8 月初——**时间紧**) | ✅ 用户拍板 |
-| 2026-07-20 | framing = **v0-A breadth-led**(缺口→任务→四条腿→F1 性质→findings) | ✅ 用户拍板 |
-| 2026-07-20 | ~~abstract findings = C3 + C4d~~ → **推翻(用户第三轮):abstract 暂不写任何具体 empirical finding**(winner-takes-all、action-bias-improves 等都会让 reviewer 困惑/节外生枝);findings 留给正文。abstract 结尾只陈述 baseline 覆盖面 | ✅ 用户拍板 2026-07-20 |
-| 2026-07-20 | **删除 Draft v0-B(metric-led)**:叙事逻辑与 work 主线不符(用户拍板)。F1 noise-immunity 只作为正文 metric 小节的性质,不作为论文 hook | ✅ 已删 |
-| 2026-07-20 | 图表布局:**正文放 EpReward 学习曲线,F1 图表放 supplementary**(training rollout 原生只有 EpReward,F1 来自 periodic eval,见 robust_task_design §14.3) | ✅ 用户拍板 |
-| 2026-07-20 | 新增 **Draft v2 = 用户 task-first framing 修订版**(与 v1 gap-first 并列备选);修 Level-1/-3 术语、duet 单手误述、per-key obs 误述、原稿结尾与 C4d 矛盾的 "systematic degradation" 措辞 | ✅ 当前主推 v2,v1 备选 |
-| 2026-07-20 | ❌ 撤回 "millisecond-precise" 措辞(代码核实:控制步 50 ms/20 Hz,`base.py:31` + `configs/__init__.py:334`;F1 按控制步采键激活,`evaluation.py:67-71`;5 ms 只是物理子步)。改为 "note-accurate timing … at a 20 Hz control rate"。全文写作禁用毫秒级表述 | ✅ 已核实并修正 |
-| — | ⚠️ 上一条的连带约束:R-通道任务的正文 EpReward 图必须用 `ep_return_true`(或显式 disclose 实收带噪,§14.2);abstract 中 F1 从 "headline metric" 措辞降为 "every task additionally reports…"(v1 已改),避免与正文图表主次矛盾 | 写作纪律 |
-
-## Draft v2(用户 task-first framing 修订版,2026-07-20)~200 词
-
-> Robotic piano playing has emerged as a uniquely measurable testbed for dexterous
-> control: high-dimensional continuous action, contact-rich dynamics, and unambiguous
-> MIDI-grounded evaluation. Yet existing piano benchmarks stop at two human-sized
-> hands, impose no safety constraints, and assume noise-free perception — gaps that
-> keep them out of reach for safe, robust, and multi-agent RL research. We introduce
-> **OmniPiano**, an algorithm- and framework-agnostic Gymnasium benchmark that extends
-> RoboPianist along three axes. (i) **Morphology**: a ladder of 2–5 hands (45 to 111+
-> actuated degrees of freedom), each playable either unconstrained or physically
-> partitioned, with every hand hard-clamped to its own non-overlapping keyboard
-> register. (ii) **Safety**: six cost-constraint families — from hand–hand collision
-> forces to per-joint injury power budgets — exposed through a standard per-step
-> cost signal. (iii) **Robustness**: action, observation,
-> and reward perturbations under three noise distributions, protocol-aligned with
-> Robust-Gymnasium. OmniPiano further provides cooperative duet tasks in which each
-> agent commands a pair of hands within its own keyboard territory, supporting
-> centralized-training-decentralized-execution methods such as MAPPO. We provide
-> reference baselines spanning standard, safe, and multi-agent RL (PPO, SAC, TQC,
-> PPO-Lagrangian, MAPPO), together with a unified evaluation protocol and
-> ground-truth, MIDI-grounded metrics across all task families. Code and tasks: <URL>.
-
-### v2 相对用户原稿的修改清单
-1. **Level-1/Level-3 术语移除**(用户指出读者必困惑):
-   "unconstrained Level-3 prototypes and hard-clamped Level-1 StaticPartition tasks"
-   → "playable either unconstrained or physically partitioned, with every hand
-   hard-clamped to its own non-overlapping keyboard register"。Level 编号是内部
-   分类法,留给正文定义后再用。
-2. **首句去重**:"high-dimensional … high-dimensional" 出现两次 → 第二处并入冒号列举
-   (action 维度 / contact-rich / MIDI 评测三要素)。
-3. **事实修正:duet 每 agent 控一对手**(secondo=bass 侧 LH+RH,primo=treble 侧
-   LH+RH;README demo + multi_agent_design §3),原稿 "controls one hand" 不实。
-4. **事实修正:"per-key observation" 删掉**——obs 噪声打的是白名单 141 维
-   (joints_pos + piano/state + sustain_state,robust_task_design §10 caveat d),
-   且 per-key σ 校准明确不做(§11)。
-5. **safety 列举改为显式采样措辞** "six … families — from hand–hand collision forces
-   to per-joint injury power budgets"。原稿及 v2 初版都是"说 6 列 4"的半列举,计数
-   与列表打架;全 6 族(7 个约束类)的映射表在 claims.md C1,正文用。
-6. **结尾不写任何具体 finding**(用户第三轮拍板):原稿的 "systematic robustness
-   degradation" 与 C4d 矛盾、"constraint satisfaction" 实证 [pending];而 C3/C4d
-   本身又易引 reviewer 困惑。最终结尾只写 baseline 覆盖(5 算法)+ 统一评测协议 +
-   MIDI-grounded 指标,全部 [design]/[verified] 级、零争议。findings 留正文。
-7. "calibrated" → "protocol-aligned with Robust-Gymnasium"(档位对齐 RG paper 图,
-   claims.md C1 措辞)。
-8. 补 45–111+ DoF 数字(morphology 轴的规模感)。20 Hz 未进本版(task-first 首句
-   已够长;若要可加回)。
-
-## Draft v1(gap-first framing)【存档;结尾 findings 句已被第三轮决策否决,如启用需同步删改】
-
-> Progress on safe, robust, and multi-agent reinforcement learning is measured on
-> largely disjoint benchmarks whose underlying tasks — point navigation, low-DoF
-> locomotion, abstracted particle worlds — are far simpler than the control problems
-> motivating the field. We present **OmniPiano**, a unified benchmark built on
-> simulated piano playing with Shadow Hands: a fine-grained, contact-rich control
-> problem demanding note-accurate timing from 45 to 111+ actuated degrees
-> of freedom at a 20 Hz control rate. Within one codebase and one framework-agnostic Gymnasium API, OmniPiano
-> extends RoboPianist along four axes: a **morphology ladder** from two to five hands
-> with optional physically enforced register partitions; **safe-RL** tasks with six
-> constraint families, from collision forces to joint-injury budgets; **robust-RL**
-> tasks injecting observation, action, and reward perturbations under three
-> distributions, protocol-aligned with Robust-Gymnasium; and **cooperative
-> multi-agent** variants with a tunable shared-territory axis. Every task additionally
-> reports a ground-truth, physics-derived note-level F1 that no noise channel can
-> contaminate. Baselines across five algorithms (PPO, SAC, TQC, PPO-Lagrangian,
-> MAPPO) surface findings simpler suites cannot: unpartitioned multi-hand reward
-> collapses to winner-takes-all idling, while a constant action bias can *improve*
-> performance — challenging the perturbation-equals-degradation framing. Code and
-> tasks: <URL>.
-
-### v1 相对 v0-A 的改动(均由决策日志驱动)
-1. F1 句从 "A key design property: the headline metric …" 降格为
-   "Every task additionally reports …" —— 配合正文 EpReward 为主、F1 进 supplementary。
-2. findings 三连删掉 C4e(reward noise cripples learning …),保留 C3 + C4d。
-3. 压到 ~190 词,符合 AAAI 摘要惯例(150–200)。
-
-## Draft v0-A(breadth-led:先讲统一 benchmark,再讲 metric 性质)~215 词【存档】
-
-> Progress on safe, robust, and multi-agent reinforcement learning is measured on
-> largely disjoint benchmarks whose underlying tasks — point navigation, low-DoF
-> locomotion, abstracted particle worlds — are far simpler than the control problems
-> motivating the field. We present **OmniPiano**, a unified benchmark built on
-> simulated piano playing with Shadow Hands: a fine-grained, contact-rich control
-> problem demanding note-accurate timing from 45 to 111+ actuated degrees
-> of freedom at a 20 Hz control rate. Within one codebase and one framework-agnostic Gymnasium API, OmniPiano
-> extends RoboPianist along four axes: a **morphology ladder** from two to five hands
-> with optional physically enforced register partitions; **safe-RL** tasks with six
-> constraint families, from collision forces to joint-injury budgets; **robust-RL**
-> tasks injecting observation, action, and reward perturbations under three
-> distributions, protocol-aligned with Robust-Gymnasium; and **cooperative
-> multi-agent** variants with a tunable shared-territory axis. A key design property:
-> the headline metric — note-level F1 computed from ground-truth physics — is
-> structurally immune to all three noise channels, so robustness is measured without
-> metric contamination. Baselines across five algorithms surface findings invisible
-> to simpler suites: unpartitioned multi-hand reward collapses to winner-takes-all
-> idling; a constant action bias can *help*, challenging the perturbation-equals-
-> degradation framing; and reward noise cripples learning while received returns
-> look healthy. Code and tasks: <URL>.
-
-> (v0-B metric-led 草稿已删除,2026-07-20:叙事逻辑与 work 主线不符。历史版本见 git。)
+| 2026-07-20 | 目标 venue = **AAAI 2027**(main track;按往年惯例 abstract deadline ≈ 7 月底、全文 ≈ 8 月初——**时间紧**) | ✅ 用户拍板 |
+| 2026-07-20 | 图表布局:**正文放 EpReward 学习曲线,F1 图表放 supplementary**;R-通道正文图必须用 `ep_return_true`(§14.2) | ✅ 用户拍板 |
+| 2026-07-20 | ❌ 撤回 "millisecond-precise"(控制步 50 ms/20 Hz,`base.py:31`;F1 按控制步采样,`evaluation.py:67-71`)。全文禁用毫秒级表述 | ✅ 已核实 |
+| 2026-07-20 | 删除 v0-B(metric-led):叙事与主线不符。F1 noise-immunity 只作正文 metric 小节性质,不作论文 hook | ✅ 已删 |
+| 2026-07-20 | 第三轮:abstract 零 finding → **第四轮部分推翻**:用户定稿(v3)重新纳入两条**定性**finding(不带数字) | ✅ 用户拍板 |
+| 2026-07-20 | **v3 = 唯一现役版本**;v0-A/v1/v2 草稿全部删除(历史见 git:f96c6a2→1cd3871) | ✅ 用户拍板 |
+| 2026-07-20 | cost 族口径:abstract 用 **4 族**分组(README 现为 6 族,发布前统一) | 待 README 同步 |
 
 ## 数字来源(不在本文件手编,引用 claims.md → 设计文档)
 

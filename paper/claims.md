@@ -29,16 +29,14 @@ observation/action/reward perturbations aligned with Robust-Gymnasium, and (iv)
 
 - API/framework-agnostic:SB3 / OmniSafe / RLlib / CleanRL 均已实际接入或有模板
   (README "Training + evaluation")。
-- 安全约束:**6 族 / 7 类**(`omnipiano/safety/constraints.py`,代码核实 2026-07-20;
-  collision 两类算一族)。abstract 用 "from … to" 采样措辞,正文列全表:
-  | 族 | 约束类 |
+- 安全约束:**paper 口径 = 4 族 / 7 类**(abstract v3 定稿;`constraints.py` 代码核实
+  2026-07-20)。按物理量归组,取代 README 的 6 族口径(**发布前 README 需统一**):
+  | 族(paper 口径) | 约束类 |
   |---|---|
-  | joint-magnitude limits | `JointMagnitudeConstraint` |
-  | shared per-joint ceilings | `MultiJointSharedMagnitudeConstraint` |
-  | summed-chain budgets | `MultiJointSummedMagnitudeConstraint` |
-  | hand–hand collisions(binary + 接触力) | `HandCollisionConstraint` + `HandCollisionForceConstraint` |
+  | joint magnitude | `JointMagnitudeConstraint` + `MultiJointSharedMagnitudeConstraint` + `MultiJointSummedMagnitudeConstraint` |
+  | inter-hand collision force | `HandCollisionConstraint`(binary)+ `HandCollisionForceConstraint`(连续力) |
   | actuator power | `TotalActuatorPowerConstraint` |
-  | joint-injury power budgets | `InjuredJointPowerConstraint` |
+  | joint-injury risk | `InjuredJointPowerConstraint` |
 
 ## C2 — Noise-immune ground-truth metric(方法论卖点,差异化最强)
 
@@ -129,13 +127,13 @@ MAPPO 5M eval reward 768;F1 surface 修复在 MA bug 队列中)
 - Reduced action space 不启用:全 DoF Shadow Hand 是 benchmark 定义的一部分
   (thumb-budget 安全任务依赖 THJ1/THJ5)。
 
-## Abstract 取舍(已定,2026-07-20,三轮)
+## Abstract 取舍(已定,2026-07-20,四轮)
 
-- Venue = **AAAI 2027**;当前主推 **Draft v2**(用户 task-first framing 修订版)。
-- **Abstract 不写任何具体 empirical finding**(第三轮推翻第二轮的 C3+C4d 方案:
-  winner-takes-all / action-bias-improves 这类反直觉结论放 abstract 会让 reviewer
-  困惑并节外生枝)。结尾只写 baseline 覆盖(PPO/SAC/TQC/PPOLag/MAPPO)+ 统一协议 +
-  MIDI-grounded 指标。C3/C4x 全部留正文。
+- Venue = **AAAI 2027**;**v3 = 用户定稿(唯一现役版本)**,全文见 abstract.md。
+- Findings:v3 结尾纳入两条**定性**finding(不带数字)——"coordination failures
+  under shared multi-hand rewards"(=C3)与 "sign-dependent responses to action
+  perturbations"(=C4d;注意措辞必须是 sign-dependent,**不是** non-monotonic——
+  实测三点单调,§10 claim 5)。其余 C4x 留正文。
 - v0-B(metric-led)已删:叙事与主线不符。C2 只作正文 metric 小节的性质论证
   (污染矩阵、RG 对照),不作论文 hook;图表布局:**正文 EpReward 学习曲线、
   F1 图表进 supplementary**。
