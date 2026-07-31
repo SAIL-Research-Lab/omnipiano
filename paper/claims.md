@@ -67,36 +67,65 @@ policy attains the ladder's best F1 (0.46) despite the largest action space (111
 - 双手基线:ClairDeLune PPO 5M clean F1=0.626(robust_task_design §10)。
 - 机理与 hard-core/soft-boundary 语义:`static_partition_design.md` §3(PAPER-CRITICAL)。
 
-## C4 — Robust 腿:三大实证发现(robust_task_design §10,matched eval,PPO,seed=0)
+## C4 — Robust 腿:实证发现(`paper/robust_notes.md` §5,matched eval,PPO,seed=0)
+
+> **数字口径(2026-07-21 定稿)**:最终策略 + **10 集** deterministic matched eval
+> (`eval_noise_scale=1.0`)。Shift 类任务集间方差恰为 0(常数偏置不抽随机数),
+> Gaussian/Uniform 有真实方差。**旧版 claims 里的 A 通道数字已作废**——那批实验
+> 是在另一种威胁模型(扰动对策略隐藏)下训练的,且混用了两种测量口径。
 
 **C4a — Distribution ordering**: At equal numerical level, difficulty orders
-Shift (easy) < Uniform < Gaussian (hard), consistently across action and reward
-channels — policies learn to compensate a constant bias (empirical std 0) but cannot
-fight white noise. A-channel: 0.704/0.371/0.277; R-channel: 0.589/0.300/0.117.
+Shift (easy) < Uniform < Gaussian (hard) on the **action and reward** channels —
+policies learn to compensate a constant bias (which carries zero variance) but
+cannot fight white noise. A-channel: 0.615/0.491/0.267; R-channel: 0.589/0.327/0.109.
+**The observation channel is a deliberate exception worth reporting**: there the
+order reverses at the easy end (Uniform 0.616 > Gaussian 0.562 > Shift 0.539) — a
+constant sensor bias is *harder* than sensor white noise. `[verified]`(单 seed)
+
+**C4b — Channel sensitivity**: Action ≈ Reward ≫ Observation. At the highest level,
+Gaussian noise costs 57% (action) and 83% (reward) of F1 but only 10% on observation
+— policies partially filter sensor noise, and the 979 goal dimensions are untouched.
 `[verified]`(单 seed)
 
-**C4b — Channel sensitivity**: Action ≈ Reward ≫ Observation. Obs noise at the
-highest level costs only 4–14% F1 (policies partially filter sensor noise; goal dims
-untouched); Gaussian action/reward noise costs 56–81%. `[verified]`(单 seed)
-
 **C4c — Noise induces conservatism**: Under every channel, precision stays high
-(0.90–0.999) while recall collapses — perturbed policies miss notes rather than play
-wrong ones. `[verified]`
+(0.92–0.99) while recall collapses — perturbed policies miss notes rather than play
+wrong ones. The F1 drop is almost entirely a recall drop. `[verified]`
 
-**C4d — Directional bias is not degradation**: A constant +0.15 action shift *helps*
-(F1 0.704 > clean 0.626) while −0.15 hurts (0.553) — monotone through clean, near
-symmetric. Systematic bias is qualitatively different from zero-mean noise and
-challenges the "perturbation ⇒ degradation" framing; benchmarks that only test one
-sign miss half the picture. `[verified]`(方向对照 N15 已确认;多 seed 待补)
+**C4d — Directional bias is sign-dependent and strongly asymmetric**: a constant
+action shift of +0.15 costs almost nothing (F1 0.615, −2%) while −0.15 costs 7×
+more (0.545, −13%). The likely mechanism is an *asymmetric loss of action range*:
+post-noise clipping to [−1,1] means −0.15 removes the full-press end of the range —
+exactly what piano playing needs — whereas +0.15 only removes the full-retract end,
+which the policy can compensate. Systematic bias is therefore qualitatively
+different from zero-mean noise, and a benchmark that tests only one sign measures
+only half the effect. `[verified]`(方向对照 N15 已确认;裁剪率验证 + 多 seed 待补)
 
 **C4e — Reward noise cripples learning while returns look healthy**: R-Gauss-P50
-destroys the value function (explained_variance 0.27, F1 0.117) yet received return
-stays within ~10% of clean; R-Shift inflates return above clean (+294) at F1 0.589.
-Without a noise-immune metric this failure is invisible. `[verified]`(连接 C2 的杀手案例)
+destroys the value function (explained_variance 0.27) and drives F1 to 0.109 (−83%),
+yet the received return stays within 9% of clean; R-Shift-P50 *inflates* return to
+2141 (+16% above clean) at F1 0.589. Without a noise-immune metric this failure mode
+is invisible. `[verified]`(连接 C2 的杀手案例,robust 腿最强的单条 claim)
 
-- Caveats 必须 disclose(§10):单 seed;仅 matched eval(scale sweep 曲线 pending);
-  仅最高档 P15/P50;obs 噪声只打 position-only 本体感觉通道(与 RoboPianist 对齐);
-  σ 的物理单位跨通道不同(§4.5)。
+**C4f — Compound perturbations degrade super-additively (for stochastic noise)**:
+a task perturbing two channels at once falls *below both* of its single-channel
+components — AO-Gauss 0.177 vs A 0.267 / O 0.562; AR-Uniform 0.232 vs A 0.491 /
+R 0.327. Constant shifts do not compose this way. Robust-Gymnasium cannot express
+multi-channel perturbation at all, so this class of interaction is unmeasurable
+there. `[verified]`(单 seed;OR-Shift 那一格因缺单通道同向对照暂不入 claim)
+
+**C4g — Robustness numbers depend on whether the perturbation is observable**
+(threat-model control): the same +0.15 action shift *helps* when the disturbance is
+hidden from the policy (F1 0.704 vs clean 0.626) but is neutral once the policy
+observes its executed action (0.615). The harmful direction is unaffected (−0.15:
+0.553 → 0.545), consistent with C4d's clipping mechanism — the compensable side gets
+compensated away, the capability loss does not. A benchmark must therefore declare
+its threat model. `[verified for the shift channel]`(两侧均为确定性测量,协议无关;
+gauss/uniform 侧的旧值为单集口径,不足以支撑,需重训才能扩展)
+
+- Caveats 必须 disclose:单 seed(最大统计弱点);仅 matched eval(scale sweep 曲线 pending);
+  主表仅最高档 P15/P50;obs 噪声只打 position-only 本体感觉通道 141 维、不碰 979 维 goal
+  (与 RoboPianist 对齐的声明,非遗漏);σ 的物理单位跨通道不同,不应跨通道比较同一数值 level;
+  仅 PPO(robust 任务无 cost)。
 
 ## C5 — Safety 腿(实验排队中,abstract 用能力措辞)
 
