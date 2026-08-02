@@ -103,16 +103,21 @@ Zero-mean noise cannot produce this; a benchmark that tests only one sign measur
 only half the effect — and on the observation channel would report a 14% loss where
 the opposite sign gives an 8% gain. `[verified]`(三通道各有正负对照;多 seed 待补)
 
-**C4d-i — Constant reward offsets are NOT policy-invariant, and that localises the
-reward channel's effect**: with fixed 588-step episodes, adding a constant to every
-step's reward adds a constant to every trajectory's return, so classical MDP
-reasoning predicts an unchanged optimal policy. Both signs nonetheless degrade
-performance markedly (−6% / −21%). The effect must therefore travel outside the
-reward-ranking path — the leading candidate being the observation-augmented input
-(`obs["reward"]` carries the perturbed reward under our threat model), i.e. the
-reward channel acts on the policy mainly as an *input* perturbation rather than as
-a learning-signal perturbation. `[verified for the effect]` /
-`[pending for the mechanism]`(判定实验:R-Shift × OAR-off,约 2 小时)
+**C4d-i — Constant reward offsets are not policy-invariant, and an ablation
+localises the effect to the observation path**: with fixed 588-step episodes,
+adding a constant to every step's reward adds a constant to every trajectory's
+return, so classical MDP reasoning predicts an unchanged optimal policy. Both signs
+nonetheless degrade performance (−6% at +0.50, −21% at −0.50). Re-running both with
+the observation-augmentation disabled — which removes `obs["reward"]`, the only
+path by which the perturbation reaches the policy as an *input*, while leaving it
+in the learning signal — separates the two candidate mechanisms and gives an
+**asymmetric answer**: the large negative-shift penalty vanishes (−21% → +7%
+relative to the OAR-off baseline), whereas the small positive-shift penalty
+persists (−6% → −9%). A constant reward offset therefore harms the policy chiefly
+by perturbing an observation feature, not by corrupting the learning signal — which
+makes the benchmark's threat-model declaration (what the OAR slots carry) a
+determinant of measured robustness rather than an implementation detail.
+`[verified]`(单 seed;正向那一格的小幅残余未归因,可能是 critic 动态或种子噪声)
 
 **C4e — Reward noise cripples learning while returns look healthy**: R-Gauss-P50
 destroys the value function (explained_variance 0.27) and drives F1 to 0.109 (−83%),

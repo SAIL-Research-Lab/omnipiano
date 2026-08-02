@@ -1286,6 +1286,36 @@ register(
     robust_config=RobustConfig(noise_dist="shift", reward_noise_shift=-0.50),
 )
 
+# --- Decisive experiment for C4d-i: WHERE does a reward shift act? ---------
+# Episodes are fixed-length (588 steps), so adding a constant to every step's
+# reward adds a constant to every trajectory's return and classical MDP
+# reasoning predicts an unchanged optimal policy. Measured, both signs hurt
+# (P50 -6%, N50 -21%). Two candidate explanations:
+#   (1) the OAR observation slot — obs["reward"] carries the perturbed reward
+#       under our threat model, so the shift is also a constant offset on a
+#       POLICY INPUT, which no invariance argument protects;
+#   (2) critic learning dynamics — the value net must absorb a ~±2.5
+#       discounted offset (gamma=0.8) even though advantages are invariant
+#       once converged.
+# Turning OAR off removes path (1) and leaves the reward noise acting ONLY on
+# the learning signal (RobustWrapper still perturbs the returned scalar; the
+# reward-slot override is skipped because the obs Dict has no "reward" key).
+# Compare against Clean-NoOAR (F1 0.520), NOT Clean (0.626): disabling OAR by
+# itself already costs 17% F1, so the baseline must be the OAR-off clean run.
+#   effect vanishes -> mechanism (1);  effect persists -> mechanism (2).
+register(
+    id="OmniPiano-ClairDeLune-R-Shift-P50-NoOAR-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(noise_dist="shift", reward_noise_shift=0.50),
+    env_config=BenchmarkEnvConfig(action_reward_observation=False),
+)
+register(
+    id="OmniPiano-ClairDeLune-R-Shift-N50-NoOAR-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(noise_dist="shift", reward_noise_shift=-0.50),
+    env_config=BenchmarkEnvConfig(action_reward_observation=False),
+)
+
 
 # --- Multi-channel / combined-channel experiments (NOT in the v1 matrix) --
 # First combined-channel probes (2026-07-05). Same-dist multi-channel is
