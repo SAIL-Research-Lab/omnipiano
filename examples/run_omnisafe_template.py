@@ -279,12 +279,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    "OmniSafe asserts parallel==1 for off-policy/model-based/"
                    "offline algos. n=8 sweet spot on 16-core CPU.")
     p.add_argument("--save-model-freq", type=int, default=None,
-                   help="OmniSafe ckpt save frequency in EPOCH units (each "
-                   "epoch = steps_per_epoch × parallel env-steps). If omitted, "
-                   "auto-derived to align with proto.eval_freq_env_steps "
-                   "(see derivation in main()). Pass explicit value to "
-                   "override — e.g. ``--save-model-freq 1`` saves every epoch "
-                   "for maximum learning-curve density.")
+                   help="OmniSafe ckpt save frequency in EPOCH units. One "
+                   "epoch is always steps_per_epoch env-steps (20k on-policy, "
+                   "2k off-policy) — neither --parallel nor --vector-env-nums "
+                   "changes that, they only redistribute those steps. If "
+                   "omitted, auto-derived toward proto.eval_freq_env_steps, "
+                   "which is NOT exactly reachable (50k is not a multiple of "
+                   "20k, so the derivation lands on 60k). Prefer "
+                   "``--save-model-freq 1`` for the densest 20k grid — it can "
+                   "be subsampled later; a coarse grid cannot be refined.")
     # OmniSafe's algo_wrapper does torch.cuda.set_device(device) which requires
     # an explicit index ('cuda:0'), not bare 'cuda'. Pass 'cuda:0' / 'cuda:1' /
     # 'cpu' through verbatim — validation is left to torch at construction time.
@@ -530,31 +533,42 @@ def main():
 
     # Derive OmniSafe save_model_freq (units: epochs) from the protocol's
     # canonical eval cadence (units: env-steps). Each ckpt is then a usable
-    # learning-curve sample point for post-hoc deterministic eval, with cadence
-    # aligned to SB3's --eval-freq.
+    # learning-curve sample point for post-hoc deterministic eval.
     #
-    # With ``--parallel N``, every epoch covers ``steps_per_epoch × N`` env-
-    # steps (N parallel ranks each collect steps_per_epoch). So we divide the
-    # protocol's env-step target by ``steps_per_epoch × parallel`` to get the
-    # epoch count between saves. ``max(1, ...)`` floors at every-epoch saving
-    # for high parallel (where one epoch already > eval target).
+    # ONE EPOCH IS ALWAYS ``steps_per_epoch`` ENV-STEPS — neither ``parallel``
+    # nor ``vector_env_nums`` changes it. Both knobs only decide how those
+    # steps are *distributed*: OmniSafe divides the configured value by BOTH
+    # to get each rank's per-env rollout length
+    # (``policy_gradient.py``: ``steps_per_epoch // world_size //
+    # vector_env_nums``), and the step counter is logged from the raw config
+    # value (``'TotalEnvSteps': (epoch + 1) * algo_cfgs.steps_per_epoch``).
+    # Verified against real runs: a SAC run with ``vector_env_nums=4`` and a
+    # PPOLag run with ``parallel=2`` both advance TotalEnvSteps by exactly
+    # their configured steps_per_epoch per epoch.
+    # (A previous version of this line multiplied by both knobs, which would
+    # have doubled the derived interval on the ``parallel=2`` run had it not
+    # passed ``--save-model-freq`` explicitly.)
     #
-    # PPOLag-family steps_per_epoch is 20_000; SAC-family is 2_000 (both per
-    # ``omnisafe/configs/{on,off}-policy/*.yaml``). The value is hard-coded
-    # here because OmniSafe doesn't expose it as a Config attribute we can
-    # read pre-Agent-construction. If a future algo uses a different
-    # steps_per_epoch, add to the dispatch below.
+    # CONSEQUENCE — the protocol's 50,000 is NOT reachable on this backend.
+    # save_model_freq is quantised to whole epochs, so the achievable
+    # checkpoint grid is a multiple of steps_per_epoch: 20k / 40k / 60k … for
+    # on-policy. 50,000 is not a multiple of 20,000, and the ``ceil`` below
+    # therefore lands on 3 epochs = 60,000. Prefer ``--save-model-freq 1``
+    # (20,000 grid): a denser grid can always be subsampled to a coarser one,
+    # never the reverse. Truly matching 50,000 would require changing
+    # steps_per_epoch itself, i.e. changing PPO's rollout batch size — an
+    # algorithm-level change that would also break comparability with every
+    # existing OmniSafe run.
     #
-    # env_steps_per_epoch = steps_per_epoch × parallel × vector_env_nums.
-    # On-policy: parallel=N (torchrun ranks), vector_env_nums=1 typically.
-    # Off-policy: parallel=1, vector_env_nums=N (SubprocVecEnv-style).
-    # The product covers both regimes because the unused axis is 1.
+    # PPOLag-family steps_per_epoch is 20_000; SAC-family is 2_000 (both are
+    # upstream defaults, verified against origin/main of
+    # PKU-Alignment/omnisafe). Hard-coded here because OmniSafe doesn't expose
+    # it as a Config attribute readable before Agent construction. If a future
+    # algo uses a different steps_per_epoch, add it to the dispatch below.
     #
-    # User may also pass ``--save-model-freq N`` to override directly (e.g.
-    # ``--save-model-freq 1`` saves every epoch for max learning-curve
-    # density, which can be denser than the eval_freq_env_steps target).
+    # User may also pass ``--save-model-freq N`` to override directly.
     _STEPS_PER_EPOCH = 2_000 if args.algorithm in _OFF_POLICY_ALGOS else 20_000
-    env_steps_per_epoch = _STEPS_PER_EPOCH * int(args.parallel) * int(args.vector_env_nums)
+    env_steps_per_epoch = _STEPS_PER_EPOCH
     if args.save_model_freq is not None:
         save_model_freq = int(args.save_model_freq)
     else:
