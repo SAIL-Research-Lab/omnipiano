@@ -48,6 +48,11 @@ RUNS = {  # key -> (label, channel, distribution)
     "ao_gauss_p15": ("AO-Gauss", "Action+Obs", "Gaussian"),
     "ar_uniform_a15_r50": ("AR-Uniform", "Action+Reward", "Uniform"),
     "or_shift_on15_rn50": ("OR-Shift", "Obs+Reward", "Shift"),
+    # Negative-shift single-channel controls: these ARE the components of
+    # OR-Shift-ON15-RN50 (obs -0.15, reward -0.50). The canonical
+    # O-Shift-P15 / R-Shift-P50 use the opposite sign and are not.
+    "o_shift_n15": ("O-Shift-N15", "Observation", "Shift"),
+    "r_shift_n50": ("R-Shift-N50", "Reward", "Shift"),
 }
 
 
@@ -154,8 +159,14 @@ def fig2():
         ax.set_xlim(0, 5.05)
     axes[0].set_ylabel("note F1")
     axes[0].set_ylim(0, 0.78)
-    axes[0].text(0.15, CLEAN + 0.015, "clean", fontsize=7.5, color=INK2)
-    axes[-1].legend(loc="lower right", handlelength=1.2)
+    # Shared legend below the panels — an in-panel legend sat on top of the
+    # Reward curves. The clean reference is included so its dashed grey line
+    # is identified by more than position.
+    h, l = axes[0].get_legend_handles_labels()
+    h = [Line2D([], [], color=MUTED, lw=1.1, ls=(0, (4, 3)))] + h
+    l = ["clean (no perturbation)"] + l
+    fig.legend(h, l, loc="lower center", ncol=4, bbox_to_anchor=(0.5, -0.13),
+               handlelength=1.8, columnspacing=1.5)
     fig.tight_layout()
     for ext in ("pdf", "png"):
         fig.savefig(f"{OUT}/fig2_learning_curves.{ext}", dpi=200, bbox_inches="tight")
@@ -166,19 +177,16 @@ def fig2():
 # Fig 3 — compound perturbations vs their single-channel components
 # ===========================================================================
 def fig3():
-    # NOTE: the OR-Shift panel is deliberately absent until its correct-direction
-    # controls finish training. OR-Shift-ON15-RN50 perturbs obs by -0.15 and
-    # reward by -0.50, so its components are O-Shift-N15 / R-Shift-N50 — NOT the
-    # canonical +0.15 / +0.50 tasks. Plotting those would compare against the
-    # wrong sign. Re-add as:
-    #   ("Observation + Reward", "Shift", "or_shift_on15_rn50",
-    #    "o_shift_n15", "r_shift_n50"),
-    # once both runs land (and add them to RUNS).
+    # Each compound is paired with its CORRECT-direction components. The shift
+    # panel uses the negative-shift controls (O-Shift-N15 / R-Shift-N50),
+    # because OR-Shift-ON15-RN50 perturbs obs by -0.15 and reward by -0.50 —
+    # the canonical +0.15 / +0.50 tasks are not its components.
     groups = [
         ("Action + Observation", "Gaussian", "ao_gauss_p15", "a_gauss_p15", "o_gauss_p15"),
         ("Action + Reward", "Uniform", "ar_uniform_a15_r50", "a_uniform_p15", "r_uniform_p50"),
+        ("Observation + Reward", "Shift", "or_shift_on15_rn50", "o_shift_n15", "r_shift_n50"),
     ]
-    fig, axes = plt.subplots(1, len(groups), figsize=(5.2, 2.6), sharey=True)
+    fig, axes = plt.subplots(1, len(groups), figsize=(7.6, 2.6), sharey=True)
     for ax, (title, dist, kc, k1, k2) in zip(axes, groups):
         col = DIST_C[dist]
         vals = [S[k1]["f1"], S[k2]["f1"], S[kc]["f1"]]
@@ -198,10 +206,14 @@ def fig3():
     axes[0].set_ylabel("note F1")
     axes[0].set_ylim(0, 0.79)
     axes[0].text(-0.42, CLEAN + 0.015, "clean", fontsize=7.5, color=INK2)
+    # Legend below the panels: in-panel placement collided with the compound
+    # bar's value label in the shift panel (its bar is the tallest there).
     handles = [plt.Rectangle((0, 0), 1, 1, fc=MUTED, alpha=0.42),
-               plt.Rectangle((0, 0), 1, 1, fc=MUTED, alpha=1.0)]
-    axes[-1].legend(handles, ["single channel", "both channels"],
-                    loc="upper right", ncol=1, handlelength=1.1)
+               plt.Rectangle((0, 0), 1, 1, fc=MUTED, alpha=1.0),
+               Line2D([], [], color=MUTED, lw=1.1, ls=(0, (4, 3)))]
+    fig.legend(handles, ["single channel", "both channels", "clean"],
+               loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.16),
+               handlelength=1.6, columnspacing=1.6)
     fig.tight_layout()
     for ext in ("pdf", "png"):
         fig.savefig(f"{OUT}/fig3_compound.{ext}", dpi=200, bbox_inches="tight")
