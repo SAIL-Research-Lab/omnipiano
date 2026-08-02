@@ -44,6 +44,7 @@ import numpy as np
 from sb3_contrib import TQC
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.logger import configure as sb3_configure_logger
 from stable_baselines3.common.utils import get_latest_run_id
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
@@ -89,8 +90,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--n-envs", type=int, default=4,
                    help="Parallel envs in SubprocVecEnv. Off-policy: speeds rollout, "
                    "doesn't affect sample efficiency. Pair with --gradient-steps to keep UTD.")
-    p.add_argument("--eval-interval-env-steps", type=int, default=10_000,
-                   help="Periodic-eval cadence in env-steps (matches RoboPianist's eval_interval).")
+    p.add_argument("--eval-interval-env-steps", type=int,
+                   default=proto.eval_freq_env_steps,
+                   help="Periodic-eval cadence in env-steps. Defaults to the "
+                        "protocol constant so this template's eval grid lines "
+                        "up with run_sb3_baseline.py's; a different value puts "
+                        "the curves on a grid that cannot be overlaid.")
 
     # --- shared SAC-family hparams ---
     p.add_argument("--gamma", type=float, default=0.8)
@@ -205,6 +210,11 @@ def main():
     if args.smoke_test:
         args.total_steps = 20_000
         args.num_eval_eps = 1
+        # Shrink the eval cadence too, or the protocol's 50k interval would
+        # never fire inside a 20k budget and the smoke test would silently
+        # skip the EvalCallback -> SafeRecordEpisodeStatistics path it exists
+        # to exercise. Matches run_sb3_baseline.py's smoke block.
+        args.eval_interval_env_steps = 10_000
 
     logs_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
     os.makedirs(logs_root, exist_ok=True)
@@ -283,6 +293,15 @@ def main():
         seed=args.seed,
         device=args.device,
     )
+
+    # ``tensorboard_log=`` in the constructor above installs a TB-only logger,
+    # which leaves no progress.csv on disk. Replace it with the same
+    # multi-format logger run_sb3_baseline.py uses, so this template emits the
+    # native training-rollout telemetry (rollout/ep_rew_mean, train/*, time/*)
+    # that the paper's reward curves are read from.
+    model.set_logger(sb3_configure_logger(
+        log_dir, ["stdout", "csv", "tensorboard"]
+    ))
 
     print(f"Training for {args.total_steps:,} timesteps...")
     model.learn(total_timesteps=args.total_steps, callback=periodic_eval)
