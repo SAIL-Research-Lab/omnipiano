@@ -91,14 +91,28 @@ Gaussian noise costs 57% (action) and 83% (reward) of F1 but only 10% on observa
 (0.92–0.99) while recall collapses — perturbed policies miss notes rather than play
 wrong ones. The F1 drop is almost entirely a recall drop. `[verified]`
 
-**C4d — Directional bias is sign-dependent and strongly asymmetric**: a constant
-action shift of +0.15 costs almost nothing (F1 0.615, −2%) while −0.15 costs 7×
-more (0.545, −13%). The likely mechanism is an *asymmetric loss of action range*:
-post-noise clipping to [−1,1] means −0.15 removes the full-press end of the range —
-exactly what piano playing needs — whereas +0.15 only removes the full-retract end,
-which the policy can compensate. Systematic bias is therefore qualitatively
-different from zero-mean noise, and a benchmark that tests only one sign measures
-only half the effect. `[verified]`(方向对照 N15 已确认;裁剪率验证 + 多 seed 待补)
+**C4d — Constant bias is sign-dependent across every channel, and the *helpful*
+sign differs per channel**: what a constant offset does is decided by how its
+direction aligns with the task's demands, not by its magnitude. Action ±0.15:
+0.615 (−2%) vs 0.545 (−13%) — the negative side removes the full-press end of the
+clipped action range, exactly what piano playing needs. Observation ±0.15: 0.539
+(−14%) vs **0.677 (+8%, above clean)** — a negative bias makes the policy perceive
+its fingers as *less* depressed than they are, so it presses more, lifting recall
+0.506 → 0.554 at precision 0.994. Reward ±0.50: 0.589 (−6%) vs 0.493 (−21%).
+Zero-mean noise cannot produce this; a benchmark that tests only one sign measures
+only half the effect — and on the observation channel would report a 14% loss where
+the opposite sign gives an 8% gain. `[verified]`(三通道各有正负对照;多 seed 待补)
+
+**C4d-i — Constant reward offsets are NOT policy-invariant, and that localises the
+reward channel's effect**: with fixed 588-step episodes, adding a constant to every
+step's reward adds a constant to every trajectory's return, so classical MDP
+reasoning predicts an unchanged optimal policy. Both signs nonetheless degrade
+performance markedly (−6% / −21%). The effect must therefore travel outside the
+reward-ranking path — the leading candidate being the observation-augmented input
+(`obs["reward"]` carries the perturbed reward under our threat model), i.e. the
+reward channel acts on the policy mainly as an *input* perturbation rather than as
+a learning-signal perturbation. `[verified for the effect]` /
+`[pending for the mechanism]`(判定实验:R-Shift × OAR-off,约 2 小时)
 
 **C4e — Reward noise cripples learning while returns look healthy**: R-Gauss-P50
 destroys the value function (explained_variance 0.27) and drives F1 to 0.109 (−83%),
@@ -106,12 +120,14 @@ yet the received return stays within 9% of clean; R-Shift-P50 *inflates* return 
 2141 (+16% above clean) at F1 0.589. Without a noise-immune metric this failure mode
 is invisible. `[verified]`(连接 C2 的杀手案例,robust 腿最强的单条 claim)
 
-**C4f — Compound perturbations degrade super-additively (for stochastic noise)**:
-a task perturbing two channels at once falls *below both* of its single-channel
-components — AO-Gauss 0.177 vs A 0.267 / O 0.562; AR-Uniform 0.232 vs A 0.491 /
-R 0.327. Constant shifts do not compose this way. Robust-Gymnasium cannot express
-multi-channel perturbation at all, so this class of interaction is unmeasurable
-there. `[verified]`(单 seed;OR-Shift 那一格因缺单通道同向对照暂不入 claim)
+**C4f — Compound perturbations compose differently by noise family**: with
+*stochastic* noise the two-channel task falls *below both* single-channel
+components (super-additive degradation) — AO-Gauss 0.177 vs A 0.267 / O 0.562;
+AR-Uniform 0.232 vs A 0.491 / R 0.327. With *constant shifts* the compound instead
+tracks its better component and the harmful one is masked (sub-additive) —
+OR-Shift 0.672 ≈ O-Shift-N15 0.677, despite R-Shift-N50 alone costing 21%.
+Robust-Gymnasium cannot express multi-channel perturbation at all, so this class of
+interaction is unmeasurable there. `[verified]`(单 seed;同向单通道对照已补齐)
 
 **C4g — Robustness numbers depend on whether the perturbation is observable**
 (threat-model control): the same +0.15 action shift *helps* when the disturbance is

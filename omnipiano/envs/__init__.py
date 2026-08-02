@@ -1268,6 +1268,23 @@ register(
     base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
     robust_config=RobustConfig(noise_dist="shift", action_noise_shift=-0.15),
 )
+# Negative-shift twins for the OTHER two channels. Two purposes:
+#   1. Test whether the sign-asymmetry finding generalizes beyond the action
+#      channel (O-Shift-P15 costs 14% F1; does -0.15 behave differently?).
+#   2. Supply the CORRECT-DIRECTION single-channel decomposition for
+#      OR-Shift-ON15-RN50, which perturbs obs by -0.15 and reward by -0.50 —
+#      the canonical O-Shift-P15 / R-Shift-P50 are +0.15 / +0.50 and are
+#      therefore NOT its components.
+register(
+    id="OmniPiano-ClairDeLune-O-Shift-N15-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(noise_dist="shift", obs_noise_shift=-0.15),
+)
+register(
+    id="OmniPiano-ClairDeLune-R-Shift-N50-v0",
+    base_env_name="RoboPianist-repertoire-150-ClairDeLune-v0",
+    robust_config=RobustConfig(noise_dist="shift", reward_noise_shift=-0.50),
+)
 
 
 # --- Multi-channel / combined-channel experiments (NOT in the v1 matrix) --
