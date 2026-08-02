@@ -102,6 +102,57 @@ def _read_train_seed(save_dir: str) -> int:
     return int(cfg["seed"])
 
 
+def _assert_no_active_noise(save_dir: str) -> str:
+    """Refuse to replay a robust (noise-injecting) env. Returns the env id.
+
+    WHY THIS GUARD EXISTS
+    ---------------------
+    This script does NOT build its env through ``omnipiano.make()``. It takes
+    whatever ``omnisafe.Evaluator.load_saved()`` reconstructs from the training
+    config (see ``evaluator._env`` below). That path therefore **never applies
+    eval-time semantics** — in particular it never multiplies the RobustConfig
+    magnitudes by ``eval_noise_scale``.
+
+    Consequence for a robust env: every checkpoint would be evaluated under the
+    **training-level** perturbation, no matter what scale the caller intended.
+    A clean eval (scale 0) and a stress eval (scale 2) would both silently
+    produce the matched (scale 1) number, and nothing in the output would
+    reveal it — the CSV's ``eval_noise_scale`` column is written as a constant
+    1.0 further down. That is a silent-wrong-number failure, the worst kind for
+    a benchmark, so we fail fast instead.
+
+    Safety-only envs (the entire current OmniSafe roster) are unaffected: with
+    no active noise channel there is nothing for ``eval_noise_scale`` to scale,
+    so the replay path and ``make(mode="eval")`` agree exactly.
+
+    If you need a robustness curve, use ``examples/robust_eval_sweep.py``,
+    which builds each eval env via ``make(env_id, mode="eval",
+    eval_noise_scale=...)`` and thus does inherit the scaling.
+    """
+    with open(os.path.join(save_dir, "config.json")) as f:
+        env_id = json.load(f)["env_id"]
+
+    from omnipiano.envs.registration import _registry
+
+    spec = _registry.get(env_id)
+    robust = getattr(spec, "robust_config", None) if spec else None
+    if robust is None:
+        return env_id
+    active = [c for c in ("action", "obs", "reward") if robust.is_channel_active(c)]
+    if active:
+        raise ValueError(
+            f"checkpoint_replay_eval refuses to replay {env_id!r}: it has "
+            f"active robust channel(s) {active}. This script's env comes from "
+            f"omnisafe.Evaluator.load_saved(), which bypasses omnipiano.make() "
+            f"and therefore never applies eval_noise_scale — every checkpoint "
+            f"would be scored under TRAINING-level noise while the output "
+            f"claims eval_noise_scale=1.0, whatever scale you meant. Use "
+            f"examples/robust_eval_sweep.py instead (it builds the eval env "
+            f"via make(mode='eval', eval_noise_scale=...))."
+        )
+    return env_id
+
+
 def _epoch_num(fname: str) -> int:
     """Numeric extraction so ``epoch-5000.pt`` sorts after ``epoch-900.pt``."""
     m = re.match(r"epoch-(\d+)\.pt$", fname)
@@ -223,6 +274,9 @@ def replay_all_checkpoints(
     eval_seed_offset: int = EVAL_SEED_OFFSET,
 ) -> None:
     save_dir = _find_omnisafe_save_dir(log_dir)
+    # Fail before any checkpoint is loaded: a robust env cannot be scored
+    # correctly on this path (see _assert_no_active_noise).
+    trained_env_id = _assert_no_active_noise(save_dir)
     train_seed = _read_train_seed(save_dir)
     torch_save_dir = os.path.join(save_dir, "torch_save")
     ckpts = sorted(
@@ -234,6 +288,12 @@ def replay_all_checkpoints(
 
     print(f"[checkpoint_replay_eval] log_dir = {log_dir}")
     print(f"[checkpoint_replay_eval] save_dir = {save_dir}")
+    # The trained env id read from the saved config is authoritative; --env is
+    # only informational and is not used to construct anything.
+    print(f"[checkpoint_replay_eval] env (from saved config) = {trained_env_id}")
+    if env_id and env_id != trained_env_id:
+        print(f"[checkpoint_replay_eval] NOTE: --env {env_id!r} differs from the "
+              f"trained env id above; the saved config wins.")
     print(f"[checkpoint_replay_eval] train_seed = {train_seed}  "
           f"eval_seed_base = {train_seed + eval_seed_offset}")
     print(f"[checkpoint_replay_eval] found {len(ckpts)} checkpoints, "
