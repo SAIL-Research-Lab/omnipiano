@@ -28,7 +28,7 @@ gym layer (OmniPiano modular wrappers):
     → RobustWrapper            # action noise (gym layer) + obs noise reporting
     → [SafeRecordEpisodeStatistics if mode == "eval" and log_dir set]
 
-See `examples/run_sb3_template.py` for a typical SB3 caller.
+See `examples/run_sb3_baseline.py` for a typical SB3 caller.
 """
 
 # ---------------------------------------------------------------------------

@@ -394,9 +394,10 @@ def main():
     logs_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
     os.makedirs(logs_root, exist_ok=True)
     # Fallback experiment name carries the ``sb3_baseline`` marker so log dirs
-    # are self-documenting about which entry script produced them (vs
-    # ``run_sb3_template.py`` which defaults to ``ppo_sb3_template``). Override
-    # explicitly with ``--experiment-name`` if a different prefix is desired.
+    # are self-documenting about which entry script produced them (the
+    # per-algorithm ``run_sb3_{sac,tqc}_template.py`` use their own prefixes).
+    # Override explicitly with ``--experiment-name`` if a different prefix is
+    # desired.
     exp_name = args.experiment_name or (
         f"{args.algo}_sb3_baseline_{_short_env_token(args.env)}_seed{args.seed}"
     )
@@ -523,8 +524,8 @@ def main():
     result["total_env_steps"] = int(args.total_steps)
     result["protocol_version"] = proto.protocol_version
     result["smoke_test"] = bool(args.smoke_test)
-    # Source-script audit field — lets a downstream analysis script tell
-    # ``run_sb3_baseline.py`` runs apart from ``run_sb3_template.py`` runs
+    # Source-script audit field — lets a downstream analysis script tell runs
+    # of this script apart from the per-algorithm template scripts' runs
     # without relying on log-dir naming convention. ``os.path.basename(__file__)``
     # records the actual entry-point filename rather than a hardcoded constant
     # that drifts after a rename.

@@ -1837,7 +1837,7 @@ Phase 1 获批后：
 | **replay CSV** `examples/checkpoint_replay_eval.py` | OmniSafe | ✓ | ✓ | ✓（自写 rollout 读 terminal info） | ✓ | ✓（schema-lock；safety→nominal） |
 
 **两处新发现 / 更正**：
-1. **SB3 training rollout 是 SB3-native 的 `progress.csv`（`ep_rew_mean` / `ep_len`），无 F1/cost/分解列。** canonical SB3 PPO 模板是 **`examples/run_sb3_baseline.py`**——它**不用任何自定义 training-CSV callback**、只靠 SB3-native logger（经过验证）。（旧模板 `run_sb3_template.py` 曾用自定义 `TrainIterationSummaryCallback` → `train_iteration_summary.csv`（非 SB3-native），现已**整体废弃/全注释**，SB3 PPO 实验统一走 `run_sb3_baseline.py`。）→ SB3 训练期的 **F1/cost 由 periodic eval（EvalCallback → SafeRecord CSV）提供**，与 OmniSafe 训练侧（也无 F1）对称。
+1. **SB3 training rollout 是 SB3-native 的 `progress.csv`（`ep_rew_mean` / `ep_len`），无 F1/cost/分解列。** canonical SB3 PPO 模板是 **`examples/run_sb3_baseline.py`**——它**不用任何自定义 training-CSV callback**、只靠 SB3-native logger（经过验证）。（旧模板 `run_sb3_template.py` 曾用自定义 `TrainIterationSummaryCallback` → `train_iteration_summary.csv`（非 SB3-native）；二者已于 2026-07-21 **从仓库删除**，SB3 PPO 实验统一走 `run_sb3_baseline.py`。）→ SB3 训练期的 **F1/cost 由 periodic eval（EvalCallback → SafeRecord CSV）提供**，与 OmniSafe 训练侧（也无 F1）对称。
 2. **OmniSafe training 无 F1/precision/recall**：`Evaluator.evaluate()` 只返回 (rewards, costs)、不 surface terminal info；F1 只在 `_final_eval` / `checkpoint_replay`（自写 rollout 读 terminal info）里才有。
 3. 只有**两个 eval CSV**（SafeRecord + replay）有 S6 的 `ep_return_true` / `eval_noise_scale` / `ep_noise_*`。`SafeRecordEpisodeStatistics` **就是** deterministic eval CSV 的 writer（表中同一行）。
 
