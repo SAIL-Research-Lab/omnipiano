@@ -7,7 +7,9 @@ full CLI surface.
 
 Defaults reproduce the paper's SAC config from ``robopianist-rl/``:
 - ``hidden_dims = (256, 256, 256)``  — ``sac.py:57``
-- ``gamma = 0.8``                    — ``run.sh --discount 0.8``
+- ``gamma = 0.8``                    — ``BenchmarkProtocolConfig`` (task
+                                       property; same value as the paper's
+                                       ``run.sh --discount 0.8``)
 - ``batch_size = 256``               — ``train.py:29``
 - ``buffer_size = 1_000_000``        — ``train.py:32``
 - ``learning_starts = 5000``         — ``run.sh --warmstart-steps 5000``
@@ -92,8 +94,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "up with run_sb3_baseline.py's; a different value puts "
                         "the curves on a grid that cannot be overlaid.")
 
+    # --- task-property hparam: gamma (unified across SAC/PPO/TQC/...) ---
+    p.add_argument(
+        "--gamma", type=float, default=proto.gamma,
+        help=f"Discount factor. OmniPiano protocol default = {proto.gamma}. "
+        "Treated as a *task property*, not an algorithm hparam, so it is read "
+        "from BenchmarkProtocolConfig rather than hardcoded here — see that "
+        "class's ``gamma`` field doc for the rationale and ablation evidence. "
+        "SB3's library default would be 0.99; pass --gamma 0.99 explicitly to "
+        "reproduce library-default behavior for ablation.",
+    )
+
     # --- SAC hparams ---
-    p.add_argument("--gamma", type=float, default=0.8)
     p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--buffer-size", type=int, default=1_000_000)
     p.add_argument("--learning-starts", type=int, default=5_000)

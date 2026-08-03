@@ -100,7 +100,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Log dir prefix under examples/logs/. Default: "
         "'{algo}_baseline_{env_short}_seed{seed}'.",
     )
-    p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=proto.seed,
+        help=f"Training seed. Default = BenchmarkProtocolConfig.seed "
+        f"({proto.seed}) = seeds[0], i.e. replicate #1 of the reported "
+        f"replication set {proto.seeds}. Paper numbers require the full "
+        "set — run this script once per seed and aggregate offline.",
+    )
     p.add_argument(
         "--total-steps",
         type=int,
@@ -121,9 +129,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--num-eval-eps",
         type=int,
-        default=1,
-        help="Episodes per periodic-eval AND for the final benchmark eval. "
-        "Env is deterministic at reset, so 1 is sufficient.",
+        default=proto.num_eval_eps,
+        help=f"Episodes per periodic-eval AND for the final benchmark eval. "
+        f"Default = BenchmarkProtocolConfig.num_eval_eps "
+        f"({proto.num_eval_eps}); env is deterministic at reset, so 1 is "
+        "sufficient.",
     )
     p.add_argument(
         "--n-envs",

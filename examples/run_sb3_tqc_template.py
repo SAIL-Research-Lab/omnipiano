@@ -18,7 +18,9 @@ Why TQC over SAC for OmniPiano N-hand tasks:
 Defaults match TQC paper / SB3-contrib defaults except where SAC's paper-matched
 choices apply (gamma, batch_size, lr, buffer, etc. — same as SAC template):
 - ``hidden_dims = (256, 256, 256)``        — paper SAC convention
-- ``gamma = 0.8``                          — RoboPianist paper
+- ``gamma = 0.8``                          — ``BenchmarkProtocolConfig``
+                                             (task property; same value as
+                                             the RoboPianist paper)
 - ``batch_size = 256, buffer = 1M``        — paper
 - ``learning_starts = 5000``               — paper
 - ``tau = 0.005``                          — paper
@@ -97,8 +99,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "up with run_sb3_baseline.py's; a different value puts "
                         "the curves on a grid that cannot be overlaid.")
 
+    # --- task-property hparam: gamma (unified across SAC/PPO/TQC/...) ---
+    p.add_argument(
+        "--gamma", type=float, default=proto.gamma,
+        help=f"Discount factor. OmniPiano protocol default = {proto.gamma}. "
+        "Treated as a *task property*, not an algorithm hparam, so it is read "
+        "from BenchmarkProtocolConfig rather than hardcoded here — see that "
+        "class's ``gamma`` field doc for the rationale and ablation evidence. "
+        "SB3-contrib's library default would be 0.99; pass --gamma 0.99 "
+        "explicitly to reproduce library-default behavior for ablation.",
+    )
+
     # --- shared SAC-family hparams ---
-    p.add_argument("--gamma", type=float, default=0.8)
     p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--buffer-size", type=int, default=1_000_000)
     p.add_argument("--learning-starts", type=int, default=5_000)

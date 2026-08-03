@@ -407,7 +407,8 @@ class BenchmarkProtocolConfig:
         distinct seed values and aggregating the per-run eval summaries
         offline. This is the pattern used by the RoboPianist paper, SB3
         docs, and OmniSafe's ``examples/benchmarks/run_experiment_grid.py``.
-        Default ``42`` follows the CleanRL convention.
+        Default is ``seeds[0]`` — see ``seeds`` below for why the default
+        must be a member of the reported replication set.
 
         Framework default behavior without an explicit seed:
           * SB3:      ``PPO(seed=None)`` — OS entropy, NOT reproducible.
@@ -415,6 +416,44 @@ class BenchmarkProtocolConfig:
                       seed 0 unless overridden.
         We set seed explicitly so reproducibility is identical across
         frameworks rather than relying on framework-specific defaults.
+      - ``seeds``:           the replication set a reported result must
+        cover. ``seed`` alone was previously doing two jobs badly: "this
+        run's RNG seed" (a per-run parameter, always passed explicitly)
+        and "how many independent trainings back a paper number" (a
+        protocol decision that lived only in prose). This field encodes
+        the second one; ``seed`` keeps the first.
+
+        Three is the FLOOR, not the norm; it is chosen for cost. For
+        reference, OmniSafe's own published benchmark uses 5
+        (``benchmarks/on-policy/README.md``: ``eg.add('seed', [0, 5, 10,
+        15, 20])``); its runnable example uses 1. That spacing carries no
+        statistical meaning under numpy/torch seeding — contiguous
+        ``0, 1, 2`` is equivalent and self-documenting.
+
+        REPORTING CONVENTION (decided 2026-08-02): **mean ± std across
+        seeds**, at n=3 as well. This is the field-standard presentation
+        and keeps every table and curve in the paper on one aggregation
+        rule. Also list the per-seed final scores in the appendix — at
+        n=3 the three raw numbers carry essentially the same information
+        as the interval, and cost nothing to include.
+
+        Seed count matters MORE in OmniPiano than in a typical RL
+        benchmark: the env is deterministic at reset, so within-run eval
+        variance is a numerical-noise floor (~0.05%) and is exactly 0.0000
+        for constant-shift robust tasks. Every error bar therefore comes
+        from cross-seed variance alone — there is no environment
+        stochasticity to widen it. A single-seed curve is a point
+        estimate that merely looks like a line.
+
+        ``seed`` defaults to ``seeds[0]`` so that omitting ``--seed``
+        yields replicate #1 of the reported set rather than an orphan run
+        outside it. (It defaulted to ``42`` until 2026-08-02 — inherited
+        from upstream ``robopianist-rl/train.py:23``, not from CleanRL as
+        an earlier revision of this docstring claimed; CleanRL's default
+        is ``1``. Three runs at seed 42 exist under ``examples/logs/``:
+        ``sac_3hand_kiev_proto_*_ablation_seed42_1``, the gamma ablation
+        cited above. They remain valid — a single-variable ablation at a
+        fixed seed — they are simply not part of any replication set.)
       - ``num_eval_eps``:    episodes per eval call. Default 1 matches the
         RoboPianist paper convention ("we evaluate the F1 every 10K
         training steps for 1 episode (no stochasticity in the
@@ -494,7 +533,8 @@ class BenchmarkProtocolConfig:
     audit point for paper-vs-OmniPiano env diff.
     """
     total_env_steps: int = 5_000_000
-    seed: int = 42
+    seeds: Tuple[int, ...] = (0, 1, 2)
+    seed: int = 0  # must stay == seeds[0]; guarded by test_protocol_wiring
     num_eval_eps: int = 1
     gamma: float = 0.8
     eval_freq_env_steps: int = 50_000
