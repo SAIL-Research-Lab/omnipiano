@@ -103,6 +103,17 @@ SCRIPTS = [
             "eval_freq_env_steps": "eval_freq",
         },
     ),
+    (
+        "omnipiano.multiagent._train_ippo",
+        [],
+        {
+            "total_env_steps": "total_steps",
+            "seed": "seed",
+            "num_eval_eps": "num_eval_eps",
+            "gamma": "gamma",
+            "eval_freq_env_steps": "eval_freq",
+        },
+    ),
 ]
 
 

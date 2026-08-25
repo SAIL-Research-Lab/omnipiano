@@ -33,8 +33,14 @@ setup(
         "scikit-learn",
         "shimmy[dm_control]",
         "gymnasium",
+        "pettingzoo==1.24.3",
         "numpy",
         "stable-baselines3",
         "moviepy",
     ],
+    extras_require={
+        # Exact RLlib target used by the reproducible IPPO baseline. Keeping
+        # this optional avoids forcing Ray onto single-agent benchmark users.
+        "marl": ["ray[rllib]==2.55.1"],
+    },
 )
