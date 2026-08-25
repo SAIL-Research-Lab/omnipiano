@@ -164,8 +164,9 @@ PolonaiseOp53-Power cl=814)+ CollisionSafe-v1 disable_forearm_reward 消融。
 **Claim**: OmniPiano decomposes N-hand control into cooperative agents by morphology
 (e.g. secondo/primo duet pairs) under PettingZoo's ParallelEnv, with a tunable
 shared-territory axis (disjoint per-agent clamps with an emergent shared zone), and
-trains with off-the-shelf MARL (RLlib MAPPO). `[verified]`(4-hand Duet Territorial
-MAPPO 5M eval reward 768;F1 surface 修复在 MA bug 队列中)
+trains with off-the-shelf MARL (RLlib independent PPO / IPPO-style). `[verified]`
+(historical 4-hand Duet Territorial IPPO-style 5M artifact reports eval reward
+768; the reproducible F1/team-return baseline infrastructure is tracked separately)
 
 - `multi_agent_design.md` §5(shared-zone-width axis,PAPER-CRITICAL)、§6(安全约束映射)。
 

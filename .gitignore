@@ -37,3 +37,5 @@ omnipiano/envs/robopianist/music/data/pig_single_finger/
 
 # Whitelist .gitignore itself
 !.gitignore
+
+/omnipiano/PianoFingeringDataset_v1.2.zip
