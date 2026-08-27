@@ -32,6 +32,7 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         self._nominal_gravity = None
         self._nominal_tip_friction = None
         self._nominal_key_friction = None
+        self._nominal_hand_poses = None
         self._environment_noise_state = self._zero_environment_noise_state()
         self._environment_noise_active = any(
             self.robust_config.is_channel_active(parameter)
@@ -45,13 +46,25 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         # 2. Dynamically modify the XML tree based on the config
         self._apply_task_variants()
 
-    def _zero_environment_noise_state(self):
+    def _zero_environment_noise_state(self, physics=None):
+        gravity_z = 0.0
+        contact_friction_sliding = 0.0
+        hand_position_offsets = {}
+        if physics is not None:
+            gravity_z = float(physics.model.opt.gravity[2])
+            contact_friction_sliding = float(np.mean(
+                physics.bind(self.piano.key_geoms).friction[:, 0]
+            ))
+            hand_position_offsets = {
+                spec.name: {"y": 0.0, "z": 0.0}
+                for spec in self.hand_specs
+            }
         return {
             "gravity_noise": 0.0,
-            "gravity_z": 0.0,
+            "gravity_z": gravity_z,
             "contact_friction_noise": 0.0,
-            "contact_friction_sliding": 0.0,
-            "hand_position_offsets": {},
+            "contact_friction_sliding": contact_friction_sliding,
+            "hand_position_offsets": hand_position_offsets,
             "hand_position_l2": 0.0,
             "hand_position_max_l2": 0.0,
         }
@@ -104,7 +117,9 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         if self._environment_noise_active:
             self._apply_environment_noise(physics)
         else:
-            self._environment_noise_state = self._zero_environment_noise_state()
+            self._environment_noise_state = self._zero_environment_noise_state(
+                physics
+            )
 
     def _cache_nominal_environment(self, physics):
         if self._nominal_gravity is not None:
@@ -123,6 +138,17 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         self._nominal_key_friction = (
             physics.bind(self._key_collision_geoms).friction.copy()
         )
+        # Entity.shift_pose() changes the compiled attachment-frame pose, which
+        # is a model parameter and therefore survives composer resets. Cache
+        # every hand's pristine pose so hand-position domain randomization is
+        # episode-local rather than an accumulating random walk.
+        self._nominal_hand_poses = tuple(
+            tuple(
+                np.asarray(value, dtype=float).copy()
+                for value in hand.get_pose(physics)
+            )
+            for hand in self.hands
+        )
 
     def _apply_environment_noise(self, physics):
         self._cache_nominal_environment(physics)
@@ -136,6 +162,17 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         physics.bind(self._key_collision_geoms).friction = (
             self._nominal_key_friction
         )
+        for hand, (position, quaternion) in zip(
+            self.hands, self._nominal_hand_poses
+        ):
+            hand.set_pose(
+                physics,
+                position=position.copy(),
+                quaternion=quaternion.copy(),
+            )
+        # xpos is derived data. Refresh it before hand-position clipping reads
+        # the restored world-space position below.
+        physics.forward()
 
         gravity_noise = 0.0
         if self.robust_config.is_channel_active("gravity"):

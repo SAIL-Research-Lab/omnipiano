@@ -1,7 +1,7 @@
-"""Phase 0 · S1 gate — RobustConfig 14-field schema + __post_init__ validation.
+"""Phase 0 · S1 gate — RobustConfig field schema + validation.
 
 Verifies:
-  - all 14 fields exist with correct defaults;
+  - all fields, including nested physical-environment noise, have defaults;
   - backward compatibility (the pre-Phase-0 2-field usage still constructs
     identically), so the two existing robust envs are unaffected;
   - __post_init__ raises on invalid uniform bounds (low>high, non-finite);
@@ -39,7 +39,7 @@ def test_default_config_all_zero_gaussian():
     assert cfg.noise_dist == "gaussian"
 
 
-def test_exactly_16_fields():
+def test_exactly_17_fields():
     # 2026-07-21: eval_noise_scale left the config (make() kwarg now);
     # the 3 optional per-channel dist overrides arrived.
     from dataclasses import fields
@@ -52,9 +52,10 @@ def test_exactly_16_fields():
         "action_noise_shift", "obs_noise_shift", "reward_noise_shift",
         "noise_dist",
         "action_noise_dist", "obs_noise_dist", "reward_noise_dist",
+        "environment_noise",
     }
     assert names == expected, f"field set drift: {names ^ expected}"
-    assert len(names) == 16
+    assert len(names) == 17
 
 
 # --------------------------------------------------------------------------
@@ -197,5 +198,3 @@ def test_nonfinite_std_raises(ch, bad):
 def test_nonfinite_shift_raises(ch, bad):
     with pytest.raises(ValueError, match="noise_shift must be finite"):
         RobustConfig(noise_dist="shift", **{f"{ch}_noise_shift": bad})
-
-

@@ -189,7 +189,7 @@ def test_P10_invalid_per_channel_dist_raises():
 
 def test_P10b_per_channel_fields_exist():
     # The authoritative field-set gate lives in test_robust_config.py
-    # (test_exactly_16_fields); here we only assert the 3 new names exist.
+    # (test_exactly_17_fields); here we only assert the 3 new names exist.
     from dataclasses import fields
     names = {f.name for f in fields(RobustConfig)}
     assert {"action_noise_dist", "obs_noise_dist", "reward_noise_dist"} <= names

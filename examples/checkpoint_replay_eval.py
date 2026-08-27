@@ -138,7 +138,11 @@ def _assert_no_active_noise(save_dir: str) -> str:
     robust = getattr(spec, "robust_config", None) if spec else None
     if robust is None:
         return env_id
-    active = [c for c in ("action", "obs", "reward") if robust.is_channel_active(c)]
+    channels = (
+        *robust.SIGNAL_CHANNELS,
+        *robust.environment_noise.PARAMETERS,
+    )
+    active = [c for c in channels if robust.is_channel_active(c)]
     if active:
         raise ValueError(
             f"checkpoint_replay_eval refuses to replay {env_id!r}: it has "

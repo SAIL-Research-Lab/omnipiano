@@ -255,25 +255,26 @@ class RobustWrapper(gym.Wrapper):
 
     def _read_environment_noise_state(self):
         """Read the current task instance after any seed-triggered rebuild."""
-        if not any(
+        environment_noise_active = any(
             self.config.is_channel_active(parameter)
             for parameter in self.config.environment_noise.PARAMETERS
-        ):
-            return {
-                "gravity_noise": 0.0,
-                "gravity_z": 0.0,
-                "contact_friction_noise": 0.0,
-                "contact_friction_sliding": 0.0,
-                "hand_position_offsets": {},
-                "hand_position_l2": 0.0,
-                "hand_position_max_l2": 0.0,
-            }
+        )
 
         from omnipiano.utils.env_unwrap import get_composer_env_from_gym
 
         composer_env = get_composer_env_from_gym(self.env)
         task = composer_env.task
         if not hasattr(task, "environment_noise_state"):
+            if not environment_noise_active:
+                return {
+                    "gravity_noise": 0.0,
+                    "gravity_z": 0.0,
+                    "contact_friction_noise": 0.0,
+                    "contact_friction_sliding": 0.0,
+                    "hand_position_offsets": {},
+                    "hand_position_l2": 0.0,
+                    "hand_position_max_l2": 0.0,
+                }
             raise RuntimeError(
                 "Environment noise is active but the composer task does not "
                 "expose environment_noise_state. Build robust environment "
