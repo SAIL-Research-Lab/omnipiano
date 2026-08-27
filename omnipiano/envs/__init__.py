@@ -12,7 +12,13 @@ they exist only for installation verification (see README Quick Start).
 """
 
 from omnipiano.envs.registration import register
-from omnipiano.configs import SafetyConfig, RobustConfig, TaskVariantConfig, BenchmarkEnvConfig
+from omnipiano.configs import (
+    BenchmarkEnvConfig,
+    RobustConfig,
+    RobustEnvConfig,
+    SafetyConfig,
+    TaskVariantConfig,
+)
 from omnipiano.safety.constraints import (
     JointMagnitudeConstraint,
     MultiJointSharedMagnitudeConstraint,
@@ -1356,6 +1362,130 @@ register(  # Obs + Reward, both constant shift — per-channel: O -0.15, R -0.50
     robust_config=RobustConfig(
         noise_dist="shift", obs_noise_shift=-0.15, reward_noise_shift=-0.50),
 )
+
+
+# ===========================================================================
+# Physical-environment robustness — episode-level domain randomization.
+#
+# G  = vertical gravity additive noise (m/s^2)
+# CF = fingertip-key sliding-contact friction additive noise
+# HP = independent per-hand initial Y/Z offsets (labels are millimetres)
+# ===========================================================================
+_ENV_GRAVITY_LEVELS = (0.50, 1.00, 1.50)
+_ENV_FRICTION_LEVELS = (0.05, 0.10, 0.15)
+_ENV_HAND_POSITION_LEVELS = (
+    (0.010, 0.005),
+    (0.025, 0.010),
+    (0.050, 0.020),
+)
+
+
+def _environment_noise_config(
+    dist_key: str,
+    *,
+    gravity: float = 0.0,
+    contact_friction: float = 0.0,
+    hand_position_y: float = 0.0,
+    hand_position_z: float = 0.0,
+) -> RobustConfig:
+    """Build an environment-only RobustConfig using natural parameters."""
+    kwargs = {}
+    levels = {
+        "gravity": gravity,
+        "contact_friction": contact_friction,
+        "hand_position_y": hand_position_y,
+        "hand_position_z": hand_position_z,
+    }
+    for parameter, level in levels.items():
+        if level == 0.0:
+            continue
+        if dist_key == "gaussian":
+            kwargs[f"{parameter}_noise_std"] = abs(level)
+        elif dist_key == "uniform":
+            kwargs[f"{parameter}_noise_uniform_low"] = -abs(level)
+            kwargs[f"{parameter}_noise_uniform_high"] = abs(level)
+        elif dist_key == "shift":
+            kwargs[f"{parameter}_noise_shift"] = level
+        else:
+            raise ValueError(f"Unknown environment noise dist: {dist_key!r}")
+    return RobustConfig(
+        noise_dist=dist_key,
+        environment_noise=RobustEnvConfig(**kwargs),
+    )
+
+
+def _register_clairdelune_environment_robustness() -> None:
+    dist_labels = _ROBUST_DISTS
+    for dist_label, dist_key in dist_labels:
+        for level in _ENV_GRAVITY_LEVELS:
+            label = f"P{int(round(level * 100)):02d}"
+            register(
+                id=f"OmniPiano-ClairDeLune-G-{dist_label}-{label}-v0",
+                base_env_name=_CLAIRDELUNE_BASE,
+                robust_config=_environment_noise_config(
+                    dist_key, gravity=level
+                ),
+            )
+        for level in _ENV_FRICTION_LEVELS:
+            label = f"P{int(round(level * 100)):02d}"
+            register(
+                id=f"OmniPiano-ClairDeLune-CF-{dist_label}-{label}-v0",
+                base_env_name=_CLAIRDELUNE_BASE,
+                robust_config=_environment_noise_config(
+                    dist_key, contact_friction=level
+                ),
+            )
+        for y_level, z_level in _ENV_HAND_POSITION_LEVELS:
+            y_mm = int(round(y_level * 1000))
+            z_mm = int(round(z_level * 1000))
+            register(
+                id=(f"OmniPiano-ClairDeLune-HP-{dist_label}-"
+                    f"Y{y_mm:02d}-Z{z_mm:02d}-v0"),
+                base_env_name=_CLAIRDELUNE_BASE,
+                robust_config=_environment_noise_config(
+                    dist_key,
+                    hand_position_y=y_level,
+                    hand_position_z=z_level,
+                ),
+            )
+
+        # One highest-level compound task per distribution family.
+        register(
+            id=(f"OmniPiano-ClairDeLune-GCFHP-{dist_label}-"
+                "G150-CF15-Y50-Z20-v0"),
+            base_env_name=_CLAIRDELUNE_BASE,
+            robust_config=_environment_noise_config(
+                dist_key,
+                gravity=1.50,
+                contact_friction=0.15,
+                hand_position_y=0.050,
+                hand_position_z=0.020,
+            ),
+        )
+
+    # Directional controls for the deterministic high-level shifts.
+    register(
+        id="OmniPiano-ClairDeLune-G-Shift-N150-v0",
+        base_env_name=_CLAIRDELUNE_BASE,
+        robust_config=_environment_noise_config("shift", gravity=-1.50),
+    )
+    register(
+        id="OmniPiano-ClairDeLune-CF-Shift-N15-v0",
+        base_env_name=_CLAIRDELUNE_BASE,
+        robust_config=_environment_noise_config(
+            "shift", contact_friction=-0.15
+        ),
+    )
+    register(
+        id="OmniPiano-ClairDeLune-HP-Shift-YN50-ZN20-v0",
+        base_env_name=_CLAIRDELUNE_BASE,
+        robust_config=_environment_noise_config(
+            "shift", hand_position_y=-0.050, hand_position_z=-0.020
+        ),
+    )
+
+
+_register_clairdelune_environment_robustness()
 
 
 # ===========================================================================

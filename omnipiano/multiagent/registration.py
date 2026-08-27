@@ -169,6 +169,17 @@ def make_parallel(
                     f"noise would silently never be injected. Only clean or "
                     f"obs-noise SA envs are supported."
                 )
+        if any(
+            sa_spec.robust_config.is_channel_active(parameter)
+            for parameter in sa_spec.robust_config.environment_noise.PARAMETERS
+        ):
+            raise ValueError(
+                f"MA env {env_id!r}: underlying SA env "
+                f"{ma_spec.sa_env_id!r} has active physical-environment "
+                f"noise, but the MA factory does not yet provide eval-scale "
+                f"or environment-noise logging parity. Use a clean SA base "
+                f"until the MA robust pipeline is implemented."
+            )
 
     hand_specs = sa_spec.hand_specs
     if hand_specs is None:

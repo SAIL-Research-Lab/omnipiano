@@ -250,6 +250,11 @@ class Piano(composer.Entity):
         return self._keys
 
     @property
+    def key_geoms(self) -> Sequence[types.MjcfElement]:
+        """Collision geoms for the 88 keys, in increasing key order."""
+        return self._key_geoms
+
+    @property
     def activation(self) -> np.ndarray:
         return self._activation
 

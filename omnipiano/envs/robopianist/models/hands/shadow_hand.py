@@ -339,6 +339,17 @@ class ShadowHand(base.Hand):
             for name in consts.FINGERTIP_BODIES
         )
 
+    @composer.cached_property
+    def fingertip_collision_geoms(self) -> Sequence[types.MjcfElement]:
+        """Physical collision geoms belonging to the five fingertips."""
+        geoms = []
+        for body in self.fingertip_bodies:
+            for geom in body.find_all("geom"):
+                dclass = getattr(getattr(geom, "dclass", None), "dclass", None)
+                if dclass == "plastic_collision":
+                    geoms.append(geom)
+        return tuple(geoms)
+
     @property
     def joints(self) -> Sequence[types.MjcfElement]:
         return self._joints

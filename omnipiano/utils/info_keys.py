@@ -22,6 +22,18 @@ class InfoKeys:
     # (decision 11) — NOT force-zeroed. Aggregated per-episode into the eval
     # CSV `ep_noise_reward` column; ep_return_noised - ep_return_true == sum.
     ROBUST_NOISE_REWARD = "robust/noise_reward"
+    # Episode-stationary physical perturbations. They are repeated in every
+    # step's info so generic Gym loggers can observe them without a special
+    # reset-info path; episode CSV writers keep the latest value (do not sum).
+    ROBUST_NOISE_GRAVITY = "robust/noise_gravity"
+    ROBUST_NOISE_CONTACT_FRICTION = "robust/noise_contact_friction"
+    ROBUST_ENV_GRAVITY_Z = "robust/env_gravity_z"
+    ROBUST_ENV_CONTACT_FRICTION_SLIDING = (
+        "robust/env_contact_friction_sliding"
+    )
+    ROBUST_ENV_HAND_POSITION_L2 = "robust/env_hand_position_l2"
+    ROBUST_ENV_HAND_POSITION_MAX_L2 = "robust/env_hand_position_max_l2"
+    ROBUST_ENV_HAND_POSITION_OFFSETS = "robust/env_hand_position_offsets"
     
     # Task (Musical Metrics) — per-step
     # TODO: not yet emitted by any wrapper. Reserved placeholders for

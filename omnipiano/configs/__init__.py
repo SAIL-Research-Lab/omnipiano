@@ -7,7 +7,7 @@ typed config objects instead of many scattered keyword arguments.
 
 import numpy as np
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Tuple
+from typing import ClassVar, List, Literal, Optional, Tuple
 from omnipiano.safety.constraints import BaseConstraint
 
 
@@ -24,6 +24,167 @@ class SafetyConfig:
     constraints: List[BaseConstraint] = field(default_factory=list)
     # TODO: Add power_constraints, collision_constraints, etc.
 
+
+@dataclass
+class RobustEnvConfig:
+    """Episode-level physical-environment perturbations.
+
+    The fields mirror :class:`RobustConfig`'s Gaussian / Uniform / Shift
+    parameterization, but act additively on physical values rather than on
+    agent-facing signals.  Distribution selection is resolved against the
+    enclosing ``RobustConfig.noise_dist``; each parameter may override it.
+    """
+
+    gravity_noise_std: float = 0.0
+    gravity_noise_uniform_low: float = 0.0
+    gravity_noise_uniform_high: float = 0.0
+    gravity_noise_shift: float = 0.0
+    gravity_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
+
+    contact_friction_noise_std: float = 0.0
+    contact_friction_noise_uniform_low: float = 0.0
+    contact_friction_noise_uniform_high: float = 0.0
+    contact_friction_noise_shift: float = 0.0
+    contact_friction_noise_dist: Optional[
+        Literal["gaussian", "uniform", "shift"]
+    ] = None
+
+    hand_position_y_noise_std: float = 0.0
+    hand_position_y_noise_uniform_low: float = 0.0
+    hand_position_y_noise_uniform_high: float = 0.0
+    hand_position_y_noise_shift: float = 0.0
+    hand_position_y_noise_dist: Optional[
+        Literal["gaussian", "uniform", "shift"]
+    ] = None
+
+    hand_position_z_noise_std: float = 0.0
+    hand_position_z_noise_uniform_low: float = 0.0
+    hand_position_z_noise_uniform_high: float = 0.0
+    hand_position_z_noise_shift: float = 0.0
+    hand_position_z_noise_dist: Optional[
+        Literal["gaussian", "uniform", "shift"]
+    ] = None
+
+    PARAMETERS: ClassVar[Tuple[str, ...]] = (
+        "gravity",
+        "contact_friction",
+        "hand_position_y",
+        "hand_position_z",
+    )
+
+    def __post_init__(self) -> None:
+        valid_dists = ("gaussian", "uniform", "shift")
+        for parameter in self.PARAMETERS:
+            dist = getattr(self, f"{parameter}_noise_dist")
+            if dist is not None and dist not in valid_dists:
+                raise ValueError(
+                    f"RobustEnvConfig: {parameter}_noise_dist must be one of "
+                    f"{valid_dists} or None, got {dist!r}"
+                )
+
+            std = getattr(self, f"{parameter}_noise_std")
+            if not np.isfinite(std):
+                raise ValueError(
+                    f"RobustEnvConfig: {parameter}_noise_std must be finite, "
+                    f"got {std}"
+                )
+            if std < 0.0:
+                raise ValueError(
+                    f"RobustEnvConfig: {parameter}_noise_std must be >= 0, "
+                    f"got {std}"
+                )
+
+            lo = getattr(self, f"{parameter}_noise_uniform_low")
+            hi = getattr(self, f"{parameter}_noise_uniform_high")
+            if not (np.isfinite(lo) and np.isfinite(hi)):
+                raise ValueError(
+                    f"RobustEnvConfig: {parameter}_noise_uniform bounds must "
+                    f"be finite, got low={lo}, high={hi}"
+                )
+            if lo > hi:
+                raise ValueError(
+                    f"RobustEnvConfig: {parameter}_noise_uniform_low ({lo}) "
+                    f"must be <= high ({hi})"
+                )
+
+            shift = getattr(self, f"{parameter}_noise_shift")
+            if not np.isfinite(shift):
+                raise ValueError(
+                    f"RobustEnvConfig: {parameter}_noise_shift must be finite, "
+                    f"got {shift}"
+                )
+
+    def dist_for(self, parameter: str, default_dist: str) -> str:
+        if parameter not in self.PARAMETERS:
+            raise ValueError(f"Unknown environment-noise parameter: {parameter!r}")
+        return getattr(self, f"{parameter}_noise_dist") or default_dist
+
+    def validate_for(self, default_dist: str) -> None:
+        """Validate magnitude fields against their resolved distributions."""
+        for parameter in self.PARAMETERS:
+            dist = self.dist_for(parameter, default_dist)
+            std_set = getattr(self, f"{parameter}_noise_std") != 0.0
+            uniform_set = (
+                getattr(self, f"{parameter}_noise_uniform_low") != 0.0
+                or getattr(self, f"{parameter}_noise_uniform_high") != 0.0
+            )
+            shift_set = getattr(self, f"{parameter}_noise_shift") != 0.0
+
+            if dist == "gaussian" and (uniform_set or shift_set):
+                raise ValueError(
+                    f"RobustEnvConfig: noise_dist='gaussian' but "
+                    f"{parameter}_noise_uniform_* or "
+                    f"{parameter}_noise_shift is nonzero."
+                )
+            if dist == "uniform" and (std_set or shift_set):
+                raise ValueError(
+                    f"RobustEnvConfig: noise_dist='uniform' but "
+                    f"{parameter}_noise_std or {parameter}_noise_shift is "
+                    f"nonzero."
+                )
+            if dist == "shift" and (std_set or uniform_set):
+                raise ValueError(
+                    f"RobustEnvConfig: noise_dist='shift' but "
+                    f"{parameter}_noise_std or "
+                    f"{parameter}_noise_uniform_* is nonzero."
+                )
+
+            if (
+                getattr(self, f"{parameter}_noise_dist") is not None
+                and not (std_set or uniform_set or shift_set)
+            ):
+                raise ValueError(
+                    f"RobustEnvConfig: {parameter}_noise_dist={dist!r} is "
+                    f"declared but every {parameter} magnitude is zero."
+                )
+
+    def is_active(self, parameter: str, default_dist: str) -> bool:
+        dist = self.dist_for(parameter, default_dist)
+        if dist == "gaussian":
+            return getattr(self, f"{parameter}_noise_std") != 0.0
+        if dist == "uniform":
+            return (
+                getattr(self, f"{parameter}_noise_uniform_low") != 0.0
+                or getattr(self, f"{parameter}_noise_uniform_high") != 0.0
+            )
+        if dist == "shift":
+            return getattr(self, f"{parameter}_noise_shift") != 0.0
+        raise ValueError(f"Unknown noise_dist: {dist!r}")
+
+    def sample_noise(self, rng, parameter: str, shape, default_dist: str):
+        dist = self.dist_for(parameter, default_dist)
+        if dist == "gaussian":
+            std = getattr(self, f"{parameter}_noise_std")
+            return rng.normal(0.0, std, size=shape)
+        if dist == "uniform":
+            lo = getattr(self, f"{parameter}_noise_uniform_low")
+            hi = getattr(self, f"{parameter}_noise_uniform_high")
+            return rng.uniform(lo, hi, size=shape)
+        if dist == "shift":
+            shift = getattr(self, f"{parameter}_noise_shift")
+            return np.full(shape, shift, dtype=float)
+        raise ValueError(f"Unknown noise_dist: {dist!r}")
+
 @dataclass
 class RobustConfig:
     """Configuration for robustness perturbations (v1: obs / action / reward).
@@ -34,7 +195,8 @@ class RobustConfig:
       - Shift constant:      ``{action,obs,reward}_noise_shift``             (3)
       - Distribution knob:   ``noise_dist``                                  (1)
       - Per-channel dist:    ``{action,obs,reward}_noise_dist``              (3)
-    Total: 16 fields. Each magnitude field name maps strictly to its
+    Total: 17 top-level fields, including the nested environment config.
+    Each signal-noise magnitude field name maps strictly to its
     distribution's mathematical parameter, mirroring Robust-Gymnasium's
     ``--noise-sigma`` / ``--uniform-low/high`` / ``--noise-shift``
     parameterization.
@@ -96,11 +258,26 @@ class RobustConfig:
     obs_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
     reward_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
 
+    # Physical environment perturbations. These are sampled once per episode
+    # by OmniPianoTask and remain independent from the action/reward and
+    # observation RNG streams.
+    environment_noise: RobustEnvConfig = field(default_factory=RobustEnvConfig)
+
+    SIGNAL_CHANNELS: ClassVar[Tuple[str, ...]] = ("action", "obs", "reward")
+
     def dist_for(self, channel: str) -> str:
-        """The distribution governing ``channel``: its own override if set,
-        otherwise the global ``noise_dist``. Single source of truth — every
-        dispatch below and both noise-injecting wrappers resolve through it."""
-        return getattr(self, f"{channel}_noise_dist") or self.noise_dist
+        """Resolved distribution for any signal or physical-noise channel.
+
+        Signal channels keep their fields directly on this config; physical
+        parameters live in ``environment_noise`` but inherit the same global
+        distribution default. Callers deliberately use this one entry point
+        regardless of when the noise is injected (per step or per episode).
+        """
+        if channel in self.SIGNAL_CHANNELS:
+            return getattr(self, f"{channel}_noise_dist") or self.noise_dist
+        if channel in self.environment_noise.PARAMETERS:
+            return self.environment_noise.dist_for(channel, self.noise_dist)
+        raise ValueError(f"Unknown robust-noise channel: {channel!r}")
 
     def __post_init__(self):
         """Validate config integrity (raises ``ValueError`` on violation):
@@ -121,14 +298,14 @@ class RobustConfig:
                 f"RobustConfig: noise_dist must be one of {valid_dists}, "
                 f"got {self.noise_dist!r}"
             )
-        for ch in ("action", "obs", "reward"):
+        for ch in self.SIGNAL_CHANNELS:
             per_ch = getattr(self, f"{ch}_noise_dist")
             if per_ch is not None and per_ch not in valid_dists:
                 raise ValueError(
                     f"RobustConfig: {ch}_noise_dist must be one of "
                     f"{valid_dists} or None, got {per_ch!r}"
                 )
-        for ch in ("action", "obs", "reward"):
+        for ch in self.SIGNAL_CHANNELS:
             std = getattr(self, f"{ch}_noise_std")
             if not np.isfinite(std):
                 raise ValueError(
@@ -148,7 +325,7 @@ class RobustConfig:
                     f"got {shift}"
                 )
 
-        for ch in ("action", "obs", "reward"):
+        for ch in self.SIGNAL_CHANNELS:
             lo = getattr(self, f"{ch}_noise_uniform_low")
             hi = getattr(self, f"{ch}_noise_uniform_high")
             if not (np.isfinite(lo) and np.isfinite(hi)):
@@ -207,14 +384,17 @@ class RobustConfig:
                     f"magnitude field, or drop {ch}_noise_dist."
                 )
 
+        self.environment_noise.validate_for(self.noise_dist)
+
     # ------------------------------------------------------------------
     # Noise semantics — single source of truth, used by BOTH the gym-layer
     # RobustWrapper (action / reward channels) and the dm_env-layer
     # DmEnvObsNoiseWrapper (obs channel), so the two layers never diverge.
     # ------------------------------------------------------------------
     def is_channel_active(self, channel: str) -> bool:
-        """True if ``channel`` has nonzero noise magnitude under ITS resolved
-        distribution (gaussian→std, uniform→low/high, shift→shift)."""
+        """Whether any signal or physical-noise channel is active."""
+        if channel in self.environment_noise.PARAMETERS:
+            return self.environment_noise.is_active(channel, self.noise_dist)
         dist = self.dist_for(channel)
         if dist == "gaussian":
             return getattr(self, f"{channel}_noise_std") != 0.0
@@ -225,8 +405,8 @@ class RobustConfig:
             return getattr(self, f"{channel}_noise_shift") != 0.0
         raise ValueError(f"Unknown noise_dist: {dist!r}")
 
-    def sample_noise(self, rng, channel: str, shape):
-        """Sample noise for ``channel`` from the active distribution.
+    def sample_noise(self, rng, channel: str, shape=()):
+        """Sample noise for any channel from its resolved distribution.
 
         - gaussian: read ``{channel}_noise_std`` as σ → N(0, σ²) per-dim
           (step-level). Kept **bit-identical** to a direct
@@ -236,6 +416,11 @@ class RobustConfig:
         - shift:    read ``{channel}_noise_shift`` → constant offset broadcast
           to all dims; **NO rng draw** (deterministic, program-run-level).
         """
+        if channel in self.environment_noise.PARAMETERS:
+            return self.environment_noise.sample_noise(
+                rng, channel, shape, self.noise_dist
+            )
+
         dist = self.dist_for(channel)
         if dist == "gaussian":
             std = getattr(self, f"{channel}_noise_std")

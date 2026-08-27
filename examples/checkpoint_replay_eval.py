@@ -180,6 +180,10 @@ _CSV_HEADER = [
 _ROBUST_EVAL_COLS = [
     "eval_noise_scale", "ep_return_true",
     "ep_noise_action_l2", "ep_noise_obs_l2", "ep_noise_reward",
+    "ep_noise_gravity", "ep_noise_contact_friction",
+    "env_gravity_z", "env_contact_friction_sliding",
+    "env_hand_position_l2", "env_hand_position_max_l2",
+    "env_hand_position_offsets",
 ]
 _CSV_HEADER = _CSV_HEADER + _ROBUST_EVAL_COLS
 
@@ -346,7 +350,8 @@ def replay_all_checkpoints(
                     returns[ep_i],
                     lengths[ep_i],
                 ]
-                # info-key columns (ep_cost ... sustain_reward); the last 5 of
+                # info-key columns (ep_cost ... sustain_reward); the appended
+                # robust-eval columns at the end of
                 # _CSV_HEADER are the appended robust-eval cols, handled below.
                 for col_after_length in _CSV_HEADER[5:-len(_ROBUST_EVAL_COLS)]:
                     info_key = _INFO_KEY_BY_CSV_COL[col_after_length]
@@ -356,7 +361,11 @@ def replay_all_checkpoints(
                 # here since safety tasks carry no reward noise.
                 ep_return_true = sum(float(x) for x in row[-6:] if x != "")
                 # robust-eval cols: safety-only → scale 1.0 (matched), no noise
-                row.extend([1.0, ep_return_true, 0.0, 0.0, 0.0])
+                row.extend([
+                    1.0, ep_return_true,
+                    0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "{}",
+                ])
                 writer.writerow(row)
 
         print(f"  [{i+1:3d}/{len(ckpts)}] ckpt {ckpt:>20s} "

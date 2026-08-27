@@ -101,7 +101,10 @@ from omnipiano.envs.dm_env_obs_noise import (
     OBS_NOISE_SEED_OFFSET,
 )
 from omnipiano.tasks.hand_spec import HandSpec
-from omnipiano.tasks.omni_piano_task import OmniPianoTask
+from omnipiano.tasks.omni_piano_task import (
+    ENVIRONMENT_NOISE_SEED_OFFSET,
+    OmniPianoTask,
+)
 from omnipiano.wrappers.metrics_wrapper import MetricsWrapper
 from omnipiano.wrappers.robust_wrapper import RobustWrapper
 from omnipiano.wrappers.safety_wrapper import SafetyWrapper
@@ -344,6 +347,26 @@ def make(
     # Matched-eval default (decisions 10/11): omitted scale = 1.0.
     scale = (eval_noise_scale if eval_noise_scale is not None else 1.0) \
         if mode == "eval" else 1.0
+    registered_env_noise = robust_config.environment_noise
+    effective_env_noise = dataclasses.replace(
+        registered_env_noise,
+        gravity_noise_std=registered_env_noise.gravity_noise_std * scale,
+        gravity_noise_uniform_low=registered_env_noise.gravity_noise_uniform_low * scale,
+        gravity_noise_uniform_high=registered_env_noise.gravity_noise_uniform_high * scale,
+        gravity_noise_shift=registered_env_noise.gravity_noise_shift * scale,
+        contact_friction_noise_std=registered_env_noise.contact_friction_noise_std * scale,
+        contact_friction_noise_uniform_low=registered_env_noise.contact_friction_noise_uniform_low * scale,
+        contact_friction_noise_uniform_high=registered_env_noise.contact_friction_noise_uniform_high * scale,
+        contact_friction_noise_shift=registered_env_noise.contact_friction_noise_shift * scale,
+        hand_position_y_noise_std=registered_env_noise.hand_position_y_noise_std * scale,
+        hand_position_y_noise_uniform_low=registered_env_noise.hand_position_y_noise_uniform_low * scale,
+        hand_position_y_noise_uniform_high=registered_env_noise.hand_position_y_noise_uniform_high * scale,
+        hand_position_y_noise_shift=registered_env_noise.hand_position_y_noise_shift * scale,
+        hand_position_z_noise_std=registered_env_noise.hand_position_z_noise_std * scale,
+        hand_position_z_noise_uniform_low=registered_env_noise.hand_position_z_noise_uniform_low * scale,
+        hand_position_z_noise_uniform_high=registered_env_noise.hand_position_z_noise_uniform_high * scale,
+        hand_position_z_noise_shift=registered_env_noise.hand_position_z_noise_shift * scale,
+    )
     effective_robust_config = dataclasses.replace(
         robust_config,
         action_noise_std=robust_config.action_noise_std * scale,
@@ -358,6 +381,7 @@ def make(
         action_noise_shift=robust_config.action_noise_shift * scale,
         obs_noise_shift=robust_config.obs_noise_shift * scale,
         reward_noise_shift=robust_config.reward_noise_shift * scale,
+        environment_noise=effective_env_noise,
     )
 
     # ------------------------------------------------------------------
@@ -402,7 +426,16 @@ def make(
     #    via ``reset(seed=...)`` and benefit equally.
     # ------------------------------------------------------------------
     def _build_dm_env_chain(_seed: Optional[int]):
-        task_kwargs = {"task_config": task_config, **task_kwargs_base}
+        environment_noise_seed = (
+            _seed + ENVIRONMENT_NOISE_SEED_OFFSET
+            if _seed is not None else None
+        )
+        task_kwargs = {
+            "task_config": task_config,
+            "robust_config": effective_robust_config,
+            "environment_noise_seed": environment_noise_seed,
+            **task_kwargs_base,
+        }
         if hand_specs is not None:
             task_kwargs["hand_specs"] = hand_specs
         env = suite.load_with_task(

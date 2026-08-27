@@ -1,5 +1,6 @@
 import gymnasium as gym
 import csv
+import json
 import os
 import time
 import uuid
@@ -81,6 +82,13 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
         self.ep_noise_action_l2 = 0.0
         self.ep_noise_obs_l2 = 0.0
         self.ep_noise_reward = 0.0
+        self.env_noise_gravity = 0.0
+        self.env_noise_contact_friction = 0.0
+        self.env_gravity_z = 0.0
+        self.env_contact_friction_sliding = 0.0
+        self.env_hand_position_l2 = 0.0
+        self.env_hand_position_max_l2 = 0.0
+        self.env_hand_position_offsets = {}
 
         # Initialize CSV header
         with open(self.csv_path, mode='w', newline='') as file:
@@ -110,6 +118,10 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
                 # point; `ep_noise_*` are the per-episode summed injected noise.
                 'eval_noise_scale', 'ep_return_true',
                 'ep_noise_action_l2', 'ep_noise_obs_l2', 'ep_noise_reward',
+                'ep_noise_gravity', 'ep_noise_contact_friction',
+                'env_gravity_z', 'env_contact_friction_sliding',
+                'env_hand_position_l2', 'env_hand_position_max_l2',
+                'env_hand_position_offsets',
             ])
 
     def reset(self, **kwargs):
@@ -122,6 +134,13 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
         self.ep_noise_action_l2 = 0.0
         self.ep_noise_obs_l2 = 0.0
         self.ep_noise_reward = 0.0
+        self.env_noise_gravity = 0.0
+        self.env_noise_contact_friction = 0.0
+        self.env_gravity_z = 0.0
+        self.env_contact_friction_sliding = 0.0
+        self.env_hand_position_l2 = 0.0
+        self.env_hand_position_max_l2 = 0.0
+        self.env_hand_position_offsets = {}
         return obs, info
 
     def step(self, action):
@@ -133,6 +152,27 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
         self.ep_noise_action_l2 += info.get(InfoKeys.ROBUST_NOISE_ACTION_L2, 0.0)
         self.ep_noise_obs_l2 += info.get(InfoKeys.ROBUST_NOISE_OBS_L2, 0.0)
         self.ep_noise_reward += info.get(InfoKeys.ROBUST_NOISE_REWARD, 0.0)
+        # Physical parameters are constant within an episode. Keep the latest
+        # snapshot instead of summing it once per step.
+        self.env_noise_gravity = info.get(
+            InfoKeys.ROBUST_NOISE_GRAVITY, 0.0
+        )
+        self.env_noise_contact_friction = info.get(
+            InfoKeys.ROBUST_NOISE_CONTACT_FRICTION, 0.0
+        )
+        self.env_gravity_z = info.get(InfoKeys.ROBUST_ENV_GRAVITY_Z, 0.0)
+        self.env_contact_friction_sliding = info.get(
+            InfoKeys.ROBUST_ENV_CONTACT_FRICTION_SLIDING, 0.0
+        )
+        self.env_hand_position_l2 = info.get(
+            InfoKeys.ROBUST_ENV_HAND_POSITION_L2, 0.0
+        )
+        self.env_hand_position_max_l2 = info.get(
+            InfoKeys.ROBUST_ENV_HAND_POSITION_MAX_L2, 0.0
+        )
+        self.env_hand_position_offsets = info.get(
+            InfoKeys.ROBUST_ENV_HAND_POSITION_OFFSETS, {}
+        )
 
         if terminated or truncated:
             self.completed_episode_count += 1
@@ -184,6 +224,17 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
                     self.eval_noise_scale, ep_return_true,
                     self.ep_noise_action_l2, self.ep_noise_obs_l2,
                     self.ep_noise_reward,
+                    self.env_noise_gravity,
+                    self.env_noise_contact_friction,
+                    self.env_gravity_z,
+                    self.env_contact_friction_sliding,
+                    self.env_hand_position_l2,
+                    self.env_hand_position_max_l2,
+                    json.dumps(
+                        self.env_hand_position_offsets,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
                 ])
                 
         return obs, reward, terminated, truncated, info

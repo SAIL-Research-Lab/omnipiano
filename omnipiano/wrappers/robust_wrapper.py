@@ -232,8 +232,54 @@ class RobustWrapper(gym.Wrapper):
         info[InfoKeys.ROBUST_NOISE_ACTION_L2] = action_noise_l2
         info[InfoKeys.ROBUST_NOISE_OBS_L2] = obs_noise_l2
         info[InfoKeys.ROBUST_NOISE_REWARD] = reward_noise
+        environment_state = self._read_environment_noise_state()
+        info[InfoKeys.ROBUST_NOISE_GRAVITY] = environment_state["gravity_noise"]
+        info[InfoKeys.ROBUST_NOISE_CONTACT_FRICTION] = environment_state[
+            "contact_friction_noise"
+        ]
+        info[InfoKeys.ROBUST_ENV_GRAVITY_Z] = environment_state["gravity_z"]
+        info[InfoKeys.ROBUST_ENV_CONTACT_FRICTION_SLIDING] = environment_state[
+            "contact_friction_sliding"
+        ]
+        info[InfoKeys.ROBUST_ENV_HAND_POSITION_L2] = environment_state[
+            "hand_position_l2"
+        ]
+        info[InfoKeys.ROBUST_ENV_HAND_POSITION_MAX_L2] = environment_state[
+            "hand_position_max_l2"
+        ]
+        info[InfoKeys.ROBUST_ENV_HAND_POSITION_OFFSETS] = environment_state[
+            "hand_position_offsets"
+        ]
 
         return obs, reward, terminated, truncated, info
+
+    def _read_environment_noise_state(self):
+        """Read the current task instance after any seed-triggered rebuild."""
+        if not any(
+            self.config.is_channel_active(parameter)
+            for parameter in self.config.environment_noise.PARAMETERS
+        ):
+            return {
+                "gravity_noise": 0.0,
+                "gravity_z": 0.0,
+                "contact_friction_noise": 0.0,
+                "contact_friction_sliding": 0.0,
+                "hand_position_offsets": {},
+                "hand_position_l2": 0.0,
+                "hand_position_max_l2": 0.0,
+            }
+
+        from omnipiano.utils.env_unwrap import get_composer_env_from_gym
+
+        composer_env = get_composer_env_from_gym(self.env)
+        task = composer_env.task
+        if not hasattr(task, "environment_noise_state"):
+            raise RuntimeError(
+                "Environment noise is active but the composer task does not "
+                "expose environment_noise_state. Build robust environment "
+                "tasks with OmniPianoTask through omnipiano.make()."
+            )
+        return task.environment_noise_state
 
     def _read_obs_noise_l2(self) -> float:
         """Walk dm_env chain → DmEnvObsNoiseWrapper.last_step_noise_l2.

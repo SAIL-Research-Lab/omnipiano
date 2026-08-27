@@ -33,8 +33,14 @@ setup(
         "scikit-learn",
         "shimmy[dm_control]",
         "gymnasium",
+        "pettingzoo",
         "numpy",
         "stable-baselines3",
         "moviepy",
     ],
+    entry_points={
+        "console_scripts": [
+            "robopianist=robopianist.cli:main",
+        ],
+    },
 )
