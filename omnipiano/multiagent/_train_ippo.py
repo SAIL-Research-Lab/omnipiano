@@ -527,7 +527,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         ray.init(
-            local_mode=(args.num_workers == 0),
             ignore_reinit_error=True,
             log_to_driver=False,
         )

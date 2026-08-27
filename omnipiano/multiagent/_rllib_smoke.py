@@ -98,7 +98,7 @@ def main() -> int:
     )
 
     print("[info] Initializing ray + PPO ...")
-    ray.init(local_mode=True, ignore_reinit_error=True, log_to_driver=False)
+    ray.init(ignore_reinit_error=True, log_to_driver=False)
     algo = None
     try:
         build = getattr(config, "build_algo", None)
