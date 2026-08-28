@@ -11,3 +11,4 @@ OmniPiano's core contract (``omnipiano/envs/``, ``omnipiano/configs/``,
 ``integrations/``. Callers opt in by importing the specific integration
 package for the framework they use.
 """
+"""Optional integrations for third-party training frameworks."""

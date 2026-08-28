@@ -38,6 +38,13 @@ setup(
         "stable-baselines3",
         "moviepy",
     ],
+    extras_require={
+        "torchrl": [
+            "torch>=2.10,<2.11",
+            "torchrl>=0.13,<0.14",
+            "tensordict>=0.13,<0.14",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "robopianist=robopianist.cli:main",

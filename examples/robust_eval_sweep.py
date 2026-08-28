@@ -66,7 +66,12 @@ EVAL_SEED_OFFSET = 10_000
 # ---------------------------------------------------------------------------
 # SB3 model loading — by algo (robust = no cost = SB3; PPO/SAC/TQC)
 # ---------------------------------------------------------------------------
-def _load_model(algo: str, ckpt: str, device: str):
+def _load_model(algo: str, ckpt: str, device: str, framework: str = "sb3"):
+    if framework == "torchrl":
+        from omnipiano.integrations.torch_rl.model.policy_adapter import (
+            TorchRLPolicyAdapter,
+        )
+        return TorchRLPolicyAdapter.load(ckpt, device=device)
     algo = algo.lower()
     if algo == "ppo":
         from stable_baselines3 import PPO
@@ -98,7 +103,8 @@ def _run_one_scale(model, env_id, scale, scale_dir, num_eval_eps, seed_base):
             obs, _ = env.reset(seed=seed_base + ep_idx)
             done = False
             while not done:
-                action, _ = model.predict(obs, deterministic=True)
+                prediction = model.predict(obs, deterministic=True)
+                action = prediction[0] if isinstance(prediction, tuple) else prediction
                 obs, _reward, terminated, truncated, _info = env.step(action)
                 done = bool(terminated) or bool(truncated)
     finally:
@@ -144,11 +150,13 @@ def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--ckpt", required=True,
-                   help="Path to the trained SB3 checkpoint (.zip).")
+                   help="SB3 .zip or TorchRL checkpoint directory.")
     p.add_argument("--env", required=True,
                    help="Registered robust env id (the robustness-curve eval env).")
-    p.add_argument("--algo", default="ppo", choices=["ppo", "sac", "tqc"],
-                   help="SB3 algorithm the checkpoint was trained with.")
+    p.add_argument("--framework", default="sb3", choices=["sb3", "torchrl"])
+    p.add_argument("--algo", default="ppo",
+                   choices=["ppo", "sac", "tqc", "eppo", "a2p_sac", "ompo", "dr_sac"],
+                   help="Algorithm name; TorchRL checkpoint carries its network specification.")
     p.add_argument("--scales", type=float, nargs="+",
                    default=[0.0, 0.5, 1.0, 2.0, 4.0],
                    help="eval_noise_scale grid (0=clean, 1=matched/training, >1=stress).")
@@ -171,7 +179,7 @@ def main():
         os.path.dirname(os.path.abspath(args.ckpt)), "robust_sweep")
     os.makedirs(out_dir, exist_ok=True)
 
-    model = _load_model(args.algo, args.ckpt, args.device)
+    model = _load_model(args.algo, args.ckpt, args.device, args.framework)
     seed_base = args.train_seed + args.eval_seed_offset
     ckpt_tag = os.path.splitext(os.path.basename(args.ckpt))[0]
 
