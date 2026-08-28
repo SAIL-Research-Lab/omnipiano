@@ -32,6 +32,21 @@ class PPOConfig:
     device: str = "cpu"
 
 
+def make_config(args, device: str) -> PPOConfig:
+    return PPOConfig(
+        total_env_steps=args.total_steps,
+        gamma=args.gamma,
+        n_steps=args.n_steps,
+        n_epochs=args.n_epochs,
+        learning_rate=args.learning_rate,
+        gae_lambda=args.gae_lambda,
+        clip_epsilon=args.clip_epsilon,
+        entropy_coeff=args.entropy_coeff,
+        critic_coeff=args.critic_coeff,
+        device=device,
+    )
+
+
 def train_ppo(
     env_id, seed, run_dir, protocol, config: PPOConfig, train_env, periodic_eval_env,
     hidden_sizes=(256, 256), checkpoint_steps=(),

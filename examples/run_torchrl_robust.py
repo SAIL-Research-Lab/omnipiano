@@ -31,8 +31,9 @@ from omnipiano.integrations.torch_rl.env.factory import (  # noqa: E402
     make_eval_env,
     make_parallel_env,
 )
-from omnipiano.integrations.torch_rl.algo.ppo import PPOConfig, train_ppo  # noqa: E402
-from omnipiano.integrations.torch_rl.algo.sac import SACConfig, train_sac  # noqa: E402
+from omnipiano.integrations.torch_rl.algo.ppo import make_config as make_ppo_config, train_ppo  # noqa: E402
+from omnipiano.integrations.torch_rl.algo.sac import make_config as make_sac_config, train_sac  # noqa: E402
+from omnipiano.integrations.torch_rl.algo.eppo import make_config as make_eppo_config, train_eppo  # noqa: E402
 
 
 def _parse_net_arch(value: str) -> tuple[int, ...]:
@@ -56,6 +57,13 @@ def _short_env_token(env_id: str) -> str:
     return "_".join(part.lower() for part in body)
 
 
+ALGO_REGISTRY = {
+    "ppo": (make_ppo_config, train_ppo),
+    "sac": (make_sac_config, train_sac),
+    "eppo": (make_eppo_config, train_eppo),
+}
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     proto = BenchmarkProtocolConfig()
     parser = argparse.ArgumentParser(
@@ -63,7 +71,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
 
     # --- experiment ---
-    parser.add_argument("--algo", required=True, choices=["ppo", "sac"])
+    parser.add_argument("--algo", required=True, choices=sorted(ALGO_REGISTRY))
     parser.add_argument(
         "--env", default="OmniPiano-ClairDeLune-Clean-v0",
         help="Registered OmniPiano env id.",
@@ -113,6 +121,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--entropy-coeff", type=float, default=0.0)
     parser.add_argument("--critic-coeff", type=float, default=0.5)
 
+    # --- EPPO settings ---
+    parser.add_argument("--eppo-mode", choices=["cor", "ind", "mean"], default="cor")
+    parser.add_argument("--kappa", type=float, default=0.01)
+    parser.add_argument("--evidential-reg", type=float, default=0.01)
+
     # --- SAC settings ---
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--buffer-size", type=int, default=1_000_000)
@@ -153,37 +166,10 @@ def main() -> None:
     run_dir.mkdir()
     hidden_sizes = _parse_net_arch(args.net_arch)
 
-    if args.algo == "ppo":
-        config = PPOConfig(
-            total_env_steps=args.total_steps,
-            gamma=args.gamma,
-            n_steps=args.n_steps,
-            n_epochs=args.n_epochs,
-            learning_rate=args.learning_rate,
-            gae_lambda=args.gae_lambda,
-            clip_epsilon=args.clip_epsilon,
-            entropy_coeff=args.entropy_coeff,
-            critic_coeff=args.critic_coeff,
-            device=device,
-        )
-        if args.n_envs is not None:
-            config.n_envs = args.n_envs
-        trainer = train_ppo
-    else:
-        config = SACConfig(
-            total_env_steps=args.total_steps,
-            gamma=args.gamma,
-            batch_size=args.batch_size,
-            buffer_size=args.buffer_size,
-            learning_starts=args.learning_starts,
-            learning_rate=args.learning_rate,
-            tau=args.tau,
-            utd=args.utd,
-            device=device,
-        )
-        if args.n_envs is not None:
-            config.n_envs = args.n_envs
-        trainer = train_sac
+    config_builder, trainer = ALGO_REGISTRY[args.algo]
+    config = config_builder(args, device)
+    if args.n_envs is not None:
+        config.n_envs = args.n_envs
 
     eval_seed = args.seed + config.n_envs + 1
     print(

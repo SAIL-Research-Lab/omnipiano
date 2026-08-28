@@ -30,6 +30,20 @@ class SACConfig:
     device: str = "cpu"
 
 
+def make_config(args, device: str) -> SACConfig:
+    return SACConfig(
+        total_env_steps=args.total_steps,
+        gamma=args.gamma,
+        batch_size=args.batch_size,
+        buffer_size=args.buffer_size,
+        learning_starts=args.learning_starts,
+        learning_rate=args.learning_rate,
+        tau=args.tau,
+        utd=args.utd,
+        device=device,
+    )
+
+
 def train_sac(
     env_id, seed, run_dir, protocol, config: SACConfig, train_env, periodic_eval_env,
     hidden_sizes=(256, 256), checkpoint_steps=(),
