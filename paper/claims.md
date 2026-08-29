@@ -40,14 +40,21 @@ observation/action/reward perturbations aligned with Robust-Gymnasium, and (iv)
 
 ## C2 — Noise-immune ground-truth metric(方法论卖点,差异化最强)
 
-**Claim**: The headline metric — note-level F1 computed from ground-truth physics
-(piano-key activation vs. the MIDI score) — is structurally immune to all three noise
-channels: observation, action, and reward perturbations cannot contaminate the
-measurement, only honestly change the trajectory being measured. Return-based metrics
-lack this property (reward noise pollutes `ep_return`); OmniPiano additionally logs
-`ep_return_true` and per-channel noise sums, a strict superset of Robust-Gymnasium's
-logging, whose recorded return under reward noise is the polluted value with no clean
-counterpart. `[verified]`
+**Claim**: OmniPiano reports episode return as its primary metric, as any RL benchmark
+does, and pairs it with a **secondary metric the perturbation cannot reach** —
+note-level F1 computed from ground-truth physics (piano-key activation vs. the MIDI
+score). F1 is structurally immune to all three noise channels: observation, action and
+reward perturbations cannot contaminate the measurement, only honestly change the
+trajectory being measured. The pair is what earns its keep, because the primary metric
+fails in two distinct ways that only the secondary one exposes: it is **contaminated**
+where the perturbation is applied to the measured quantity itself (a +0.50 reward shift
+inflates `ep_return` by exactly 0.50 x 588 = +294, reading as +16% over clean where the
+true change is −0.2%), and it **systematically understates** degradation everywhere else
+(at the strongest Gaussian level, Δreturn −1% to −10% against ΔF1 −10% to −83%). A
+return-only robustness benchmark would score the first case an improvement and the
+second a minor scratch. OmniPiano additionally logs `ep_return_true` and per-channel
+noise sums, a strict superset of Robust-Gymnasium's logging, whose recorded return under
+reward noise is the polluted value with no clean counterpart. `[verified]`
 
 - 证据:`robust_task_design.md` §14(指标×通道污染矩阵,代码核实)+ §14.6
   (RG 上游逐行对照,af6de64)。
