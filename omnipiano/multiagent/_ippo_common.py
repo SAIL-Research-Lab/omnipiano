@@ -420,6 +420,7 @@ def evaluate_ippo(
     max_episode_steps: int = 1_000_000,
     env_factory: Optional[Callable[..., Any]] = None,
     action_computer: Optional[Callable[[str, Any, Any], np.ndarray]] = None,
+    include_global_state: bool = False,
 ) -> Dict[str, Any]:
     """Run deterministic PettingZoo episodes and collect authoritative metrics."""
     if num_episodes <= 0:
@@ -435,6 +436,10 @@ def evaluate_ippo(
         "seed": int(eval_seed),
         "flatten_obs": True,
     }
+    if include_global_state:
+        # MAPPO checkpoints were trained on [global_state | own]; the actor
+        # ignores the global block but the observation SHAPE must still match.
+        env_kwargs["include_global_state"] = True
     if record_dir is not None:
         env_kwargs.update(record_dir=record_dir, record_every=1)
     env = env_factory(env_id, **env_kwargs)
@@ -516,6 +521,7 @@ def evaluate_ippo(
 
     result: Dict[str, Any] = {
         "env_id": env_id,
+        "include_global_state": bool(include_global_state),
         "eval_seed": int(eval_seed),
         "num_eval_eps": int(num_episodes),
         "num_eval_episodes": int(num_episodes),

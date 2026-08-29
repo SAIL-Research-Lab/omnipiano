@@ -49,6 +49,15 @@ _MA_RUNTIME_KWARGS = frozenset({
 })
 
 
+_MA_RUNTIME_KWARGS = frozenset({
+    "obs_visibility",
+    "reward_mode",
+    "flatten_obs",
+    "sustain_owner",
+    "include_global_state",   # MAPPO: expose the CTDE centralized-critic state
+})
+
+
 @dataclass(frozen=True)
 class MATaskSpec:
     """MA env registration entry — pairs an MA id with an underlying SA env."""
@@ -133,6 +142,7 @@ def make_parallel(
     record_every = kwargs.pop("record_every", 1)
     record_resolution = kwargs.pop("record_resolution", (480, 640))
     camera_id = kwargs.pop("camera_id", "piano/back")
+    include_global_state = kwargs.pop("include_global_state", False)
 
     # ---- Build the env_builder closure (mirrors SA's _build_dm_env_chain) ----
     # We reuse SA registration's machinery by reaching in for the TaskSpec
@@ -169,6 +179,38 @@ def make_parallel(
                     f"noise would silently never be injected. Only clean or "
                     f"obs-noise SA envs are supported."
                 )
+    
+    # MA review item 6: the MA chain is a *copy* of the SA chain builder and has
+    # already drifted.  Two concrete drifts are known and must not be silent:
+    #
+    #   (a) SA computes ``effective_robust_config`` from ``mode`` and
+    #       ``eval_noise_scale``; the MA copy passes the raw config, so an
+    #       obs-noise MA env would always run train-mode noise and could not
+    #       execute the robust branch's matched-eval / noise-scale protocol.
+    #   (b) SA applies FrameStacking *after* ConcatObservation and flattens to a
+    #       single vector.  The MA chain has no Concat, so a stacked Dict obs is
+    #       undefined and ``parallel_env`` slicing would silently mis-index it.
+    #
+    # Until the shared-chain refactor lands, fail loudly instead of producing
+    # plausible-but-wrong benchmark data.
+    if robust_config.is_channel_active("obs"):
+        sa_mode = getattr(sa_spec, "mode", None)
+        if sa_mode is not None and str(sa_mode) != "train":
+            raise ValueError(
+                f"MA env {env_id!r}: underlying SA env {ma_spec.sa_env_id!r} has "
+                f"mode={sa_mode!r}, but the MA chain builder does not implement "
+                f"effective_robust_config() eval-noise scaling. Register the MA "
+                f"env over a train-mode SA env, or land the SA/MA chain-parity "
+                f"refactor (MA review item 6) first."
+            )
+    if env_config.frame_stack > 1:
+        raise NotImplementedError(
+            f"MA env {env_id!r}: frame_stack={env_config.frame_stack} is not "
+            f"supported. The MA chain omits ConcatObservationWrapper, so "
+            f"FrameStackingWrapper(flatten=True) would produce a stacked Dict "
+            f"observation that parallel_env's per-agent slicing cannot decode. "
+            f"Use frame_stack=1 for multi-agent envs."
+        )
 
     hand_specs = sa_spec.hand_specs
     if hand_specs is None:
@@ -253,6 +295,7 @@ def make_parallel(
         reward_mode=reward_mode,
         flatten_obs=flatten_obs,
         sustain_owner=sustain_owner,
+        include_global_state=include_global_state,
     )
 
 
@@ -359,8 +402,11 @@ def _make_dm_env_chain_builder(
         # SKIP ConcatObservationWrapper — MA wants Dict obs.
 
         if frame_stack > 1:
-            env = FrameStackingWrapper(
-                env, num_frames=frame_stack, flatten=True
+            # Defence in depth: make_parallel already rejects this. Reaching here
+            # means a caller bypassed the factory.
+            raise NotImplementedError(
+                "FrameStackingWrapper is not supported in the MA dm_env chain "
+                "(no upstream ConcatObservationWrapper to flatten against)."
             )
 
         env = CanonicalSpecWrapper(env, clip=clip)

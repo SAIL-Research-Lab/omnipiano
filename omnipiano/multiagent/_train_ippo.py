@@ -105,6 +105,95 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "(0 disables intermediate checkpoints; final is always saved)."
         ),
     )
+    # ---------------- PPO hyperparameters (MA review N2-N5) ----------------
+    # RLlib's PPO defaults are tuned for small-return classic-control tasks and
+    # are actively harmful at this benchmark's return scale (~600 per episode).
+    ppo = parser.add_argument_group("ppo (corrected RLlib defaults)")
+    ppo.add_argument(
+        "--gae-lambda", type=float, default=0.95,
+        help="GAE lambda. RLlib default is 1.0 (pure Monte-Carlo advantage, "
+             "very high variance over ~1000-step episodes). PPO/MAPPO use 0.95.",
+    )
+    ppo.add_argument(
+        "--clip-param", type=float, default=0.2,
+        help="PPO policy clip epsilon. RLlib default 0.3; PPO paper and MAPPO "
+             "ablations both favour 0.2.",
+    )
+    ppo.add_argument(
+        "--vf-clip-param", type=float, default=1000.0,
+        help="Value-loss clip. RLlib default 10.0 clamps the SQUARED value "
+             "error, so any |V - target| > sqrt(10) ~ 3.16 gets ZERO gradient. "
+             "With episode returns ~600 that disables critic learning almost "
+             "entirely. Set well above the return scale.",
+    )
+    ppo.add_argument("--vf-loss-coeff", type=float, default=1.0)
+    ppo.add_argument("--entropy-coeff", type=float, default=0.0)
+    ppo.add_argument(
+        "--use-kl-loss", action="store_true", default=False,
+        help="Add PPO's adaptive KL penalty on top of clipping. RLlib defaults "
+             "this ON; the MAPPO reference implementation uses clipping only.",
+    )
+    ppo.add_argument(
+        "--grad-clip", type=float, default=10.0,
+        help="Global-norm gradient clip. RLlib default is None; MAPPO uses 10.",
+    )
+    
+    algo_group = parser.add_argument_group("algorithm")
+    algo_group.add_argument(
+        "--algo", choices=("ippo", "mappo"), default="ippo",
+        help="ippo: decentralized critic V(o_i). "
+             "mappo: centralized critic V(s) over the CTDE global state. "
+             "Everything else is identical.",
+    )
+    algo_group.add_argument(
+        "--rl-module", choices=("default", "ctde"), default="ctde",
+        help="'ctde' uses the shared CtdePPOTorchRLModule so IPPO and MAPPO are "
+             "architecturally identical apart from the critic input. 'default' "
+             "keeps RLlib's built-in PPO module (IPPO only) as a sanity anchor.",
+    )
+    algo_group.add_argument(
+        "--critic-input", choices=("own", "global"), default=None,
+        help="Override the critic input. Defaults to 'own' for --algo ippo and "
+             "'global' for --algo mappo. Use '--algo mappo --critic-input own' "
+             "for the IPPO-equivalence validation run.",
+    )
+    algo_group.add_argument("--hidden-sizes", default="256,256")
+    algo_group.add_argument("--activation", choices=("tanh", "relu"), default="tanh")
+    algo_group.add_argument(
+        "--include-global-state", dest="include_global_state",
+        action="store_true", default=None,
+        help="Force the env to emit the global state. Implied by --algo mappo.",
+    )
+
+    # ---------------- compute placement ----------------
+    compute = parser.add_argument_group("compute")
+    compute.add_argument(
+        "--num-learners", type=int, default=1,
+        help="Learner actors. Keep at 1 for a reproducible benchmark run.",
+    )
+    compute.add_argument(
+        "--num-gpus-per-learner", type=float, default=1.0,
+        help="Set 0 for CPU-only. Pin a specific device with CUDA_VISIBLE_DEVICES.",
+    )
+    compute.add_argument("--num-cpus-per-env-runner", type=int, default=1)
+    compute.add_argument(
+        "--ray-num-cpus", type=int, default=None,
+        help="Hard-cap Ray's CPU pool. Essential when two jobs share one node.",
+    )
+
+    # ---------------- Weights & Biases ----------------
+    wb = parser.add_argument_group("weights & biases")
+    wb.add_argument("--wandb-mode", choices=("online", "offline", "disabled"),
+                    default="online")
+    wb.add_argument("--wandb-entity", default="omnipiano")
+    wb.add_argument("--wandb-project", default="multiagent")
+    wb.add_argument("--wandb-group", default=None,
+                    help="Defaults to '<algo>_<env-token>' so seeds aggregate.")
+    wb.add_argument("--wandb-name", default=None, help="Defaults to run-dir name.")
+    wb.add_argument("--wandb-tags", default="", help="Comma-separated.")
+    wb.add_argument("--wandb-notes", default=None)
+    wb.add_argument("--wandb-upload-artifacts", action="store_true",
+                    help="Also upload run_dir JSONL/JSON artifacts at the end.")
     parser.add_argument(
         "--smoke-test",
         action="store_true",
@@ -146,6 +235,23 @@ def _validate_args(args: argparse.Namespace) -> None:
             "checkpoint_freq must be 0 or at least train_batch_size so one PPO "
             "iteration cannot cross multiple checkpoint thresholds"
         )
+    if not 0.0 <= args.gae_lambda <= 1.0:
+        raise ValueError("gae_lambda must be in [0, 1]")
+    if not 0.0 < args.clip_param < 1.0:
+        raise ValueError("clip_param must be in (0, 1)")
+    if args.vf_clip_param <= 0.0:
+        raise ValueError("vf_clip_param must be positive")
+    if args.entropy_coeff < 0.0 or args.vf_loss_coeff < 0.0:
+        raise ValueError("entropy_coeff and vf_loss_coeff must be non-negative")
+    if args.grad_clip is not None and args.grad_clip <= 0.0:
+        raise ValueError("grad_clip must be positive (or omitted)")
+    if args.num_learners != 1:
+        # total_train_batch_size = train_batch_size_per_learner * num_learners,
+        # so anything other than 1 silently changes the effective batch size and
+        # breaks comparability with the recorded protocol.
+        raise ValueError("this benchmark requires exactly one Learner")
+    if args.num_gpus_per_learner < 0:
+        raise ValueError("num_gpus_per_learner must be non-negative")
 
 
 def _short_env_token(env_id: str) -> str:
@@ -196,28 +302,38 @@ def _make_env_for_rllib(env_config: Mapping[str, Any]) -> Any:
     env_id = str(env_config.get("env_id", DEFAULT_ENV_ID))
     parallel_env = make_parallel(
         env_id,
-        # Creator-time seed only. RLlib owns worker/vector reset seeding after
-        # AlgorithmConfig.debugging(seed=...) is applied.
         seed=int(env_config.get("seed", 0)),
         flatten_obs=True,
+        include_global_state=bool(env_config.get("include_global_state", False)),
     )
-    # RLlib only permits ``__common__`` as a non-agent info key.  The native
-    # PettingZoo env historically emits ``_global_``; translate at this adapter
-    # boundary so native users and old artifacts remain compatible.
     return wrap_parallel_env_for_rllib(parallel_env)
 
 
-def _probe_agent_spaces(
-    env_id: str, seed: int
-) -> Tuple[Sequence[str], Dict[str, Any], Dict[str, Any]]:
+def _probe_agent_spaces(env_id: str, seed: int, include_global_state: bool):
+    """Return agents, obs/action spaces, and the flat CTDE slice layout."""
     from omnipiano.multiagent import make_parallel
 
-    env = make_parallel(env_id, seed=seed, flatten_obs=True)
+    env = make_parallel(
+        env_id, seed=seed, flatten_obs=True,
+        include_global_state=include_global_state,
+    )
     try:
         agents = list(env.possible_agents)
-        observations = {agent: env.observation_space(agent) for agent in agents}
-        actions = {agent: env.action_space(agent) for agent in agents}
-        return agents, observations, actions
+        observations = {a: env.observation_space(a) for a in agents}
+        actions = {a: env.action_space(a) for a in agents}
+        layouts: Dict[str, Dict[str, Tuple[int, int]]] = {}
+        for agent in agents:
+            layout = env.obs_layout(agent)
+            if "own" in layout:
+                own = layout["own"]
+                glob = layout.get("global_state", (0, 0))
+            else:
+                # No global state: every component belongs to the agent's own
+                # observation, so the actor slice is the whole vector.
+                own = (0, int(np.prod(observations[agent].shape)))
+                glob = (0, 0)
+            layouts[agent] = {"own": own, "global_state": glob}
+        return agents, observations, actions, layouts
     finally:
         env.close()
 
@@ -382,6 +498,34 @@ def _build_run_config(
                 "receives the base seed before RLlib-managed reset seeding"
             ),
             "rllib_target_version": RLLIB_TARGET_VERSION,
+            # PPO hyperparameters. Recorded explicitly because several deviate
+            # from RLlib defaults for documented, return-scale reasons.
+            "gae_lambda": float(args.gae_lambda),
+            "clip_param": float(args.clip_param),
+            "vf_clip_param": float(args.vf_clip_param),
+            "vf_loss_coeff": float(args.vf_loss_coeff),
+            "entropy_coeff": float(args.entropy_coeff),
+            "use_kl_loss": bool(args.use_kl_loss),
+            "grad_clip": float(args.grad_clip),
+            "grad_clip_by": "global_norm",
+            "rllib_default_overrides": {
+                # value: [rllib_default, ours, why]
+                "lambda_": [1.0, float(args.gae_lambda),
+                            "GAE lambda=1 is pure Monte-Carlo; variance is "
+                            "unusable over ~1000-step episodes"],
+                "clip_param": [0.3, float(args.clip_param),
+                               "PPO paper / MAPPO ablation both favour 0.2"],
+                "vf_clip_param": [10.0, float(args.vf_clip_param),
+                                  "RLlib clamps the squared value error; at "
+                                  "return scale ~600 the default zeroes the "
+                                  "critic gradient on nearly every sample"],
+                "use_kl_loss": [True, bool(args.use_kl_loss),
+                                "MAPPO reference uses clipping only"],
+                "grad_clip": [None, float(args.grad_clip),
+                              "MAPPO uses max_grad_norm=10"],
+            },
+            "num_learners": int(args.num_learners),
+            "num_gpus_per_learner": float(args.num_gpus_per_learner),
         },
         "smoke_test": bool(args.smoke_test),
         "python": {
@@ -390,6 +534,53 @@ def _build_run_config(
         },
         "git": _git_metadata(),
     }
+
+
+def _resolve_algo(args: argparse.Namespace) -> None:
+    """Fill in algorithm-dependent defaults and reject incoherent combinations."""
+    if args.critic_input is None:
+        args.critic_input = "own" if args.algo == "ippo" else "global"
+    if args.include_global_state is None:
+        # MAPPO needs it. IPPO does not, but allowing it enables the equivalence
+        # control run in which the global state is present yet never read.
+        args.include_global_state = args.algo == "mappo"
+
+    if args.critic_input == "global" and not args.include_global_state:
+        raise ValueError(
+            "--critic-input global requires the env to emit the global state; "
+            "pass --include-global-state (implied by --algo mappo)"
+        )
+    if args.rl_module == "default":
+        if args.critic_input != "own":
+            raise ValueError(
+                "--rl-module default only supports --critic-input own "
+                "(RLlib's built-in PPO module has no centralized critic)"
+            )
+        if args.include_global_state:
+            raise ValueError(
+                "--rl-module default cannot consume a global state; it would be "
+                "fed to the actor as well, breaking decentralized execution"
+            )
+    if args.algo == "mappo" and args.rl_module != "ctde":
+        raise ValueError("--algo mappo requires --rl-module ctde")
+
+    args.hidden_sizes_parsed = tuple(
+        int(tok) for tok in str(args.hidden_sizes).split(",") if tok.strip()
+    )
+    if not args.hidden_sizes_parsed or any(h <= 0 for h in args.hidden_sizes_parsed):
+        raise ValueError(f"invalid --hidden-sizes {args.hidden_sizes!r}")
+
+    args.algorithm_name = {
+        ("ippo", "own"): "IPPO (RLlib PPO; one independent actor/critic per agent)",
+        ("mappo", "global"): (
+            "MAPPO (RLlib PPO; per-agent actor over o_i, centralized critic "
+            "over the agent-specific global state s; CTDE)"
+        ),
+        ("mappo", "own"): (
+            "MAPPO-ablation (centralized state present in the observation but "
+            "NOT read by the critic; numerically equivalent to IPPO)"
+        ),
+    }[(args.algo, args.critic_input)]
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -421,6 +612,42 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         f"steps={args.total_steps:,}  gamma={args.gamma}  "
         f"eval_every={args.eval_freq:,} env-steps"
     )
+    
+    from omnipiano.multiagent._wandb import WandbRun
+
+    wandb_group = args.wandb_group or f"ippo_{_short_env_token(args.env_id)}"
+    wandb_tags = [t.strip() for t in args.wandb_tags.split(",") if t.strip()]
+    wandb_tags = sorted(set(wandb_tags) | {
+        "ippo",
+        _short_env_token(args.env_id),
+        f"seed{args.seed}",
+        f"{args.total_steps // 1_000_000}M" if args.total_steps >= 1_000_000
+        else f"{args.total_steps // 1_000}k",
+        *(["smoke-test"] if args.smoke_test else []),
+    })
+    wandb_run = WandbRun(
+        mode=args.wandb_mode,
+        entity=args.wandb_entity,
+        project=args.wandb_project,
+        name=args.wandb_name or run_dir.name,
+        group=wandb_group,
+        job_type="smoke-test" if args.smoke_test else "train",
+        tags=wandb_tags,
+        notes=args.wandb_notes,
+        config=run_config,
+        run_dir=run_dir,
+    )
+    # Make the W&B run discoverable from the local artifacts and vice versa.
+    run_config["wandb"] = {
+        "mode": args.wandb_mode,
+        "entity": args.wandb_entity,
+        "project": args.wandb_project,
+        "group": wandb_group,
+        "run_id": wandb_run.run_id,
+        "url": wandb_run.url,
+        "tags": wandb_tags,
+    }
+    write_json(run_dir / "run_config.json", run_config)
 
     try:
         import gymnasium
@@ -444,7 +671,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     register_env(RLLIB_ENV_NAME, _make_env_for_rllib)
     register_env(LEGACY_RLLIB_ENV_NAME, _make_env_for_rllib)
 
-    agents, obs_spaces, act_spaces = _probe_agent_spaces(args.env_id, args.seed)
+    
+    agents, obs_spaces, act_spaces, obs_layouts = _probe_agent_spaces(
+        args.env_id, args.seed, args.include_global_state
+    )
     policies = {
         agent: (None, obs_spaces[agent], act_spaces[agent], {})
         for agent in agents
@@ -472,12 +702,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     write_json(run_dir / "run_config.json", run_config)
     config = (
         PPOConfig()
+        .api_stack(
+            # Pinned explicitly: the CTDE RLModule added in the MAPPO commit
+            # requires the new stack, and we want the two baselines to share
+            # exactly one code path.
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .environment(
             RLLIB_ENV_NAME,
-            env_config={"env_id": args.env_id, "seed": args.seed},
+            env_config={
+                "env_id": args.env_id,
+                "seed": args.seed,
+                "include_global_state": bool(args.include_global_state),
+            },
         )
         .framework("torch")
-        .env_runners(num_env_runners=args.num_workers)
+        .env_runners(
+            num_env_runners=args.num_workers,
+            num_cpus_per_env_runner=args.num_cpus_per_env_runner,
+        )
+        .learners(
+            num_learners=args.num_learners,
+            num_gpus_per_learner=args.num_gpus_per_learner,
+        )
         .multi_agent(
             policies=policies,
             policy_mapping_fn=(lambda agent_id, episode=None, **kw: agent_id),
@@ -485,13 +733,41 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         .training(
             gamma=args.gamma,
+            lr=args.lr,
             train_batch_size_per_learner=args.train_batch_size,
             minibatch_size=args.minibatch_size,
             num_epochs=args.num_epochs,
-            lr=args.lr,
+            # ---- corrected RLlib defaults; see MA review N2-N5 ----
+            lambda_=args.gae_lambda,          # RLlib default 1.0  -> 0.95
+            clip_param=args.clip_param,       # RLlib default 0.3  -> 0.2
+            vf_clip_param=args.vf_clip_param, # RLlib default 10.0 -> 1000.0
+            vf_loss_coeff=args.vf_loss_coeff,
+            entropy_coeff=args.entropy_coeff,
+            use_kl_loss=args.use_kl_loss,     # RLlib default True -> False
+            grad_clip=args.grad_clip,         # RLlib default None -> 10.0
+            grad_clip_by="global_norm",
         )
         .debugging(seed=args.seed)
     )
+    if args.rl_module == "ctde":
+        from omnipiano.multiagent._ctde_module import (
+            build_ctde_module_spec,
+            build_multi_module_spec,
+        )
+
+        module_specs = {
+            agent: build_ctde_module_spec(
+                observation_space=obs_spaces[agent],
+                action_space=act_spaces[agent],
+                own_slice=obs_layouts[agent]["own"],
+                global_state_slice=obs_layouts[agent]["global_state"],
+                critic_input=args.critic_input,
+                hidden_sizes=args.hidden_sizes_parsed,
+                activation=args.activation,
+            )
+            for agent in agents
+        }
+        config = config.rl_module(rl_module_spec=build_multi_module_spec(module_specs))
     configured_batch_size = getattr(config, "total_train_batch_size", None)
     if configured_batch_size is None:
         raise RuntimeError(
@@ -507,6 +783,31 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     run_config["effective_config"]["resolved_total_train_batch_size"] = int(
         configured_batch_size
     )
+    
+    run_config["algorithm"] = args.algorithm_name
+    run_config["is_centralized_critic"] = args.critic_input == "global"
+    run_config["effective_config"].update({
+        "algo": args.algo,
+        "rl_module": args.rl_module,
+        "critic_input": args.critic_input,
+        "include_global_state": bool(args.include_global_state),
+        "hidden_sizes": list(args.hidden_sizes_parsed),
+        "activation": args.activation,
+        "obs_layout": {
+            agent: {k: list(v) for k, v in layout.items()}
+            for agent, layout in obs_layouts.items()
+        },
+    })
+    if args.rl_module == "ctde":
+        # Record the realized parameter split so an IPPO/MAPPO pair can be
+        # verified as architecturally matched after the fact.
+        try:
+            run_config["ctde_modules"] = {
+                agent: algo.get_module(agent).ctde_spec for agent in agents
+            }
+        except Exception as exc:
+            print(f"[warning] could not snapshot CTDE module specs: {exc}")
+    
     write_json(run_dir / "run_config.json", run_config)
 
     algo = None
@@ -555,6 +856,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 **telemetry,
             }
             append_jsonl(run_dir / "progress.jsonl", progress_row)
+            wandb_run.log_train(total_steps, progress_row, result)
             if iterations == 1 or iterations % args.log_every_iters == 0:
                 print(
                     f"[ippo iter {iterations:4d}] env_steps={total_steps:>9,}  "
@@ -647,6 +949,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     **evaluation,
                 }
                 append_jsonl(run_dir / "periodic_eval.jsonl", eval_record)
+                wandb_run.log_eval(
+                    total_steps, evaluation, scheduled_env_step=scheduled_step
+                )
                 periodic_evaluations.append(eval_record)
                 final_evaluation = evaluation
                 last_eval_actual_step = total_steps
@@ -715,6 +1020,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         write_json(run_dir / "eval_summary.json", eval_summary)
         print(f"[ippo] final checkpoint: {final_checkpoint_reference}")
         print(f"[ippo] eval summary: {run_dir / 'eval_summary.json'}")
+        wandb_run.log_final(total_steps, eval_summary)
+        if args.wandb_upload_artifacts:
+            for artifact_name in (
+                "run_config.json", "eval_summary.json",
+                "progress.jsonl", "periodic_eval.jsonl", "checkpoints.jsonl",
+            ):
+                wandb_run.log_artifact_dir(
+                    run_dir / artifact_name,
+                    name=f"{run_dir.name}__{artifact_name.replace('.', '_')}",
+                    artifact_type="run-artifacts",
+                )
     except Exception as exc:
         write_json(
             run_dir / "failure.json",
@@ -728,6 +1044,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise
     finally:
         active_exception = sys.exc_info()[0] is not None
+        try:
+            wandb_run.finish(exit_code=1 if active_exception else 0)
+        except Exception:
+            pass
         cleanup_error: Optional[Exception] = None
         if algo is not None:
             try:

@@ -69,16 +69,17 @@ class OmniPianoParallelEnv(ParallelEnv):
 
     def __init__(
         self,
-        env_builder: Callable[[Optional[int]], dm_env.Environment],
-        assignment: MorphologyAssignment,
-        hand_key_ranges: Mapping[str, Tuple[int, int]],
-        agent_reaches: Mapping[str, Tuple[int, int]],
+        env_builder,
+        assignment,
+        hand_key_ranges,
+        agent_reaches,
         *,
         seed: Optional[int] = None,
         obs_visibility: str = "own_plus_boundary",
         reward_mode: str = "shared",
         flatten_obs: bool = False,
         sustain_owner: Optional[str] = None,
+        include_global_state: bool = False,
     ) -> None:
         if obs_visibility not in _SUPPORTED_OBS_MODES:
             raise NotImplementedError(
@@ -98,6 +99,16 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._obs_visibility = obs_visibility
         self._reward_mode = reward_mode
         self._flatten_obs = flatten_obs
+        # CTDE: when True, every agent additionally receives the *centralized*
+        # state s used by MAPPO's critic.  The actor must never read it -- see
+        # ``_ctde_module.CtdePPOTorchRLModule`` which enforces that by slicing.
+        self._include_global_state = include_global_state
+        if include_global_state and not flatten_obs:
+            raise NotImplementedError(
+                "include_global_state=True currently requires flatten_obs=True: "
+                "the CTDE RLModule addresses the actor / critic inputs by index "
+                "into one flat observation vector."
+            )
 
         # Resolve sustain owner: caller override (e.g. for Bizet/Dvořák
         # exception pieces or paper ablations) takes precedence over the
@@ -151,6 +162,17 @@ class OmniPianoParallelEnv(ParallelEnv):
 
         # Build action-layout map: hand_name → slice(start, end) in flat action.
         self._hand_action_slices = self._build_action_layout()
+        
+        # Fixed spatial L->R hand order for a permutation-consistent global
+        # state.  Must never depend on dict iteration order.
+        self._all_hands_spatial: Tuple[str, ...] = tuple(
+            hand
+            for agent in self._assignment.agents
+            for hand in agent.hand_names
+        )
+        self._agent_index = {
+            agent.name: i for i, agent in enumerate(self._assignment.agents)
+        }
 
         # Build per-agent action spaces first (needed for obs space construction
         # when OAR adds a prev_action slice).
@@ -181,8 +203,18 @@ class OmniPianoParallelEnv(ParallelEnv):
         seed: Optional[int] = None,
         options: Optional[Mapping[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, dict]]:
-        # Rebuild dm_env if seed changed (mirrors SA DmEnvToGymnasium).
-        if seed is not None and seed != self._current_seed:
+        # Gymnasium/PettingZoo contract: two consecutive reset(seed=S) calls must
+        # produce bit-identical episodes.  ``_env.reset()`` only starts a new
+        # episode; it does NOT rewind the dm_env chain's RNGs
+        # (``composer.Environment._random_state`` and
+        # ``DmEnvObsNoiseWrapper._rng`` are seeded at construction and only ever
+        # advance).  Rebuilding the chain is the only way to rewind them, so
+        # rebuild on *every* explicit seed -- matching the SA adapter at
+        # ``omnipiano/envs/dm_env_adapter.py``.  Cost is ~0.9 s and is only paid
+        # once per worker during training (RLlib passes an explicit seed only on
+        # the first reset) and once per evaluation episode (which already uses a
+        # fresh seed per episode).
+        if seed is not None:
             self._env = self._env_builder(seed)
             self._current_seed = seed
 
@@ -434,6 +466,23 @@ class OmniPianoParallelEnv(ParallelEnv):
                 )
 
             spaces[agent.name] = gym.spaces.Dict(sub_spaces)
+            
+        if self._include_global_state:
+            gs_dim = self.global_state_dim
+            spaces = {
+                agent_name: gym.spaces.Dict(
+                    {
+                        # gymnasium's Dict sorts keys, so "global_state" precedes
+                        # "own"; obs_layout() computes the real offsets anyway.
+                        "global_state": gym.spaces.Box(
+                            low=-np.inf, high=np.inf,
+                            shape=(gs_dim,), dtype=np.float32,
+                        ),
+                        "own": own_space,
+                    }
+                )
+                for agent_name, own_space in spaces.items()
+            }
 
         return spaces
 
@@ -498,10 +547,104 @@ class OmniPianoParallelEnv(ParallelEnv):
                 agent_obs = gym.spaces.utils.flatten(
                     self._dict_observation_spaces[agent.name], agent_obs
                 )
+                
+            if self._include_global_state:
+                agent_obs = {
+                    "global_state": self._build_global_state(dm_obs, agent.name),
+                    "own": agent_obs,
+                }
+
+            if self._flatten_obs:
+                agent_obs = gym.spaces.utils.flatten(
+                    self._dict_observation_spaces[agent.name], agent_obs
+                )
 
             per_agent[agent.name] = agent_obs
 
         return per_agent
+    
+    # ---------------- Internal: CTDE global state ----------------
+    def _global_state_components(self) -> Tuple[Tuple[str, int], ...]:
+        """(name, dim) of every global-state block, in concatenation order.
+
+        Content, following MAPPO's *Agent-Specific* (AS) global-state variant
+        (Yu et al., 2022, NeurIPS D&B, section 5.2):
+
+          * every hand's joint positions, in fixed spatial L->R order
+            (permutation-consistent; no agent-id embedding needed)
+          * the FULL 88-key piano state (each agent's own obs only sees its
+            own reach slice)
+          * the global sustain state
+          * the FULL goal tensor over all lookahead frames
+          * [if the OAR wrapper is present] the full joint previous action and
+            the previous shared reward
+          * a one-hot agent id, which is what makes this AS rather than EP
+
+        Note that under a *shared* team reward every agent has the same return,
+        so an EP-style critic (env features only) is already unbiased.  The
+        one-hot only lets a per-agent critic specialize; ablate it by dropping
+        the last ``num_agents`` entries.
+        """
+        components = [
+            (f"joints/{hand}", int(self._joints_dim))
+            for hand in self._all_hands_spatial
+        ]
+        components.append(("piano_state", 88))
+        components.append(("piano_sustain", 1))
+        components.append(("goal", int(self._goal_lookahead_plus_1 * 89)))
+        if self._has_oar:
+            components.append(("prev_joint_action", int(self._flat_action_dim)))
+            components.append(("prev_reward", 1))
+        components.append(("agent_onehot", len(self._assignment.agents)))
+        return tuple(components)
+
+    @property
+    def global_state_dim(self) -> int:
+        return sum(dim for _, dim in self._global_state_components())
+
+    def _build_global_state(
+        self, dm_obs: Mapping[str, np.ndarray], agent_name: str
+    ) -> np.ndarray:
+        parts = [
+            np.asarray(dm_obs[f"{hand}_shadow_hand/joints_pos"], dtype=np.float32)
+            for hand in self._all_hands_spatial
+        ]
+        parts.append(np.asarray(dm_obs["piano/state"], dtype=np.float32))
+        parts.append(
+            np.asarray(dm_obs["piano/sustain_state"], dtype=np.float32).reshape(1)
+        )
+        parts.append(np.asarray(dm_obs["goal"], dtype=np.float32).ravel())
+        if self._has_oar:
+            parts.append(np.asarray(dm_obs["action"], dtype=np.float32).ravel())
+            parts.append(np.asarray(dm_obs["reward"], dtype=np.float32).reshape(1))
+        onehot = np.zeros(len(self._assignment.agents), dtype=np.float32)
+        onehot[self._agent_index[agent_name]] = 1.0
+        parts.append(onehot)
+
+        state = np.concatenate(parts).astype(np.float32)
+        expected = self.global_state_dim
+        if state.shape != (expected,):
+            raise RuntimeError(
+                f"global state for agent {agent_name!r} has shape "
+                f"{state.shape}, expected ({expected},)"
+            )
+        return state
+
+    def obs_layout(self, agent: str) -> Dict[str, Tuple[int, int]]:
+        """Flatten offsets ``{component: (start, stop)}`` for one agent.
+
+        Computed by walking the *actual* iteration order of the Dict space so
+        the layout never depends on an assumption about gymnasium's key sorting.
+        The CTDE RLModule uses this to slice actor and critic inputs.
+        """
+        space = self._dict_observation_spaces[agent]
+        layout: Dict[str, Tuple[int, int]] = {}
+        offset = 0
+        for key, sub_space in space.spaces.items():
+            width = int(gym.spaces.utils.flatdim(sub_space))
+            layout[key] = (offset, offset + width)
+            offset += width
+        return layout
 
 
 # ===========================================================================
