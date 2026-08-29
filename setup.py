@@ -41,6 +41,11 @@ setup(
     extras_require={
         # Exact RLlib target used by the reproducible IPPO baseline. Keeping
         # this optional avoids forcing Ray onto single-agent benchmark users.
-        "marl": ["ray[rllib]==2.55.1"],
+        # "marl": ["ray[rllib]==2.55.1"],
+        "marl": [
+            "ray[rllib]==2.55.1",
+            "pettingzoo>=1.24",
+            "wandb>=0.17",
+        ],
     },
 )
