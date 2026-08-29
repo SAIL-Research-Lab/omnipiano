@@ -13,3 +13,17 @@ from omnipiano.envs.registration import make, register  # noqa: E402
 
 # Importing envs triggers all register() calls in envs/__init__.py
 from omnipiano import envs  # noqa: E402, F401
+from omnipiano.multiagent import (  # noqa: E402
+    list_parallel_envs,
+    make_parallel,
+    register_parallel,
+)
+
+
+__all__ = [
+    "make",
+    "register",
+    "make_parallel",
+    "register_parallel",
+    "list_parallel_envs",
+]

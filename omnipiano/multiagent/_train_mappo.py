@@ -1,18 +1,22 @@
-"""Deprecated compatibility entry point for the correctly named IPPO trainer."""
+"""Compatibility entry point for the canonical MAPPO baseline.
+
+MAPPO and IPPO intentionally share the implementation in
+:mod:`omnipiano.multiagent.train`; their registered ``AlgoSpec`` objects only
+change the critic input and whether the environment emits global state.
+"""
 
 from __future__ import annotations
 
 import sys
-import warnings
+from typing import Optional, Sequence
 
-from omnipiano.multiagent._train_ippo import main
+from omnipiano.multiagent.train import run_algorithm_entrypoint
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Run the shared trainer with ``--algo mappo`` forced."""
+    return run_algorithm_entrypoint("mappo", argv)
 
 
 if __name__ == "__main__":
-    warnings.warn(
-        "_train_mappo was misnamed: this baseline has no centralized critic. "
-        "Use `python -m omnipiano.multiagent._train_ippo` instead.",
-        FutureWarning,
-        stacklevel=1,
-    )
     sys.exit(main())

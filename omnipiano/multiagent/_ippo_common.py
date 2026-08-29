@@ -1,4 +1,4 @@
-"""Shared, testable infrastructure for the RLlib IPPO baseline.
+"""Shared, testable infrastructure for OmniPiano RLlib MARL baselines.
 
 This module deliberately has no import-time dependency on Ray, PettingZoo, or
 the OmniPiano package.  Keeping the metric aggregation and scheduling logic
@@ -234,7 +234,8 @@ def shared_team_reward(rewards: Mapping[str, Any]) -> float:
     if not all(math.isclose(value, reference, rel_tol=1e-7, abs_tol=1e-7)
                for value in values[1:]):
         raise RuntimeError(
-            "IPPO baseline requires reward_mode='shared', but agents received "
+            "cooperative MARL evaluation requires reward_mode='shared', but "
+            "agents received "
             f"different rewards: {dict(rewards)}"
         )
     return reference
@@ -293,7 +294,7 @@ class DeterministicActionComputer:
                 f"{agent}: {' | '.join(messages)}"
                 for agent, messages in sorted(errors.items())
             )
-            raise RuntimeError(f"could not resolve IPPO inference backend: {detail}")
+            raise RuntimeError(f"could not resolve MARL inference backend: {detail}")
 
     @property
     def backends(self) -> Dict[str, str]:
@@ -410,7 +411,7 @@ def summarize_episodes(episodes: Sequence[Mapping[str, Any]]) -> Dict[str, float
     return summary
 
 
-def evaluate_ippo(
+def evaluate_marl(
     algorithm: Any,
     env_id: str,
     *,
@@ -420,6 +421,7 @@ def evaluate_ippo(
     max_episode_steps: int = 1_000_000,
     env_factory: Optional[Callable[..., Any]] = None,
     action_computer: Optional[Callable[[str, Any, Any], np.ndarray]] = None,
+    include_global_state: bool = False,
 ) -> Dict[str, Any]:
     """Run deterministic PettingZoo episodes and collect authoritative metrics."""
     if num_episodes <= 0:
@@ -435,6 +437,10 @@ def evaluate_ippo(
         "seed": int(eval_seed),
         "flatten_obs": True,
     }
+    if include_global_state:
+        # MAPPO checkpoints were trained on [global_state | own]; the actor
+        # ignores the global block but the observation SHAPE must still match.
+        env_kwargs["include_global_state"] = True
     if record_dir is not None:
         env_kwargs.update(record_dir=record_dir, record_every=1)
     env = env_factory(env_id, **env_kwargs)
@@ -463,7 +469,7 @@ def evaluate_ippo(
                         )
                     except Exception as exc:
                         raise RuntimeError(
-                            "IPPO evaluation inference failed at "
+                            "MARL evaluation inference failed at "
                             f"episode={episode_index}, step={episode_length}, "
                             f"agent={agent!r}: {exc}"
                         ) from exc
@@ -516,6 +522,7 @@ def evaluate_ippo(
 
     result: Dict[str, Any] = {
         "env_id": env_id,
+        "include_global_state": bool(include_global_state),
         "eval_seed": int(eval_seed),
         "num_eval_eps": int(num_episodes),
         "num_eval_episodes": int(num_episodes),
@@ -526,6 +533,10 @@ def evaluate_ippo(
     if backends is not None:
         result["inference_backends"] = dict(backends)
     return result
+
+
+# Backward-compatible name used by existing scripts and external launchers.
+evaluate_ippo = evaluate_marl
 
 
 def _checkpoint_result_path(result: Any) -> str:

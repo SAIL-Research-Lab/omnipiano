@@ -367,15 +367,21 @@ belong in each trainer's own configuration.
 Paper-style N-seed replication: run your trainer N times with distinct
 seeds and aggregate the per-run `eval_summary.json` files offline.
 
-The bundled RLlib multi-agent baseline is correctly named IPPO: every agent has
-its own PPO actor/critic, and there is no centralized critic. Run each protocol
-seed independently:
+The bundled RLlib multi-agent trainer exposes architecturally matched IPPO and
+MAPPO baselines through one code path. Both actors read only their agent-local
+observation. IPPO uses a local critic `V(o_i)`; MAPPO uses a centralized critic
+`V(s)` during training. Run each protocol seed independently:
 
 ```bash
 for seed in 0 1 2; do
-  MUJOCO_GL=egl python -m omnipiano.multiagent._train_ippo --seed "$seed"
+  MUJOCO_GL=egl python -m omnipiano.multiagent.train \
+    --algo ippo --seed "$seed" --wandb-mode disabled
 done
 ```
+
+Replace `--algo ippo` with `--algo mappo` for the centralized-critic run.
+Online tracking defaults to W&B entity `omnipiano`, project `marl`; the example
+disables it so the command also works on a machine without W&B credentials.
 
 Defaults come directly from `BenchmarkProtocolConfig`: 5M environment steps,
 `gamma=0.8`, deterministic evaluation every 50k environment steps, and one run
@@ -385,13 +391,14 @@ checkpoints every 500k steps, a final RLlib checkpoint, and
 `eval_summary.json`. Standalone deterministic checkpoint evaluation is:
 
 ```bash
-MUJOCO_GL=egl python -m omnipiano.multiagent._eval_ippo --checkpoint <run-dir>
+MUJOCO_GL=egl python -m omnipiano.multiagent.evaluate --checkpoint <run-dir>
 ```
 
 `MUJOCO_GL` must be set before Python starts because importing the top-level
 package initializes the MuJoCo-backed environment registry. The old
-`_train_mappo` / `_eval_mappo` names remain temporary warning-producing aliases;
-they do not implement canonical MAPPO.
+`_train_ippo`, `_train_mappo`, `_eval_ippo`, and `_eval_mappo` commands remain
+thin compatibility aliases to the same canonical trainer/evaluator; they do
+not contain independent implementations.
 
 ## Current Package Layout
 
