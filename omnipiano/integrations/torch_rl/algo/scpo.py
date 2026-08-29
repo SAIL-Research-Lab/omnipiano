@@ -166,5 +166,6 @@ def train_scpo(env_id, seed, run_dir, protocol, config: SCPOConfig,
             target = checkpoint_steps[checkpoint_index]; save_checkpoint(run_dir / "checkpoints" / f"checkpoint_{target}", actor=actor, model_spec=model_spec); checkpoint_index += 1
         if env_steps >= config.total_env_steps: break
     collector.shutdown()
+    logger.close()
     final_dir = save_checkpoint(run_dir / "final_model", actor=actor, model_spec=model_spec)
     return TorchRLPolicyAdapter.load(final_dir, config.device), None

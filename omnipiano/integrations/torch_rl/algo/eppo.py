@@ -72,33 +72,34 @@ def _advantages(rollout, critic, config: EPPOConfig):
         flat_rewards = rollout["next", "reward"].reshape_as(flat_values)
         flat_done = rollout["next", "done"].reshape_as(flat_values).to(values.dtype)
         traj_ids = rollout["collector", "traj_ids"].reshape(-1)
-        advantage = torch.zeros_like(flat_values)
-        advantage_var = torch.zeros_like(flat_values)
+        mask = 1.0 - flat_done
+        delta = (
+            flat_rewards
+            + config.gamma * flat_next_values * mask
+            - flat_values
+        )
 
-        for traj_id in traj_ids.unique():
-            indices = (traj_ids == traj_id).nonzero(as_tuple=True)[0]
-            mean_acc = torch.zeros_like(flat_values[0])
-            variance_acc = torch.zeros_like(flat_values[0])
-            for index in indices.flip(0):
-                mask = 1.0 - flat_done[index]
-                delta = (
-                    flat_rewards[index]
-                    + config.gamma * flat_next_values[index] * mask
-                    - flat_values[index]
-                )
-                mean_acc = delta + config.gamma * config.gae_lambda * mean_acc * mask
-                advantage[index] = mean_acc
-                if config.mode != "mean":
-                    variance_acc = (config.gamma * config.gae_lambda) ** 2 * (
-                        flat_next_variances[index] + mask * variance_acc
-                    )
-                    current_scale = (
-                        1.0 if config.mode == "cor"
-                        else (1.0 - config.gae_lambda) / (1.0 + config.gae_lambda)
-                    )
-                    advantage_var[index] = current_scale * flat_variances[index] + (
-                        (1.0 - config.gae_lambda) / config.gae_lambda
-                    ) ** 2 * variance_acc
+        layout = _trajectory_layout(traj_ids)
+        advantage = _segmented_reverse_scan(
+            delta,
+            config.gamma * config.gae_lambda * mask,
+            layout,
+        )
+        advantage_var = torch.zeros_like(flat_values)
+        if config.mode != "mean":
+            gae_squared = (config.gamma * config.gae_lambda) ** 2
+            variance_acc = _segmented_reverse_scan(
+                gae_squared * flat_next_variances,
+                gae_squared * mask,
+                layout,
+            )
+            current_scale = (
+                1.0 if config.mode == "cor"
+                else (1.0 - config.gae_lambda) / (1.0 + config.gae_lambda)
+            )
+            advantage_var = current_scale * flat_variances + (
+                (1.0 - config.gae_lambda) / config.gae_lambda
+            ) ** 2 * variance_acc
 
         ucb_bonus = config.kappa * advantage_var.clamp_min(0.0).sqrt()
         policy_advantage = advantage if config.mode == "mean" else advantage + ucb_bonus
@@ -114,20 +115,43 @@ def _advantages(rollout, critic, config: EPPOConfig):
     }
 
 
-def _critic_diagnostics(critic, observation):
-    features = critic.module.features(observation).detach()
-    features = features.reshape(-1, features.shape[-1])
-    singular = torch.linalg.svdvals(features)
-    weights = singular / singular.sum().clamp_min(1e-8)
-    effective_rank = torch.exp(-(weights * weights.clamp_min(1e-8).log()).sum())
-    energy = singular.square().cumsum(0) / singular.square().sum().clamp_min(1e-8)
-    stable_rank = (energy < 0.99).sum() + 1
-    dormant = (features.abs().amax(0) < 0.01).float().mean()
-    return {
-        "critic_effective_rank": float(effective_rank),
-        "critic_stable_rank": float(stable_rank),
-        "critic_dormant_ratio": float(dormant),
-    }
+def _trajectory_layout(traj_ids):
+    """Build vectorized row/column indices for interleaved trajectories."""
+    order = torch.argsort(traj_ids, stable=True)
+    sorted_ids = traj_ids[order]
+    _, counts = torch.unique_consecutive(sorted_ids, return_counts=True)
+    starts = counts.cumsum(0) - counts
+    rows = torch.repeat_interleave(
+        torch.arange(counts.numel(), device=traj_ids.device), counts
+    )
+    positions = torch.arange(
+        traj_ids.numel(), device=traj_ids.device
+    ) - torch.repeat_interleave(starts, counts)
+    return order, rows, positions, counts.numel(), int(counts.max())
+
+
+def _segmented_reverse_scan(source, continuation, layout):
+    """Compute ``x[t] = source[t] + continuation[t] * x[t+1]`` per trajectory."""
+    order, rows, positions, num_trajectories, max_length = layout
+    tail_shape = source.shape[1:]
+    padded_shape = (num_trajectories, max_length, *tail_shape)
+    padded_source = source.new_zeros(padded_shape)
+    padded_continuation = continuation.new_zeros(padded_shape)
+    padded_source[rows, positions] = source[order]
+    padded_continuation[rows, positions] = continuation[order]
+
+    padded_result = source.new_zeros(padded_shape)
+    accumulator = source.new_zeros((num_trajectories, *tail_shape))
+    for time_index in range(max_length - 1, -1, -1):
+        accumulator = (
+            padded_source[:, time_index]
+            + padded_continuation[:, time_index] * accumulator
+        )
+        padded_result[:, time_index] = accumulator
+
+    result = torch.empty_like(source)
+    result[order] = padded_result[rows, positions]
+    return result
 
 
 def train_eppo(
@@ -176,7 +200,6 @@ def train_eppo(
             env_steps += batch_env_steps(rollout)
             rollout.del_("state_value")
             diagnostics = _advantages(rollout, critic, config)
-            diagnostics.update(_critic_diagnostics(critic, rollout["observation"]))
             minibatches.empty()
             minibatches.extend(rollout.reshape(-1))
             latest = {}
@@ -227,6 +250,7 @@ def train_eppo(
                 break
     finally:
         collector.shutdown()
+        logger.close()
 
     final_dir = save_checkpoint(run_dir / "final_model", actor=actor, model_spec=model_spec)
     return TorchRLPolicyAdapter.load(final_dir, config.device), None

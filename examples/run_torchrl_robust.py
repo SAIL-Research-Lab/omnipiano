@@ -310,7 +310,7 @@ def main() -> None:
     )
     periodic_eval_env.close()
     print("Running final benchmark eval...")
-    final_eval_env = make_eval_env(args.env, eval_seed, str(run_dir))
+    final_eval_env = make_eval_env(args.env, eval_seed, str(run_dir), record_dir=str(run_dir))
     result = evaluate_policy(policy, args.env, final_eval_env, eval_seed, args.num_eval_eps)
     final_eval_env.close()
     result.update(

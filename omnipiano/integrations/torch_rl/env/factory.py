@@ -47,8 +47,15 @@ def make_parallel_env(env_id: str, seed: int, n_envs: int):
     return ParallelEnv(n_envs, makers)
 
 
-def make_eval_env(env_id: str, seed: int, log_dir: str):
+def make_eval_env(env_id: str, seed: int, log_dir: str, record_dir: str | None = None):
     """Create the native Gymnasium environment used for benchmark evaluation."""
     import omnipiano
 
-    return omnipiano.make(env_id, mode="eval", log_dir=log_dir, seed=seed)
+    kwargs = {
+        "mode": "eval",
+        "log_dir": log_dir,
+        "seed": seed,
+    }
+    if record_dir is not None:
+        kwargs["record_dir"] = record_dir
+    return omnipiano.make(env_id, **kwargs)

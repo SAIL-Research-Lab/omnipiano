@@ -285,6 +285,7 @@ def train_a2p_sac(
                 break
     finally:
         collector.shutdown()
+        logger.close()
 
     final_dir = save_checkpoint(
         run_dir / "final_model", actor=actor, model_spec=model_spec,

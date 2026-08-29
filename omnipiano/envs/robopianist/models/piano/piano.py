@@ -53,6 +53,11 @@ class Piano(composer.Entity):
                 becomes activated.
         """
         self._change_color_on_activation = change_color_on_activation
+        self._rendering_bookkeeping_enabled = True
+        # MIDI event generation is needed only by the viewer/sound-video
+        # wrapper. Numerical training and evaluation use key activation state
+        # directly and can disable this per-substep bookkeeping.
+        self._midi_event_tracking_enabled = True
         self._add_actuators = add_actuators
         self._midi_module = midi_module.MidiModule()
 
@@ -165,9 +170,10 @@ class Piano(composer.Entity):
         del random_state  # Unused.
         self._update_key_state(physics)
         self._update_key_color(physics)
-        self._midi_module.after_substep(
-            physics, self._activation, self._sustain_activation
-        )
+        if self._midi_event_tracking_enabled:
+            self._midi_module.after_substep(
+                physics, self._activation, self._sustain_activation
+            )
 
     # Methods.
 
@@ -201,6 +207,8 @@ class Piano(composer.Entity):
 
     def _update_key_color(self, physics: mjcf.Physics) -> None:
         """Colors the piano keys if they are pressed."""
+        if not self._rendering_bookkeeping_enabled:
+            return
         if self._change_color_on_activation:
             physics.bind(self._key_geoms).rgba = np.where(
                 self._activation[:, None],
@@ -212,6 +220,11 @@ class Piano(composer.Entity):
             )
         else:
             physics.bind(self._key_geoms).rgba = (0.5, 0.5, 0.5, 1.0)
+
+    def disable_rendering_bookkeeping(self) -> None:
+        """Disable visual/audio-only work for headless numerical rollouts."""
+        self._rendering_bookkeeping_enabled = False
+        self._midi_event_tracking_enabled = False
 
     def apply_action(
         self,

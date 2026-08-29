@@ -359,6 +359,7 @@ def train_ompo(
                 break
     finally:
         collector.shutdown()
+        logger.close()
 
     final_dir = save_checkpoint(run_dir / "final_model", actor=actor, model_spec=model_spec)
     return TorchRLPolicyAdapter.load(final_dir, config.device), None

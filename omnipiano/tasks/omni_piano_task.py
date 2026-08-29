@@ -111,6 +111,11 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         # Relocate the entire hand away from the keyboard to eliminate residual contacts.
         hand.root_body.pos = self._FROZEN_HAND_POSITION
 
+    def disable_rendering_bookkeeping(self):
+
+        self._disable_colorization = True
+        self.piano.disable_rendering_bookkeeping()
+
     def initialize_episode(self, physics, random_state):
         """Reset task state, then sample one stationary physical model."""
         self._restore_nominal_model_parameters(physics)

@@ -447,6 +447,8 @@ def make(
             shift=shift,
             task_kwargs=task_kwargs,
         )
+        if record_dir is None:
+            env.task.disable_rendering_bookkeeping()
         env = EpisodeStatisticsWrapper(env, deque_size=1)
 
         if record_dir is not None:
