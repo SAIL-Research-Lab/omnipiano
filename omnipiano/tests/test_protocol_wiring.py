@@ -144,6 +144,26 @@ def test_protocol_defaults_are_bound(modname, argv, mapping):
         )
 
 
+def test_periodic_eval_honours_num_eval_eps():
+    """``--num-eval-eps`` must reach EvalCallback, not just the final eval.
+
+    Both templates pinned ``n_eval_episodes=1`` at the EvalCallback call site
+    while accepting ``--num-eval-eps`` on the CLI, so the flag silently did
+    nothing to the learning curve (fixed 2026-08-28). Grepping the call site is
+    crude but it is the one thing that actually distinguishes the two states --
+    parsing args cannot see a constant baked in fifty lines later."""
+    import re
+    for name in ("run_sb3_sac_template", "run_sb3_tqc_template", "run_sb3_baseline"):
+        src = open(os.path.join(_EXAMPLES, name + ".py")).read()
+        calls = re.findall(r"n_eval_episodes\s*=\s*([^\s,)]+)", src)
+        assert calls, "%s: no EvalCallback n_eval_episodes found" % name
+        for c in calls:
+            assert "num_eval_eps" in c, (
+                "%s: n_eval_episodes=%s is hardcoded; it must read "
+                "args.num_eval_eps so the periodic eval honours the protocol"
+                % (name, c))
+
+
 def test_default_seed_is_a_member_of_the_replication_set():
     """``seed`` is the single-run default; ``seeds`` is what a reported
     number must cover. Omitting ``--seed`` must therefore yield replicate
