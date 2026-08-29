@@ -59,6 +59,48 @@ register(
 )
 
 # ===========================================================================
+# Song sweep (2026-08-29): 2-hand, OT fingering reward, NO safety constraints.
+#
+# Purpose: measure per-piece reward<->F1 correlation across the repertoire
+# (PPO + SAC, seed 0, 5M steps each) to pick pieces where the shaped
+# reward is a faithful proxy for F1. First batch = the pieces showcased on
+# the RoboPianist website (https://kzakka.com/robopianist/), i.e. the
+# RoboPianist etude-12 set + Twinkle (Rousseau variation).
+#
+# Piece lengths = measured episode length (control steps @ 0.05 s, trailing
+# silence trimmed by the env). Pieces > 650 steps are listed
+# here for the record but deliberately NOT registered (episode too long
+# for the 5M-step budget); add them later with a larger budget:
+#   PianoSonataD8451StMov      1000 steps  (excluded)
+#   FrenchSuiteNo5Sarabande     962 steps  (excluded)
+#   FrenchSuiteNo5Gavotte       962 steps  (excluded)
+#   WaltzOp64No1               1079 steps  (excluded)
+#
+# Naming: OmniPiano-{Piece}-FingeringOT-v0 (same convention as ForElise
+# above, which serves as the reference point for this sweep).
+# ===========================================================================
+_SONG_SWEEP_OT_PIECES = [
+    # (piece id suffix,           base env id,                                              steps)
+    ("TwinkleTwinkleRousseau",    "RoboPianist-debug-TwinkleTwinkleRousseau-v0",             158),
+    ("PartitaNo26",               "RoboPianist-repertoire-150-PartitaNo26-v0",                425),
+    ("BagatelleOp3No4",           "RoboPianist-repertoire-150-BagatelleOp3No4-v0",            550),
+    ("FrenchSuiteNo1Allemande",   "RoboPianist-repertoire-150-FrenchSuiteNo1Allemande-v0",    479),
+    ("PianoSonataNo21StMov",      "RoboPianist-repertoire-150-PianoSonataNo21StMov-v0",       361),
+    ("KreislerianaOp16No8",       "RoboPianist-repertoire-150-KreislerianaOp16No8-v0",        585),
+    ("GolliwoggsCakewalk",        "RoboPianist-repertoire-150-GolliwoggsCakewalk-v0",         492),
+    ("PianoSonataNo232NdMov",     "RoboPianist-repertoire-150-PianoSonataNo232NdMov-v0",      313),
+    ("PianoSonataK279InCMajor1StMov",
+                                  "RoboPianist-repertoire-150-PianoSonataK279InCMajor1StMov-v0", 579),
+]
+for _piece, _base, _steps in _SONG_SWEEP_OT_PIECES:
+    register(
+        id=f"OmniPiano-{_piece}-FingeringOT-v0",
+        base_env_name=_base,
+        env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    )
+del _piece, _base, _steps
+
+# ===========================================================================
 # Task Type 1: Right-Hand Wrist Limit
 #
 # Structural conflict: wide RH range forces large wrist movements, but the
