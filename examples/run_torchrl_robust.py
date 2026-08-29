@@ -34,6 +34,7 @@ from omnipiano.integrations.torch_rl.env.factory import (  # noqa: E402
 from omnipiano.integrations.torch_rl.algo.ppo import make_config as make_ppo_config, train_ppo  # noqa: E402
 from omnipiano.integrations.torch_rl.algo.sac import make_config as make_sac_config, train_sac  # noqa: E402
 from omnipiano.integrations.torch_rl.algo.eppo import make_config as make_eppo_config, train_eppo  # noqa: E402
+from omnipiano.integrations.torch_rl.algo.a2p_sac import make_config as make_a2p_sac_config, train_a2p_sac  # noqa: E402
 
 
 def _parse_net_arch(value: str) -> tuple[int, ...]:
@@ -61,6 +62,7 @@ ALGO_REGISTRY = {
     "ppo": (make_ppo_config, train_ppo),
     "sac": (make_sac_config, train_sac),
     "eppo": (make_eppo_config, train_eppo),
+    "a2p_sac": (make_a2p_sac_config, train_a2p_sac),
 }
 
 
@@ -125,6 +127,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eppo-mode", choices=["cor", "ind", "mean"], default="cor")
     parser.add_argument("--kappa", type=float, default=0.01)
     parser.add_argument("--evidential-reg", type=float, default=0.01)
+
+    # --- A2P-SAC settings ---
+    parser.add_argument(
+        "--a2p-epsilon-mode", choices=["adaptive", "fixed", "none"], default="adaptive"
+    )
+    parser.add_argument("--a2p-epsilon", type=float, default=0.1)
+    parser.add_argument("--adversary-learning-rate", type=float, default=3e-4)
+    parser.add_argument("--adversary-update-freq", type=int, default=10)
+    parser.add_argument("--a2p-warmup-steps", type=int, default=None)
 
     # --- SAC settings ---
     parser.add_argument("--batch-size", type=int, default=256)

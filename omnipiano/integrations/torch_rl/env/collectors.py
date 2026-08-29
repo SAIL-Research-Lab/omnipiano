@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-def make_collector(env, policy, frames_per_batch, total_frames, device: str):
+def make_collector(
+    env, policy, frames_per_batch, total_frames, device: str, init_random_frames=0
+):
     from torchrl.collectors import Collector
 
     return Collector(
@@ -11,6 +13,7 @@ def make_collector(env, policy, frames_per_batch, total_frames, device: str):
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
         policy_device=device,
+        init_random_frames=init_random_frames,
         reset_when_done=True,
         auto_register_policy_transforms=True,
     )

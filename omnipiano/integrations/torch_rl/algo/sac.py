@@ -77,7 +77,8 @@ def train_sac(
     optimizer = torch.optim.Adam(loss_module.parameters(), lr=config.learning_rate)
     replay = make_replay_buffer(config.buffer_size, config.batch_size)
     collector = make_collector(
-        train_env, actor, config.n_envs, config.total_env_steps, config.device
+        train_env, actor, config.n_envs, config.total_env_steps, config.device,
+        config.learning_starts,
     )
     logger = ProgressLogger(run_dir / "progress.csv")
     env_steps = 0
