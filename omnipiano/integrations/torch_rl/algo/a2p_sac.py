@@ -12,7 +12,7 @@ from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..log.checkpoint import save_checkpoint
 from ..log.logging import ProgressLogger
-from ..model.adversarial import (
+from ..model.a2p_sac.adversarial import (
     A2PCollectionPolicy,
     AdaptiveCoefficient,
     mix_actions,

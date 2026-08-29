@@ -9,7 +9,7 @@ import torch
 
 from ..log.checkpoint import save_checkpoint
 from .networks import build_actor
-from .occupancy import build_ompo_actor
+from .ompo.occupancy import build_ompo_actor
 
 
 ACTOR_BUILDERS = {

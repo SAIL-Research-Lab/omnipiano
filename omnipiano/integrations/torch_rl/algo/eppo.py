@@ -12,7 +12,12 @@ from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..log.checkpoint import save_checkpoint
 from ..log.logging import ProgressLogger
-from ..model.evidential import build_evidential_critic, nig_loss, uncertainty, value_variance
+from ..model.eppo.evidential import (
+    build_evidential_critic,
+    nig_loss,
+    uncertainty,
+    value_variance,
+)
 from ..model.networks import build_actor
 from ..model.policy_adapter import TorchRLPolicyAdapter
 

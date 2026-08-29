@@ -14,7 +14,7 @@ from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..env.observation import observation_indices
 from ..log.checkpoint import save_checkpoint
 from ..log.logging import ProgressLogger
-from ..model.occupancy import (
+from ..model.ompo.occupancy import (
     TransitionDiscriminator,
     TwinQNetwork,
     discriminator_loss,
