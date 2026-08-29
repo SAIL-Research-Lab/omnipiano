@@ -315,7 +315,7 @@ def _probe_agent_spaces(env_id: str, seed: int, include_global_state: bool):
 
     env = make_parallel(
         env_id, seed=seed, flatten_obs=True,
-        include_global_state=include_global_state,
+        include_global_state=args.include_global_state,
     )
     try:
         agents = list(env.possible_agents)

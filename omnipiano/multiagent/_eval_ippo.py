@@ -181,12 +181,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ray_started = True
         algo = Algorithm.from_checkpoint(str(checkpoint))
         video_dir = None if args.no_video else str(output_dir / "videos")
+        include_global_state = bool(
+            run_config.get("effective_config", {}).get("include_global_state", False)
+        )
         evaluation = evaluate_ippo(
-            algo,
-            env_id,
+            algo, env_id,
             eval_seed=eval_seed,
             num_episodes=args.num_eval_eps,
             record_dir=video_dir,
+            include_global_state=include_global_state,
         )
         config_path = run_config.get("_path")
         training_run_config = {

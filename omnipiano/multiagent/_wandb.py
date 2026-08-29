@@ -1,4 +1,3 @@
-# ===== omnipiano/multiagent/_wandb.py（新建）=====
 """Weights & Biases integration for the OmniPiano multi-agent baselines.
 
 Three design constraints drive this module:

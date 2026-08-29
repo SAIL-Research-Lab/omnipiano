@@ -1,4 +1,3 @@
-# ===== omnipiano/multiagent/reset_determinism_test.py（新建）=====
 """Regression test for MA review item #4: reset(seed=S) must rewind RNGs.
 
 Runs against an obs-noise MA env, because on a clean env the two episodes

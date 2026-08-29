@@ -1,4 +1,3 @@
-# ===== omnipiano/multiagent/_ctde_module.py（新建）=====
 """One CTDE actor-critic RLModule shared by the IPPO and MAPPO baselines.
 
 The two baselines differ in exactly one respect -- which slice of the flat
