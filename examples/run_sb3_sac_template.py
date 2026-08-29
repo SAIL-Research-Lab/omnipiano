@@ -82,7 +82,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--total-steps", type=int, default=proto.total_env_steps)
     p.add_argument("--seed", type=int, default=proto.seed)
     p.add_argument("--num-eval-eps", type=int, default=proto.num_eval_eps,
-                   help="Number of episodes for the final benchmark eval.")
+                   help="Episodes per eval call -- BOTH the periodic eval that "
+                        "draws the learning curve and the final benchmark eval. "
+                        "Note what an episode samples: evaluate_policy does not "
+                        "reseed between episodes, so N episodes advance one "
+                        "seeded stream from a fixed initial state. On a "
+                        "deterministic env (clean, or constant-shift noise) all "
+                        "N are byte-identical and N>1 buys nothing; it only "
+                        "helps where something consumes randomness per step or "
+                        "per episode.")
 
     # --- vec env ---
     p.add_argument("--n-envs", type=int, default=4,
@@ -250,7 +258,11 @@ def main():
         best_model_save_path=log_dir,
         log_path=log_dir,
         eval_freq=eval_freq,
-        n_eval_episodes=1,
+        # Protocol-driven, not hardcoded: --num-eval-eps must reach the
+        # PERIODIC eval too, not only the final one. run_sb3_baseline.py has
+        # always wired it here; these templates pinned it to 1, so passing
+        # --num-eval-eps was silently ignored for the learning curves.
+        n_eval_episodes=args.num_eval_eps,
         deterministic=True,
         render=False,
     )
