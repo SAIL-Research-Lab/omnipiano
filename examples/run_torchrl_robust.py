@@ -36,6 +36,7 @@ from omnipiano.integrations.torch_rl.algo.sac import make_config as make_sac_con
 from omnipiano.integrations.torch_rl.algo.eppo import make_config as make_eppo_config, train_eppo  # noqa: E402
 from omnipiano.integrations.torch_rl.algo.a2p_sac import make_config as make_a2p_sac_config, train_a2p_sac  # noqa: E402
 from omnipiano.integrations.torch_rl.algo.ompo import make_config as make_ompo_config, train_ompo  # noqa: E402
+from omnipiano.integrations.torch_rl.algo.scpo import make_config as make_scpo_config, train_scpo  # noqa: E402
 
 
 def _parse_net_arch(value: str) -> tuple[int, ...]:
@@ -65,6 +66,7 @@ ALGO_REGISTRY = {
     "eppo": (make_eppo_config, train_eppo),
     "a2p_sac": (make_a2p_sac_config, train_a2p_sac),
     "ompo": (make_ompo_config, train_ompo),
+    "scpo": (make_scpo_config, train_scpo),
 }
 
 
@@ -148,6 +150,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ompo-exponent", type=float, default=1.5)
     parser.add_argument("--ompo-correction-coeff", type=float, default=0.001)
     parser.add_argument("--ompo-reward-max", type=float, default=1.0)
+
+    # --- SCPO settings ---
+    parser.add_argument("--scpo-state-noise", type=float, default=0.005)
+    parser.add_argument("--scpo-gradient-observation", choices=["dynamic", "full"], default="dynamic")
 
     # --- SAC settings ---
     parser.add_argument("--batch-size", type=int, default=256)

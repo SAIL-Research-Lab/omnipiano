@@ -155,7 +155,7 @@ def main():
                    help="Registered robust env id (the robustness-curve eval env).")
     p.add_argument("--framework", default="sb3", choices=["sb3", "torchrl"])
     p.add_argument("--algo", default="ppo",
-                   choices=["ppo", "sac", "tqc", "eppo", "a2p_sac", "ompo", "dr_sac"],
+                   choices=["ppo", "sac", "tqc", "eppo", "a2p_sac", "ompo", "scpo"],
                    help="Algorithm name; TorchRL checkpoint carries its network specification.")
     p.add_argument("--scales", type=float, nargs="+",
                    default=[0.0, 0.5, 1.0, 2.0, 4.0],

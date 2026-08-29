@@ -11,13 +11,13 @@ import torch
 from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
+from ..env.observation import observation_indices
 from ..log.checkpoint import save_checkpoint
 from ..log.logging import ProgressLogger
 from ..model.occupancy import (
     TransitionDiscriminator,
     TwinQNetwork,
     discriminator_loss,
-    discriminator_observation_indices,
     build_ompo_actor,
 )
 from ..model.policy_adapter import TorchRLPolicyAdapter
@@ -220,7 +220,7 @@ def train_ompo(
     target_critic = copy.deepcopy(critic).to(config.device)
     for parameter in target_critic.parameters():
         parameter.requires_grad = False
-    indices = discriminator_observation_indices(
+    indices = observation_indices(
         periodic_eval_env, config.discriminator_observation
     ).to(config.device)
     discriminator = TransitionDiscriminator(indices, action_dim).to(config.device)
