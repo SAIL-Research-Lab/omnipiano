@@ -115,22 +115,33 @@
 | ├ 周期性评测 | `.../eval_episode_metrics_*.csv` | 每 50k 步 1 集,**含 `ep_return` / `ep_f1` / precision / recall / 噪声量** |
 | ├ 最终评测 | `.../eval_summary.json` | 训练结束后的评测 + 完整生效配置 |
 | └ 模型 | `.../final_model.zip`, `best_model.zip` | 可用于重放评测 |
-| **10 集统一评测**(图的数据源) | `paper/data/final_eval10/<key>/` | 最终策略 + 10 集 matched eval |
+| **10 集统一评测** | `paper/data/final_eval10/<key>/` — **不在库中** | 最终策略 + 10 集 matched eval;命令见文末,可重跑 |
 | **正式图** | `paper/figures/` | 见下表 |
 | **绘图脚本** | `paper/make_robust_figures.py` | 可复现;编码约定写在文件头 |
 | **溯源自查** | `examples/diagnostics/provenance_check.py` | γ / 完成度 / 重放三道检查 |
 
 ### 图像清单(全部 reward + F1 双指标)
 
-| 图 | 路径 | 内容 |
-|---|---|---|
-| Fig 1 | `fig1_main_reward_f1.{pdf,png}` | 上排 return、下排 F1;3 通道 × 3 分布 + clean 参考线 |
-| Fig 2 | `fig2_learning_curves.{pdf,png}` | 上排 return(**训练 rollout 虚线 + 周期性评测实线**)、下排 F1(仅评测) |
-| Fig 3 | `fig3_compound.{pdf,png}` | 组合扰动 vs 正确方向的分量,双指标 |
-| Fig 4 | `fig4_conservatism.{pdf,png}` | precision/recall 哑铃图(F1 的分解,单指标) |
+| 图 | 路径 | 内容 | 数据源 | 在库 |
+|---|---|---|---|---|
+| Fig 2 | `fig2_learning_curves.{pdf,png}` | 上排 return(**训练 rollout 虚线 + 周期性评测实线**)、下排 F1(仅评测) | `examples/logs/` | ✅ |
+| Fig 1 | `fig1_main_reward_f1.{pdf,png}` | 上排 return、下排 F1;3 通道 × 3 分布 + clean 参考线 | `final_eval10/` | ❌ |
+| Fig 3 | `fig3_compound.{pdf,png}` | 组合扰动 vs 正确方向的分量,双指标 | `final_eval10/` | ❌ |
+| Fig 4 | `fig4_conservatism.{pdf,png}` | precision/recall 哑铃图(F1 的分解,单指标) | `final_eval10/` | ❌ |
 
 > **F1 行没有训练 rollout 曲线**:SB3 和 OmniSafe 在采样阶段都不计算 F1,
 > 训练遥测里只有 reward。这是已知缺口,不是遗漏。
+
+> **Fig 1 / 3 / 4 及其数据不在库中(2026-08-29 移除)。** 三张图画的都是**最终策略**
+> 的 10 集 matched eval,数据源 `paper/data/final_eval10/`。是否在论文中报告最终策略
+> 的评测与对比,由写 robust 章节的同学决定 —— 本台账不预设结论。
+>
+> **数字不受影响**:本文件 §2/§3 的表格值来自那次评测,已逐条记录在此;`robust_notes.md`
+> §5 同。删的是 CSV,不是数字。
+>
+> **需要时如何取回**:15 个 run 各跑一次文末命令,数据落回 `paper/data/final_eval10/<key>/`,
+> 再跑 `make_robust_figures.py` 即自动重新生成三张图(脚本已做存在性判断,数据缺失时
+> 只画 Fig 2 并打印跳过原因)。或直接从 git 历史取:`git show 8255ef2:paper/data/final_eval10/...`。
 
 ---
 
