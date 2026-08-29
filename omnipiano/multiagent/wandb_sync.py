@@ -1,15 +1,15 @@
-# ===== omnipiano/multiagent/wandb_sync.py（新建）=====
-"""Backfill completed OmniPiano MA run directories into Weights & Biases.
+"""Backfill completed OmniPiano multi-agent run directories into W&B.
 
-Replays ``progress.jsonl`` and ``periodic_eval.jsonl`` at their recorded
-lifetime env-step values, so a backfilled run's curves are indistinguishable
-from a live one.
+Replays ``progress.jsonl`` / ``periodic_eval.jsonl`` at their recorded lifetime
+env-step values, so a backfilled curve is indistinguishable from a live one.
 
-Example::
+Every backfilled run is tagged ``backfill`` so pre-fix data can never be
+silently mixed with corrected runs.
 
-    python -m omnipiano.multiagent.wandb_sync \\
-        --run-dir 'omnipiano/examples/logs/ippo_rllib_winterwind_*_seed*' \\
-        --project multiagent --entity omnipiano
+Globs are resolved against the current directory AND against the repository
+root, so this works from any cwd::
+
+    python -m omnipiano.multiagent.wandb_sync --run-dir 'examples/logs/ippo_*'
 """
 
 from __future__ import annotations
@@ -164,12 +164,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     paths: List[Path] = []
     for pattern in args.run_dir:
-        expanded = sorted(glob.glob(str(Path(pattern).expanduser())))
-        if not expanded:
-            print(f"[warn] no match for {pattern!r}")
-        paths.extend(Path(p) for p in expanded if Path(p).is_dir())
+        expanded: List[str] = []
+        raw = str(Path(pattern).expanduser())
+        expanded.extend(glob.glob(raw))
+        if not Path(raw).is_absolute():
+            # Also interpret the pattern relative to the repo root, so the same
+            # command works from ~/, from the repo root, and from its parent.
+            from omnipiano.multiagent.paths import repo_root
+            expanded.extend(glob.glob(str(repo_root() / raw)))
+        matches = sorted({p for p in expanded if Path(p).is_dir()})
+        if not matches:
+            print(f"[warn] no directory matched {pattern!r}")
+        paths.extend(Path(p) for p in matches)
     if not paths:
-        print("[error] nothing to sync", file=sys.stderr)
+        print("[error] nothing to sync. Try: --run-dir 'examples/logs/*'",
+              file=sys.stderr)
         return 1
 
     for path in paths:

@@ -1,16 +1,16 @@
 """Weights & Biases integration for the OmniPiano multi-agent baselines.
 
-Three design constraints drive this module:
+Three constraints shape this module:
 
-  1. A 10M-step run must never die because of a W&B or network problem.  Any
+  1. A 10M-step run must never die because of a W&B or network problem. Any
      failure *after* a successful init degrades to a printed warning.
-  2. If W&B was explicitly requested, a login/permission problem must fail
-     loudly at init, *before* GPU hours are spent.  Discovering after ten hours
-     that nothing was uploaded is worse than crashing in the first second.
-  3. The x-axis is always lifetime ENVIRONMENT steps, never RLlib iterations
-     and never agent steps, so IPPO / MAPPO / single-agent curves overlay
-     directly.  See ``_ippo_common.extract_env_steps`` for why the distinction
-     matters in a two-agent benchmark.
+  2. If W&B was explicitly requested, a credential problem must fail loudly at
+     init, *before* GPU hours are spent. Discovering after ten hours that
+     nothing was uploaded is worse than crashing in the first second.
+  3. The x-axis is always lifetime ENVIRONMENT steps -- never RLlib iterations
+     and never agent steps -- so IPPO / MAPPO / single-agent curves overlay
+     directly. See ``_ippo_common.extract_env_steps`` for why that distinction
+     decides whether "10M steps" means 10M or 5M physical interactions.
 """
 
 from __future__ import annotations
@@ -20,20 +20,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 
-# RLlib Learner-result keys we surface.  ``vf_explained_var`` is the single most
-# diagnostic number in this whole benchmark: it answers "is the critic actually
-# learning, or is it just predicting a constant?"
+# ``vf_explained_var`` is the single most diagnostic number in this benchmark:
+# it answers "is the critic learning, or just predicting a constant?"
 _LEARNER_KEYS: Sequence[str] = (
-    "policy_loss",
-    "vf_loss",
-    "vf_loss_unclipped",
-    "vf_explained_var",
-    "entropy",
-    "mean_kl_loss",
-    "curr_kl_coeff",
-    "curr_entropy_coeff",
-    "total_loss",
-    "gradients_default_optimizer_global_norm",
+    "policy_loss", "vf_loss", "vf_loss_unclipped", "vf_explained_var",
+    "entropy", "mean_kl_loss", "curr_kl_coeff", "curr_entropy_coeff",
+    "total_loss", "gradients_default_optimizer_global_norm",
 )
 
 
@@ -46,7 +38,7 @@ def _finite(value: Any) -> Optional[float]:
 
 
 def learner_metrics(result: Mapping[str, Any]) -> Dict[str, float]:
-    """Flatten RLlib's per-module Learner stats into ``learner/<module>/<key>``."""
+    """Flatten RLlib per-module Learner stats into ``learner/<module>/<key>``."""
     out: Dict[str, float] = {}
     learners = result.get("learners")
     if not isinstance(learners, Mapping):
@@ -62,12 +54,22 @@ def learner_metrics(result: Mapping[str, Any]) -> Dict[str, float]:
     return out
 
 
+def _has_credentials() -> bool:
+    if os.environ.get("WANDB_API_KEY"):
+        return True
+    for candidate in (Path.home() / ".netrc",
+                      Path.home() / "_netrc",
+                      Path.home() / ".config" / "wandb" / "settings"):
+        if candidate.exists():
+            return True
+    return False
+
+
 class WandbRun:
-    """Thin, failure-tolerant wrapper around one ``wandb.Run``."""
+    """Failure-tolerant wrapper around one ``wandb.Run``."""
 
     def __init__(
-        self,
-        *,
+        self, *,
         mode: str = "online",
         entity: Optional[str] = "omnipiano",
         project: str = "multiagent",
@@ -81,65 +83,61 @@ class WandbRun:
         resume_id: Optional[str] = None,
     ) -> None:
         self._run = None
+        self._wandb = None
         self._degraded = False
+        self._last_step = -1
         self.mode = str(mode)
+
         if self.mode == "disabled":
-            print("[wandb] disabled by --wandb-mode disabled")
+            print("[wandb] disabled (--wandb-mode disabled)")
             return
 
         try:
             import wandb
         except ImportError as exc:
             raise RuntimeError(
-                "--wandb-mode is not 'disabled' but wandb is not installed. "
-                "Run: pip install wandb   (or pass --wandb-mode disabled)"
+                "--wandb-mode is not 'disabled' but wandb is not installed.\n"
+                "  pip install wandb    (or pass --wandb-mode disabled)"
             ) from exc
         self._wandb = wandb
 
-        if self.mode == "online" and not (
-            os.environ.get("WANDB_API_KEY")
-            or (Path.home() / ".netrc").exists()
-            or (Path.home() / ".config" / "wandb" / "settings").exists()
-        ):
+        if self.mode == "online" and not _has_credentials():
             raise RuntimeError(
                 "--wandb-mode online but no W&B credentials were found.\n"
-                "  Fix with any of:\n"
-                "    wandb login                       # interactive, once per machine\n"
-                "    export WANDB_API_KEY=<key>        # headless / cluster\n"
-                "    --wandb-mode offline              # log locally, `wandb sync` later\n"
-                "    --wandb-mode disabled             # no W&B at all\n"
-                "  Get a key at https://wandb.ai/authorize"
+                "  wandb login                 # interactive, once per machine\n"
+                "  export WANDB_API_KEY=<key>  # headless / cluster\n"
+                "  --wandb-mode offline        # log locally, `wandb sync` later\n"
+                "  --wandb-mode disabled       # no W&B at all\n"
+                "  Key: https://wandb.ai/authorize"
             )
 
-        # W&B writes its own staging dir; keep it next to the run artifacts so a
-        # single directory is the complete, self-contained record of the run.
-        wandb_dir = str(run_dir) if run_dir is not None else None
+        # NOTE: do NOT pass wandb.Settings(start_method=...). That field was
+        # removed when W&B moved Settings to pydantic (>= 0.18), and passing it
+        # raises `extra_forbidden`. Users who need it can set WANDB_START_METHOD.
+        init_kwargs: Dict[str, Any] = dict(
+            mode=self.mode, entity=entity, project=project, name=name,
+            group=group, job_type=job_type, tags=list(tags), notes=notes,
+            config=dict(config or {}),
+            # Keep W&B's staging dir inside the run dir so one directory is the
+            # complete, self-contained record of the run.
+            dir=str(run_dir) if run_dir is not None else None,
+        )
+        if resume_id:
+            init_kwargs.update(id=resume_id, resume="allow")
         try:
-            self._run = wandb.init(
-                mode=self.mode,
-                entity=entity,
-                project=project,
-                name=name,
-                group=group,
-                job_type=job_type,
-                tags=list(tags),
-                notes=notes,
-                config=dict(config or {}),
-                dir=wandb_dir,
-                id=resume_id,
-                resume="allow" if resume_id else None,
-                settings=wandb.Settings(start_method="thread"),
-            )
+            self._run = wandb.init(**init_kwargs)
         except Exception as exc:
             raise RuntimeError(
-                f"wandb.init failed ({type(exc).__name__}: {exc}). "
-                "Use --wandb-mode offline or --wandb-mode disabled to proceed."
+                f"wandb.init failed ({type(exc).__name__}: {exc}).\n"
+                "  Use --wandb-mode offline or --wandb-mode disabled to proceed."
             ) from exc
 
-        # Make lifetime env-steps the explicit x-axis for every metric family.
-        self._run.define_metric("env_steps")
-        for family in ("train/*", "eval/*", "learner/*", "time/*", "final/*"):
-            self._run.define_metric(family, step_metric="env_steps")
+        try:
+            self._run.define_metric("env_steps")
+            for family in ("train/*", "eval/*", "learner/*", "time/*", "final/*"):
+                self._run.define_metric(family, step_metric="env_steps")
+        except Exception as exc:  # non-fatal cosmetics
+            print(f"[wandb warning] define_metric failed: {exc}")
 
         print(f"[wandb] mode={self.mode} url={self.url}")
 
@@ -163,26 +161,26 @@ class WandbRun:
         if not self.active:
             return
         row = {k: v for k, v in payload.items() if v is not None}
+        if not row:
+            return
+        step = int(env_steps)
+        # W&B requires a non-decreasing step; a regression would silently drop
+        # the row instead of raising.
+        step = max(step, self._last_step)
         row["env_steps"] = int(env_steps)
         try:
-            self._run.log(row, step=int(env_steps))
-        except Exception as exc:  # never kill a long run over telemetry
+            self._run.log(row, step=step)
+            self._last_step = step
+        except Exception as exc:
             self._degraded = True
-            print(
-                f"[wandb warning] logging failed ({type(exc).__name__}: {exc}); "
-                "continuing without W&B. Local JSONL artifacts are unaffected."
-            )
+            print(f"[wandb warning] logging failed ({type(exc).__name__}: {exc}); "
+                  "continuing without W&B. Local JSONL artifacts are unaffected.")
 
-    def log_train(
-        self,
-        env_steps: int,
-        progress_row: Mapping[str, Any],
-        result: Optional[Mapping[str, Any]] = None,
-    ) -> None:
+    def log_train(self, env_steps: int, progress_row: Mapping[str, Any],
+                  result: Optional[Mapping[str, Any]] = None) -> None:
         payload: Dict[str, Any] = {
-            "train/rllib_agent_sum_return_mean": progress_row.get(
-                "rllib_agent_sum_return_mean"
-            ),
+            "train/rllib_agent_sum_return_mean":
+                progress_row.get("rllib_agent_sum_return_mean"),
             "train/episode_length_mean": progress_row.get("episode_length_mean"),
             "train/iteration": progress_row.get("iteration"),
             "time/wall_seconds": progress_row.get("wall_seconds"),
@@ -190,17 +188,14 @@ class WandbRun:
         wall = _finite(progress_row.get("wall_seconds"))
         if wall and wall > 0:
             payload["time/env_steps_per_second"] = env_steps / wall
+            payload["time/eta_hours_at_10M"] = (10_000_000 - env_steps) / (
+                env_steps / wall) / 3600.0 if env_steps > 0 else None
         if result is not None:
             payload.update(learner_metrics(result))
         self._log(payload, env_steps)
 
-    def log_eval(
-        self,
-        env_steps: int,
-        evaluation: Mapping[str, Any],
-        *,
-        scheduled_env_step: Optional[int] = None,
-    ) -> None:
+    def log_eval(self, env_steps: int, evaluation: Mapping[str, Any], *,
+                 scheduled_env_step: Optional[int] = None) -> None:
         summary = evaluation.get("summary")
         if not isinstance(summary, Mapping):
             return
@@ -210,9 +205,7 @@ class WandbRun:
             "eval/length_mean": summary.get("length_mean"),
             "eval/musical_f1": summary.get("episode_task/musical_f1_mean"),
             "eval/musical_f1_std": summary.get("episode_task/musical_f1_std"),
-            "eval/musical_precision": summary.get(
-                "episode_task/musical_precision_mean"
-            ),
+            "eval/musical_precision": summary.get("episode_task/musical_precision_mean"),
             "eval/musical_recall": summary.get("episode_task/musical_recall_mean"),
             "eval/sustain_f1": summary.get("episode_task/sustain_f1_mean"),
         }
@@ -221,39 +214,33 @@ class WandbRun:
         self._log(payload, env_steps)
 
     def log_final(self, env_steps: int, eval_summary: Mapping[str, Any]) -> None:
-        """Write scalar summary fields (these show up in the W&B runs table)."""
+        """Also write scalar summary fields (these become Runs-table columns)."""
         if not self.active:
             return
         summary = eval_summary.get("summary")
         if isinstance(summary, Mapping):
-            self._log(
-                {
-                    f"final/{k[len('episode_task/'):] if k.startswith('episode_task/') else k}": v
-                    for k, v in summary.items()
-                    if _finite(v) is not None
-                },
-                env_steps,
-            )
+            self._log({f"final/{k}": v for k, v in summary.items()
+                       if _finite(v) is not None}, env_steps)
         try:
-            for key in (
-                "team_return_mean",
-                "episode_task/musical_f1_mean",
-                "episode_task/musical_precision_mean",
-                "episode_task/musical_recall_mean",
-                "episode_task/sustain_f1_mean",
-            ):
-                if isinstance(summary, Mapping) and key in summary:
-                    self._run.summary[f"final/{key}"] = float(summary[key])
+            if isinstance(summary, Mapping):
+                for key in ("team_return_mean",
+                            "episode_task/musical_f1_mean",
+                            "episode_task/musical_precision_mean",
+                            "episode_task/musical_recall_mean",
+                            "episode_task/sustain_f1_mean"):
+                    if key in summary:
+                        self._run.summary[f"final/{key}"] = float(summary[key])
             self._run.summary["actual_total_env_steps"] = int(
-                eval_summary.get("actual_total_env_steps", env_steps)
-            )
+                eval_summary.get("actual_total_env_steps", env_steps))
+            for key in ("algo", "seed", "env_id", "protocol_training_compliant"):
+                if key in eval_summary:
+                    self._run.summary[key] = eval_summary[key]
         except Exception as exc:
             self._degraded = True
             print(f"[wandb warning] summary update failed: {exc}")
 
-    def log_artifact_dir(
-        self, path: Path, *, name: str, artifact_type: str = "run-artifacts"
-    ) -> None:
+    def log_artifact_dir(self, path: Path, *, name: str,
+                         artifact_type: str = "run-artifacts") -> None:
         if not self.active:
             return
         path = Path(path)
@@ -277,3 +264,5 @@ class WandbRun:
             self._run.finish(exit_code=exit_code)
         except Exception as exc:
             print(f"[wandb warning] finish failed: {exc}")
+        finally:
+            self._run = None
