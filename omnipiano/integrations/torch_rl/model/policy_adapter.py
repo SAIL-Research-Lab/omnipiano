@@ -9,6 +9,13 @@ import torch
 
 from ..log.checkpoint import save_checkpoint
 from .networks import build_actor
+from .occupancy import build_ompo_actor
+
+
+ACTOR_BUILDERS = {
+    "default": build_actor,
+    "ompo": build_ompo_actor,
+}
 
 
 class TorchRLPolicyAdapter:
@@ -48,7 +55,8 @@ class TorchRLPolicyAdapter:
             shape=torch.Size([network["action_dim"]]),
             dtype=torch.float32,
         )
-        actor = build_actor(
+        actor_builder = ACTOR_BUILDERS[network.get("model_type", "default")]
+        actor = actor_builder(
             network["observation_dim"],
             network["action_dim"],
             action_spec,

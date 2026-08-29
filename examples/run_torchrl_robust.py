@@ -35,6 +35,7 @@ from omnipiano.integrations.torch_rl.algo.ppo import make_config as make_ppo_con
 from omnipiano.integrations.torch_rl.algo.sac import make_config as make_sac_config, train_sac  # noqa: E402
 from omnipiano.integrations.torch_rl.algo.eppo import make_config as make_eppo_config, train_eppo  # noqa: E402
 from omnipiano.integrations.torch_rl.algo.a2p_sac import make_config as make_a2p_sac_config, train_a2p_sac  # noqa: E402
+from omnipiano.integrations.torch_rl.algo.ompo import make_config as make_ompo_config, train_ompo  # noqa: E402
 
 
 def _parse_net_arch(value: str) -> tuple[int, ...]:
@@ -63,6 +64,7 @@ ALGO_REGISTRY = {
     "sac": (make_sac_config, train_sac),
     "eppo": (make_eppo_config, train_eppo),
     "a2p_sac": (make_a2p_sac_config, train_a2p_sac),
+    "ompo": (make_ompo_config, train_ompo),
 }
 
 
@@ -136,6 +138,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--adversary-learning-rate", type=float, default=3e-4)
     parser.add_argument("--adversary-update-freq", type=int, default=10)
     parser.add_argument("--a2p-warmup-steps", type=int, default=None)
+
+    # --- OMPO settings ---
+    parser.add_argument("--ompo-local-buffer-size", type=int, default=1_000)
+    parser.add_argument("--ompo-updates-per-step", type=int, default=3)
+    parser.add_argument(
+        "--ompo-discriminator-observation", choices=["dynamic", "full"], default="dynamic"
+    )
+    parser.add_argument("--ompo-exponent", type=float, default=1.5)
+    parser.add_argument("--ompo-correction-coeff", type=float, default=0.001)
+    parser.add_argument("--ompo-reward-max", type=float, default=1.0)
 
     # --- SAC settings ---
     parser.add_argument("--batch-size", type=int, default=256)
