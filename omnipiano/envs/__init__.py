@@ -100,6 +100,15 @@ for _piece, _base, _steps in _SONG_SWEEP_OT_PIECES:
     )
 del _piece, _base, _steps
 
+# 3-hand additions to the same sweep (7M budget each; registered further
+# down next to the other ThreeHand StaticPartition pieces):
+#   OmniPiano-GymnopedieNo1-ThreeHandPrototype-v0       (657 steps)
+#   OmniPiano-GymnopedieNo1-ThreeHand-StaticPartition-v0 (657 steps)
+_SONG_SWEEP_EXTRA_ENVS = [
+    ("OmniPiano-GymnopedieNo1-ThreeHandPrototype-v0", 7_000_000),
+    ("OmniPiano-GymnopedieNo1-ThreeHand-StaticPartition-v0", 7_000_000),
+]
+
 # ===========================================================================
 # Task Type 1: Right-Hand Wrist Limit
 #
@@ -916,6 +925,27 @@ register(
 register(
     id="OmniPiano-PianoSonataNo281StMov-ThreeHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-PianoSonataNo281StMov-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=_three_hand_partition_specs(),
+)
+
+
+# ---------------------------------------------------------------------------
+# GymnopedieNo1 3-hand pair (song sweep, 2026-08-29). 657 steps, 58 notes:
+# slow, sparse piece — the opposite regime from the dense étude anchors
+# above. Registered as a Prototype / StaticPartition pair like the four
+# pieces above (same 29/30/29 buckets, OT reward, no safety). Run with a
+# 7M-step budget (episode > 650 steps, see the song-sweep block).
+# ---------------------------------------------------------------------------
+register(
+    id="OmniPiano-GymnopedieNo1-ThreeHandPrototype-v0",
+    base_env_name="RoboPianist-repertoire-150-GymnopedieNo1-v0",
+    env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+    hand_specs=default_three_hand_specs(),
+)
+register(
+    id="OmniPiano-GymnopedieNo1-ThreeHand-StaticPartition-v0",
+    base_env_name="RoboPianist-repertoire-150-GymnopedieNo1-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
     hand_specs=_three_hand_partition_specs(),
 )
