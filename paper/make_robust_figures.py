@@ -129,8 +129,13 @@ def smooth(y, w=5):
     return y if len(y) < w else np.convolve(y, np.ones(w) / w, mode="valid")
 
 
-S = final_stats()
-CLEAN_F1, CLEAN_RET = S["clean"]["f1"], S["clean"]["ret"]
+# fig1/3/4 read FINAL (final-policy 10-episode eval); fig2 reads examples/logs
+# only. FINAL is not in the repo -- regenerate it with the robust_eval_sweep.py
+# command recorded in paper/robust_experiments_index.md. Gated so the module
+# imports and fig2 still draws when it is absent.
+HAVE_FINAL = os.path.isdir(FINAL) and bool(glob.glob(f"{FINAL}/*/"))
+S = final_stats() if HAVE_FINAL else {}
+CLEAN_F1, CLEAN_RET = (S["clean"]["f1"], S["clean"]["ret"]) if HAVE_FINAL else (None, None)
 
 CHANS = ["Action", "Observation", "Reward"]
 DISTS = ["Gaussian", "Uniform", "Shift"]
@@ -343,9 +348,18 @@ def fig4():
 
 
 if __name__ == "__main__":
-    fig1(); fig2(); fig3(); fig4()
-    print("wrote fig1_main_reward_f1 / fig2_learning_curves / "
-          "fig3_compound / fig4_conservatism  (.pdf + .png) -> " + OUT)
+    fig2()
+    written = ["fig2_learning_curves"]
+    if HAVE_FINAL:
+        fig1(); fig3(); fig4()
+        written = ["fig1_main_reward_f1"] + written + ["fig3_compound",
+                                                       "fig4_conservatism"]
+    print("wrote " + " / ".join(written) + "  (.pdf + .png) -> " + OUT)
+    if not HAVE_FINAL:
+        print(f"skipped fig1/fig3/fig4: no final-eval data under {FINAL} "
+              "(see paper/robust_experiments_index.md for the command that "
+              "regenerates it)")
+        raise SystemExit(0)
     print()
     print("%-22s %10s %8s | %8s %7s" % ("task", "return", "±sd", "F1", "±sd"))
     for k in RUNS:
