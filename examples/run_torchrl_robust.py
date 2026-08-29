@@ -23,6 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from omnipiano.configs import BenchmarkProtocolConfig  # noqa: E402
+from omnipiano.envs.registration import _registry  # noqa: E402
 from omnipiano.integrations.torch_rl.env.evaluator import (  # noqa: E402
     evaluate_policy,
     write_eval_summary,
@@ -58,6 +59,91 @@ def _short_env_token(env_id: str) -> str:
     parts = env_id.split("-")
     body = [part for part in parts if part and part != "OmniPiano" and not part.startswith("v")]
     return "_".join(part.lower() for part in body)
+
+
+def _piece_token(env_id: str) -> str:
+    parts = env_id.split("-")
+    if len(parts) >= 2 and parts[0] == "OmniPiano":
+        return parts[1].lower()
+    return _short_env_token(env_id)
+
+
+def _scaled_level(value: float, scale: int) -> str:
+    scaled = int(round(abs(value) * scale))
+    return f"n{scaled}" if value < 0.0 else str(scaled)
+
+
+def _noise_level_token(
+    robust_config, channel: str, scale: int = 100
+) -> str:
+    """Encode one physical channel's configured distribution magnitude."""
+    environment_noise = robust_config.environment_noise
+    dist = robust_config.dist_for(channel)
+    if dist == "gaussian":
+        value = getattr(environment_noise, f"{channel}_noise_std")
+        return _scaled_level(value, scale)
+    if dist == "shift":
+        value = getattr(environment_noise, f"{channel}_noise_shift")
+        return _scaled_level(value, scale)
+
+    low = getattr(environment_noise, f"{channel}_noise_uniform_low")
+    high = getattr(environment_noise, f"{channel}_noise_uniform_high")
+    if abs(low + high) < 1e-12:
+        return _scaled_level(high, scale)
+    return (
+        f"{_scaled_level(low, scale)}to"
+        f"{_scaled_level(high, scale)}"
+    )
+
+
+def _physical_environment_tokens(env_id: str) -> list[str]:
+    """Describe active physical noise without relying on legacy env-id text."""
+    task_spec = _registry.get(env_id)
+    if task_spec is None or task_spec.robust_config is None:
+        return []
+
+    robust_config = task_spec.robust_config
+    environment_noise = robust_config.environment_noise
+    tokens = []
+    if robust_config.is_channel_active("gravity"):
+        tokens.extend((
+            "g",
+            environment_noise.gravity_frequency,
+            robust_config.dist_for("gravity"),
+            f"g{_noise_level_token(robust_config, 'gravity')}",
+        ))
+    if robust_config.is_channel_active("contact_friction"):
+        tokens.extend((
+            "cf",
+            environment_noise.contact_friction_frequency,
+            robust_config.dist_for("contact_friction"),
+            f"p{_noise_level_token(robust_config, 'contact_friction')}",
+        ))
+    if (
+        robust_config.is_channel_active("hand_position_y")
+        or robust_config.is_channel_active("hand_position_z")
+    ):
+        y_level = _noise_level_token(
+            robust_config, "hand_position_y", scale=1000
+        )
+        z_level = _noise_level_token(
+            robust_config, "hand_position_z", scale=1000
+        )
+        tokens.extend((
+            "hp",
+            "episode",
+            robust_config.dist_for("hand_position_y"),
+            f"y{y_level}",
+            f"z{z_level}",
+        ))
+    return tokens
+
+
+def _default_experiment_name(algo: str, env_id: str, seed: int) -> str:
+    physical_tokens = _physical_environment_tokens(env_id)
+    if not physical_tokens:
+        return f"{algo}_torchrl_{_short_env_token(env_id)}_seed{seed}"
+    return "_".join((algo, _piece_token(env_id), *physical_tokens, f"seed{seed}"))
 
 
 ALGO_REGISTRY = {
@@ -188,9 +274,17 @@ def main() -> None:
     )
     logs_root = Path(__file__).resolve().parent / "logs"
     logs_root.mkdir(exist_ok=True)
-    experiment_name = args.experiment_name or (
-        f"{args.algo}_torchrl_baseline_{_short_env_token(args.env)}_seed{args.seed}"
-    )
+    physical_tokens = _physical_environment_tokens(args.env)
+    if args.experiment_name is not None and physical_tokens:
+        experiment_name = "_".join((
+            args.experiment_name,
+            *physical_tokens,
+            f"seed{args.seed}",
+        ))
+    else:
+        experiment_name = args.experiment_name or _default_experiment_name(
+            args.algo, args.env, args.seed
+        )
     run_dir = logs_root / f"{experiment_name}_{_next_run_id(logs_root, experiment_name)}"
     run_dir.mkdir()
     hidden_sizes = _parse_net_arch(args.net_arch)

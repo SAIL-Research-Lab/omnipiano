@@ -113,6 +113,7 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
 
     def initialize_episode(self, physics, random_state):
         """Reset task state, then sample one stationary physical model."""
+        self._restore_nominal_model_parameters(physics)
         super().initialize_episode(physics, random_state)
         if self._environment_noise_active:
             self._apply_environment_noise(physics)
@@ -150,11 +151,9 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
             for hand in self.hands
         )
 
-    def _apply_environment_noise(self, physics):
-        self._cache_nominal_environment(physics)
-
-        # Model parameters persist across composer resets, so always restore
-        # the compiled nominal values before applying the next episode draw.
+    def _restore_nominal_model_parameters(self, physics):
+        if self._nominal_gravity is None:
+            return
         physics.model.opt.gravity[:] = self._nominal_gravity
         physics.bind(self._tip_collision_geoms).friction = (
             self._nominal_tip_friction
@@ -162,6 +161,13 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         physics.bind(self._key_collision_geoms).friction = (
             self._nominal_key_friction
         )
+
+    def _apply_environment_noise(self, physics):
+        self._cache_nominal_environment(physics)
+
+        # Model parameters persist across composer resets, so always restore
+        # the compiled nominal values before applying the next episode draw.
+        self._restore_nominal_model_parameters(physics)
         for hand, (position, quaternion) in zip(
             self.hands, self._nominal_hand_poses
         ):
@@ -174,36 +180,9 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         # the restored world-space position below.
         physics.forward()
 
-        gravity_noise = 0.0
-        if self.robust_config.is_channel_active("gravity"):
-            requested = float(self.robust_config.sample_noise(
-                self._environment_noise_rng, "gravity"
-            ))
-            nominal_z = float(self._nominal_gravity[2])
-            applied_z = min(nominal_z + requested, self._MAX_GRAVITY_Z)
-            gravity_noise = applied_z - nominal_z
-            physics.model.opt.gravity[2] = applied_z
-
-        friction_noise = 0.0
-        if self.robust_config.is_channel_active("contact_friction"):
-            requested = float(self.robust_config.sample_noise(
-                self._environment_noise_rng, "contact_friction"
-            ))
-            tip_friction = self._nominal_tip_friction.copy()
-            key_friction = self._nominal_key_friction.copy()
-            tip_friction[:, 0] = np.maximum(
-                tip_friction[:, 0] + requested, self._MIN_FRICTION
-            )
-            key_friction[:, 0] = np.maximum(
-                key_friction[:, 0] + requested, self._MIN_FRICTION
-            )
-            physics.bind(self._tip_collision_geoms).friction = tip_friction
-            physics.bind(self._key_collision_geoms).friction = key_friction
-            # All selected geoms have the same nominal sliding friction in the
-            # benchmark model. Record the actual applied delta after clipping.
-            friction_noise = float(
-                np.mean(key_friction[:, 0] - self._nominal_key_friction[:, 0])
-            )
+        gravity_noise, friction_noise = self._sample_and_apply_model_noise(
+            physics, frequency="episode"
+        )
 
         offsets = self._sample_and_apply_hand_position_noise(physics)
         offset_vectors = np.asarray(
@@ -217,9 +196,13 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
 
         physics.forward()
         self._environment_noise_state = {
-            "gravity_noise": gravity_noise,
+            "gravity_noise": (
+                gravity_noise if gravity_noise is not None else 0.0
+            ),
             "gravity_z": float(physics.model.opt.gravity[2]),
-            "contact_friction_noise": friction_noise,
+            "contact_friction_noise": (
+                friction_noise if friction_noise is not None else 0.0
+            ),
             "contact_friction_sliding": float(
                 np.mean(physics.bind(self._key_collision_geoms).friction[:, 0])
             ),
@@ -228,6 +211,72 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
             "hand_position_max_l2": float(np.max(per_hand_l2))
             if per_hand_l2.size else 0.0,
         }
+
+    def _sample_and_apply_model_noise(self, physics, frequency):
+        """Apply gravity then friction draws for one sampling frequency.
+
+        Every value is derived from the cached nominal model, so step-level
+        noise cannot accumulate into a random walk. This method intentionally
+        does not call ``physics.forward()``: gravity and geom friction are read
+        by the subsequent physics integration without refreshing derived data.
+        """
+        env_config = self.robust_config.environment_noise
+
+        gravity_noise = None
+        if (
+            env_config.gravity_frequency == frequency
+            and self.robust_config.is_channel_active("gravity")
+        ):
+            requested = float(self.robust_config.sample_noise(
+                self._environment_noise_rng, "gravity"
+            ))
+            nominal_z = float(self._nominal_gravity[2])
+            applied_z = min(nominal_z + requested, self._MAX_GRAVITY_Z)
+            gravity_noise = applied_z - nominal_z
+            physics.model.opt.gravity[2] = applied_z
+
+        friction_noise = None
+        if (
+            env_config.contact_friction_frequency == frequency
+            and self.robust_config.is_channel_active("contact_friction")
+        ):
+            requested = float(self.robust_config.sample_noise(
+                self._environment_noise_rng, "contact_friction"
+            ))
+            tip_friction = self._nominal_tip_friction.copy()
+            key_friction = self._nominal_key_friction.copy()
+            tip_friction[:, 0] = np.maximum(
+                tip_friction[:, 0] + requested, self._MIN_FRICTION
+            )
+            key_friction[:, 0] = np.maximum(
+                key_friction[:, 0] + requested, self._MIN_FRICTION
+            )
+            physics.bind(self._tip_collision_geoms).friction = tip_friction
+            physics.bind(self._key_collision_geoms).friction = key_friction
+            friction_noise = float(
+                np.mean(key_friction[:, 0] - self._nominal_key_friction[:, 0])
+            )
+
+        return gravity_noise, friction_noise
+
+    def _apply_step_environment_noise(self, physics):
+        gravity_noise, friction_noise = self._sample_and_apply_model_noise(
+            physics, frequency="step"
+        )
+        if gravity_noise is not None:
+            self._environment_noise_state["gravity_noise"] = gravity_noise
+            self._environment_noise_state["gravity_z"] = float(
+                physics.model.opt.gravity[2]
+            )
+        if friction_noise is not None:
+            self._environment_noise_state[
+                "contact_friction_noise"
+            ] = friction_noise
+            self._environment_noise_state[
+                "contact_friction_sliding"
+            ] = float(np.mean(
+                physics.bind(self._key_collision_geoms).friction[:, 0]
+            ))
 
     def _sample_and_apply_hand_position_noise(self, physics):
         n_hands = len(self.hands)
@@ -266,4 +315,6 @@ class OmniPianoTask(piano_with_shadow_hands.PianoWithShadowHands):
         return offsets
 
     def before_step(self, physics, action, random_state):
+        if self._environment_noise_active:
+            self._apply_step_environment_noise(physics)
         super().before_step(physics, action, random_state)

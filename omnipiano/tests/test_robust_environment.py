@@ -12,6 +12,8 @@ import numpy as np
 import pytest
 
 from omnipiano.envs import registration
+from omnipiano.configs import RobustConfig, RobustEnvConfig
+from omnipiano.tasks.omni_piano_task import OmniPianoTask
 from omnipiano.utils.env_unwrap import get_composer_env_from_gym
 from omnipiano.utils.info_keys import InfoKeys
 
@@ -23,6 +25,186 @@ _COMPOUND_SHIFT = (
     "OmniPiano-ClairDeLune-GCFHP-Shift-G150-CF15-Y50-Z20-v0"
 )
 _HAND_SHIFT = "OmniPiano-ClairDeLune-HP-Shift-Y50-Z20-v0"
+
+
+class _FakeBinding:
+    def __init__(self, physics, name):
+        self._physics = physics
+        self._name = name
+
+    @property
+    def friction(self):
+        return self._physics.frictions[self._name]
+
+    @friction.setter
+    def friction(self, value):
+        self._physics.frictions[self._name] = np.asarray(value).copy()
+
+
+class _FakePhysics:
+    def __init__(self):
+        self.model = types.SimpleNamespace(
+            opt=types.SimpleNamespace(gravity=np.array([0.0, 0.0, -9.81]))
+        )
+        self.frictions = {
+            "tips": np.array([[1.0, 0.005, 0.0001], [1.0, 0.005, 0.0001]]),
+            "keys": np.array([[1.0, 0.005, 0.0001], [1.0, 0.005, 0.0001]]),
+        }
+        self.forward_calls = 0
+
+    def bind(self, geoms):
+        return _FakeBinding(self, geoms)
+
+    def forward(self):
+        self.forward_calls += 1
+
+
+def _model_noise_task(environment_noise, seed=123):
+    task = OmniPianoTask.__new__(OmniPianoTask)
+    task.robust_config = RobustConfig(environment_noise=environment_noise)
+    task._environment_noise_rng = np.random.default_rng(seed)
+    task._nominal_gravity = np.array([0.0, 0.0, -9.81])
+    task._tip_collision_geoms = "tips"
+    task._key_collision_geoms = "keys"
+    task._nominal_tip_friction = np.array(
+        [[1.0, 0.005, 0.0001], [1.0, 0.005, 0.0001]]
+    )
+    task._nominal_key_friction = task._nominal_tip_friction.copy()
+    task._environment_noise_state = {
+        "gravity_noise": 0.0,
+        "gravity_z": -9.81,
+        "contact_friction_noise": 0.0,
+        "contact_friction_sliding": 1.0,
+        "hand_position_offsets": {},
+        "hand_position_l2": 0.0,
+        "hand_position_max_l2": 0.0,
+    }
+    return task
+
+
+def test_environment_noise_frequency_defaults_and_validation():
+    config = RobustEnvConfig()
+    assert config.gravity_frequency == "episode"
+    assert config.contact_friction_frequency == "episode"
+
+    with pytest.raises(ValueError, match="gravity_frequency"):
+        RobustEnvConfig(gravity_frequency="physics_substep")
+    with pytest.raises(ValueError, match="contact_friction_frequency"):
+        RobustEnvConfig(contact_friction_frequency="reset")
+
+
+@pytest.mark.parametrize("dist", ["gaussian", "uniform"])
+def test_step_model_noise_uses_reproducible_gravity_then_friction_draws(dist):
+    kwargs = {
+        "gravity_noise_dist": dist,
+        "gravity_frequency": "step",
+        "contact_friction_noise_dist": dist,
+        "contact_friction_frequency": "step",
+    }
+    if dist == "gaussian":
+        kwargs.update(
+            gravity_noise_std=0.2,
+            contact_friction_noise_std=0.03,
+        )
+    else:
+        kwargs.update(
+            gravity_noise_uniform_low=-0.2,
+            gravity_noise_uniform_high=0.2,
+            contact_friction_noise_uniform_low=-0.03,
+            contact_friction_noise_uniform_high=0.03,
+        )
+    environment_noise = RobustEnvConfig(**kwargs)
+    first = _model_noise_task(environment_noise, seed=77)
+    second = _model_noise_task(environment_noise, seed=77)
+    first_physics = _FakePhysics()
+    second_physics = _FakePhysics()
+    expected_rng = np.random.default_rng(77)
+
+    first_values = []
+    second_values = []
+    expected_values = []
+    for _ in range(4):
+        first._apply_step_environment_noise(first_physics)
+        second._apply_step_environment_noise(second_physics)
+        first_values.append((
+            first.environment_noise_state["gravity_noise"],
+            first.environment_noise_state["contact_friction_noise"],
+        ))
+        second_values.append((
+            second.environment_noise_state["gravity_noise"],
+            second.environment_noise_state["contact_friction_noise"],
+        ))
+        if dist == "gaussian":
+            expected_values.append((
+                expected_rng.normal(0.0, 0.2),
+                expected_rng.normal(0.0, 0.03),
+            ))
+        else:
+            expected_values.append((
+                expected_rng.uniform(-0.2, 0.2),
+                expected_rng.uniform(-0.03, 0.03),
+            ))
+
+    np.testing.assert_allclose(first_values, second_values)
+    np.testing.assert_allclose(first_values, expected_values)
+    assert len({tuple(value) for value in first_values}) > 1
+    assert first_physics.forward_calls == 0
+
+
+def test_step_shift_is_constant_does_not_consume_rng_and_does_not_accumulate():
+    environment_noise = RobustEnvConfig(
+        gravity_noise_dist="shift",
+        gravity_noise_shift=20.0,
+        gravity_frequency="step",
+        contact_friction_noise_dist="shift",
+        contact_friction_noise_shift=-2.0,
+        contact_friction_frequency="step",
+    )
+    task = _model_noise_task(environment_noise, seed=91)
+    physics = _FakePhysics()
+    untouched_rng = np.random.default_rng(91)
+
+    for _ in range(3):
+        task._apply_step_environment_noise(physics)
+        state = task.environment_noise_state
+        assert state["gravity_z"] == pytest.approx(task._MAX_GRAVITY_Z)
+        assert state["gravity_noise"] == pytest.approx(
+            task._MAX_GRAVITY_Z + 9.81
+        )
+        assert state["contact_friction_sliding"] == pytest.approx(
+            task._MIN_FRICTION
+        )
+        assert state["contact_friction_noise"] == pytest.approx(
+            task._MIN_FRICTION - 1.0
+        )
+
+    assert task._environment_noise_rng.random() == untouched_rng.random()
+    assert physics.forward_calls == 0
+
+
+def test_gravity_and_friction_frequencies_are_independent():
+    environment_noise = RobustEnvConfig(
+        gravity_noise_dist="shift",
+        gravity_noise_shift=1.5,
+        gravity_frequency="episode",
+        contact_friction_noise_dist="shift",
+        contact_friction_noise_shift=0.2,
+        contact_friction_frequency="step",
+    )
+    task = _model_noise_task(environment_noise)
+    physics = _FakePhysics()
+
+    episode_values = task._sample_and_apply_model_noise(
+        physics, frequency="episode"
+    )
+    assert episode_values[0] == pytest.approx(1.5)
+    assert episode_values[1] is None
+    assert physics.model.opt.gravity[2] == pytest.approx(-8.31)
+    assert physics.frictions["keys"][:, 0] == pytest.approx([1.0, 1.0])
+
+    task._apply_step_environment_noise(physics)
+    assert physics.model.opt.gravity[2] == pytest.approx(-8.31)
+    assert physics.frictions["keys"][:, 0] == pytest.approx([1.2, 1.2])
 
 
 def _physical_env_ids():
@@ -45,10 +227,12 @@ def _hand_positions(env):
 
 
 def test_physical_environment_registration_matrix():
-    # 3 distributions * (3 G + 3 CF + 3 HP + 1 compound) + 3 negative
-    # directional Shift controls.
+    # Existing episode tasks: 3 distributions * (3 G + 3 CF + 3 HP +
+    # 1 compound) + 3 negative Shift controls = 33.
+    # Step additions: Gaussian/Uniform * (3 G + 3 CF + 3 compound frequency
+    # combinations) = 18. Shift is constant, so step aliases are omitted.
     ids = _physical_env_ids()
-    assert len(ids) == 33, ids
+    assert len(ids) == 51, ids
     for env_id in ids:
         config = registration._registry[env_id].robust_config
         assert config is not None

@@ -1365,7 +1365,7 @@ register(  # Obs + Reward, both constant shift — per-channel: O -0.15, R -0.50
 
 
 # ===========================================================================
-# Physical-environment robustness — episode-level domain randomization.
+# Physical-environment robustness — episode/step domain randomization.
 #
 # G  = vertical gravity additive noise (m/s^2)
 # CF = fingertip-key sliding-contact friction additive noise
@@ -1387,6 +1387,8 @@ def _environment_noise_config(
     contact_friction: float = 0.0,
     hand_position_y: float = 0.0,
     hand_position_z: float = 0.0,
+    gravity_frequency: str = "episode",
+    contact_friction_frequency: str = "episode",
 ) -> RobustConfig:
     """Build an environment-only RobustConfig using natural parameters."""
     kwargs = {}
@@ -1410,7 +1412,11 @@ def _environment_noise_config(
             raise ValueError(f"Unknown environment noise dist: {dist_key!r}")
     return RobustConfig(
         noise_dist=dist_key,
-        environment_noise=RobustEnvConfig(**kwargs),
+        environment_noise=RobustEnvConfig(
+            gravity_frequency=gravity_frequency,
+            contact_friction_frequency=contact_friction_frequency,
+            **kwargs,
+        ),
     )
 
 
@@ -1426,6 +1432,17 @@ def _register_clairdelune_environment_robustness() -> None:
                     dist_key, gravity=level
                 ),
             )
+            if dist_key != "shift":
+                register(
+                    id=(f"OmniPiano-ClairDeLune-G-Step-"
+                        f"{dist_label}-{label}-v0"),
+                    base_env_name=_CLAIRDELUNE_BASE,
+                    robust_config=_environment_noise_config(
+                        dist_key,
+                        gravity=level,
+                        gravity_frequency="step",
+                    ),
+                )
         for level in _ENV_FRICTION_LEVELS:
             label = f"P{int(round(level * 100)):02d}"
             register(
@@ -1435,6 +1452,17 @@ def _register_clairdelune_environment_robustness() -> None:
                     dist_key, contact_friction=level
                 ),
             )
+            if dist_key != "shift":
+                register(
+                    id=(f"OmniPiano-ClairDeLune-CF-Step-"
+                        f"{dist_label}-{label}-v0"),
+                    base_env_name=_CLAIRDELUNE_BASE,
+                    robust_config=_environment_noise_config(
+                        dist_key,
+                        contact_friction=level,
+                        contact_friction_frequency="step",
+                    ),
+                )
         for y_level, z_level in _ENV_HAND_POSITION_LEVELS:
             y_mm = int(round(y_level * 1000))
             z_mm = int(round(z_level * 1000))
@@ -1462,6 +1490,33 @@ def _register_clairdelune_environment_robustness() -> None:
                 hand_position_z=0.020,
             ),
         )
+        if dist_key != "shift":
+            for gravity_frequency, friction_frequency in (
+                ("step", "episode"),
+                ("episode", "step"),
+                ("step", "step"),
+            ):
+                gravity_label = (
+                    "GStep" if gravity_frequency == "step" else "GEpisode"
+                )
+                friction_label = (
+                    "CFStep" if friction_frequency == "step" else "CFEpisode"
+                )
+                register(
+                    id=(f"OmniPiano-ClairDeLune-GCFHP-{gravity_label}-"
+                        f"{friction_label}-{dist_label}-"
+                        "G150-CF15-Y50-Z20-v0"),
+                    base_env_name=_CLAIRDELUNE_BASE,
+                    robust_config=_environment_noise_config(
+                        dist_key,
+                        gravity=1.50,
+                        contact_friction=0.15,
+                        hand_position_y=0.050,
+                        hand_position_z=0.020,
+                        gravity_frequency=gravity_frequency,
+                        contact_friction_frequency=friction_frequency,
+                    ),
+                )
 
     # Directional controls for the deterministic high-level shifts.
     register(

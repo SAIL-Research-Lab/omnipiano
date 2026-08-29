@@ -27,7 +27,7 @@ class SafetyConfig:
 
 @dataclass
 class RobustEnvConfig:
-    """Episode-level physical-environment perturbations.
+    """Physical-environment perturbations.
 
     The fields mirror :class:`RobustConfig`'s Gaussian / Uniform / Shift
     parameterization, but act additively on physical values rather than on
@@ -40,6 +40,7 @@ class RobustEnvConfig:
     gravity_noise_uniform_high: float = 0.0
     gravity_noise_shift: float = 0.0
     gravity_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
+    gravity_frequency: Literal["episode", "step"] = "episode"
 
     contact_friction_noise_std: float = 0.0
     contact_friction_noise_uniform_low: float = 0.0
@@ -48,6 +49,7 @@ class RobustEnvConfig:
     contact_friction_noise_dist: Optional[
         Literal["gaussian", "uniform", "shift"]
     ] = None
+    contact_friction_frequency: Literal["episode", "step"] = "episode"
 
     hand_position_y_noise_std: float = 0.0
     hand_position_y_noise_uniform_low: float = 0.0
@@ -74,6 +76,14 @@ class RobustEnvConfig:
 
     def __post_init__(self) -> None:
         valid_dists = ("gaussian", "uniform", "shift")
+        valid_frequencies = ("episode", "step")
+        for parameter in ("gravity", "contact_friction"):
+            frequency = getattr(self, f"{parameter}_frequency")
+            if frequency not in valid_frequencies:
+                raise ValueError(
+                    f"RobustEnvConfig: {parameter}_frequency must be one of "
+                    f"{valid_frequencies}, got {frequency!r}"
+                )
         for parameter in self.PARAMETERS:
             dist = getattr(self, f"{parameter}_noise_dist")
             if dist is not None and dist not in valid_dists:
@@ -258,9 +268,9 @@ class RobustConfig:
     obs_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
     reward_noise_dist: Optional[Literal["gaussian", "uniform", "shift"]] = None
 
-    # Physical environment perturbations. These are sampled once per episode
-    # by OmniPianoTask and remain independent from the action/reward and
-    # observation RNG streams.
+    # Physical environment perturbations. Gravity/contact friction can be
+    # sampled per episode or per control step; hand pose remains episode-level.
+    # Their RNG stream stays independent from action/reward and observation.
     environment_noise: RobustEnvConfig = field(default_factory=RobustEnvConfig)
 
     SIGNAL_CHANNELS: ClassVar[Tuple[str, ...]] = ("action", "obs", "reward")
