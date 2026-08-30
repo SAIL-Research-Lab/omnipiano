@@ -219,6 +219,24 @@ class WandbRun:
             "eval/musical_precision": summary.get("episode_task/musical_precision_mean"),
             "eval/musical_recall": summary.get("episode_task/musical_recall_mean"),
             "eval/sustain_f1": summary.get("episode_task/sustain_f1_mean"),
+            "eval/coordination/common_area_success_rate": summary.get(
+                "episode_coordination/common_area_success_rate_mean"
+            ),
+            "eval/coordination/common_area_success_rate_std": summary.get(
+                "episode_coordination/common_area_success_rate_std"
+            ),
+            "eval/coordination/common_area_duplicate_press_rate": summary.get(
+                "episode_coordination/common_area_duplicate_press_rate_mean"
+            ),
+            "eval/coordination/common_area_duplicate_press_rate_std": summary.get(
+                "episode_coordination/common_area_duplicate_press_rate_std"
+            ),
+            "eval/coordination/inter_agent_collision_step_rate": summary.get(
+                "episode_coordination/inter_agent_collision_step_rate_mean"
+            ),
+            "eval/coordination/inter_agent_collision_step_rate_std": summary.get(
+                "episode_coordination/inter_agent_collision_step_rate_std"
+            ),
         }
         if scheduled_env_step is not None:
             payload["eval/scheduled_env_step"] = int(scheduled_env_step)
@@ -238,7 +256,10 @@ class WandbRun:
                             "episode_task/musical_f1_mean",
                             "episode_task/musical_precision_mean",
                             "episode_task/musical_recall_mean",
-                            "episode_task/sustain_f1_mean"):
+                            "episode_task/sustain_f1_mean",
+                            "episode_coordination/common_area_success_rate_mean",
+                            "episode_coordination/common_area_duplicate_press_rate_mean",
+                            "episode_coordination/inter_agent_collision_step_rate_mean"):
                     if key in summary:
                         self._run.summary[f"final/{key}"] = float(summary[key])
             self._run.summary["actual_total_env_steps"] = int(

@@ -31,6 +31,7 @@ from omnipiano.multiagent.assignment import (
     compute_boundary_hands,
     compute_inter_agent_boundaries,
 )
+from omnipiano.multiagent.coordination_metrics import CoordinationMetricsTracker
 
 
 # Phase 1 supported modes.
@@ -174,6 +175,15 @@ class OmniPianoParallelEnv(ParallelEnv):
             agent.name: i for i, agent in enumerate(self._assignment.agents)
         }
 
+        # Purely observational MARL coordination metrics.  This tracker reads
+        # ground-truth piano/contact state and never changes reward or dynamics.
+        # Its compiled MuJoCo geom-id caches are initialized in reset(), because
+        # an explicit reset seed rebuilds the underlying environment/model.
+        self._coordination_tracker = CoordinationMetricsTracker(
+            assignment, self._agent_reaches
+        )
+        self._coordination_task = None
+
         # Build per-agent action spaces first (needed for obs space construction
         # when OAR adds a prev_action slice).
         self._action_spaces = self._build_action_spaces()
@@ -224,6 +234,10 @@ class OmniPianoParallelEnv(ParallelEnv):
 
         ts = self._env.reset()
         self.agents = list(self.possible_agents)
+        self._coordination_task = _find_task(self._env)
+        self._coordination_tracker.reset(
+            self._env.physics, self._coordination_task
+        )
         obs = self._split_observation(ts.observation)
         infos = self._build_per_agent_infos()
         return obs, infos
@@ -239,6 +253,12 @@ class OmniPianoParallelEnv(ParallelEnv):
     ]:
         flat_action = self._reassemble_action(actions)
         ts = self._env.step(flat_action)
+
+        if self._coordination_task is None:
+            raise RuntimeError("multi-agent environment must be reset before step")
+        self._coordination_tracker.observe_step(
+            self._env.physics, self._coordination_task
+        )
 
         obs = self._split_observation(ts.observation)
 
@@ -270,18 +290,26 @@ class OmniPianoParallelEnv(ParallelEnv):
         # if no episode has finished yet (shouldn't happen here because we
         # gated on `last`, but guard defensively).
         if last:
+            global_metrics: Dict[str, Any] = {
+                key: value
+                for key, value in self._coordination_tracker.finalize().items()
+                if value is not None
+            }
             try:
                 midi_eval = _find_wrapper(self._env, self._midi_eval_wrapper_cls)
                 metrics = midi_eval.get_musical_metrics()
-                infos["_global_"] = {
+                global_metrics.update({
                     "episode_task/musical_f1": float(metrics["f1"]),
                     "episode_task/musical_precision": float(metrics["precision"]),
                     "episode_task/musical_recall": float(metrics["recall"]),
                     "episode_task/sustain_f1": float(metrics["sustain_f1"]),
-                }
+                })
             except (ValueError, RuntimeError):
-                # Metrics not yet available — leave _global_ unpopulated.
+                # The evaluator will fail loudly if authoritative musical
+                # metrics are unavailable.  Preserve coordination diagnostics
+                # so the terminal info remains useful for direct env users.
                 pass
+            infos["_global_"] = global_metrics
 
         # Once all agents are done, clear self.agents (PettingZoo convention).
         if last:
@@ -550,17 +578,15 @@ class OmniPianoParallelEnv(ParallelEnv):
                 agent_obs["prev_reward"] = prev_reward
 
             if self._include_global_state:
-                # The outer space is {global_state, own}. Flatten the local
-                # block against its own subspace first, then flatten the
-                # combined observation exactly once. Using the outer space for
-                # the local Dict (or flattening twice) corrupts both layouts.
+                # The outer space is {global_state, own}, where ``own`` is the
+                # same Dict space used by IPPO.  Give Gymnasium that nested
+                # Dict and flatten the outer structure once; its recursive
+                # flattening produces an own block bit-identical to IPPO.
+                # Pre-flattening ``own`` would violate the declared Dict space.
                 outer_space = self._dict_observation_spaces[agent.name]
-                own_obs = gym.spaces.utils.flatten(
-                    outer_space.spaces["own"], agent_obs
-                )
                 agent_obs = {
                     "global_state": self._build_global_state(dm_obs, agent.name),
-                    "own": own_obs,
+                    "own": agent_obs,
                 }
                 agent_obs = gym.spaces.utils.flatten(outer_space, agent_obs)
             elif self._flatten_obs:

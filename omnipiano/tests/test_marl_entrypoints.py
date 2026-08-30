@@ -1,16 +1,12 @@
-"""Fast regression tests for the unified MARL command structure."""
+"""Fast regression tests for the canonical MARL command structure."""
 
 from __future__ import annotations
 
 import inspect
 
-import pytest
-
 import omnipiano
 from omnipiano.configs import BenchmarkProtocolConfig
-from omnipiano.multiagent import _eval_ippo, _eval_mappo
-from omnipiano.multiagent import _train_ippo, _train_mappo
-from omnipiano.multiagent import train
+from omnipiano.multiagent import evaluate, train
 from omnipiano.multiagent._wandb import WandbRun
 from omnipiano.multiagent.algos import get_algo
 
@@ -29,37 +25,10 @@ def test_canonical_defaults_match_protocol_and_project_convention() -> None:
     assert inspect.signature(WandbRun).parameters["project"].default == "marl"
 
 
-@pytest.mark.parametrize(
-    ("module", "expected_algo"),
-    [(_train_ippo, "ippo"), (_train_mappo, "mappo")],
-)
-def test_legacy_train_entrypoints_only_delegate(
-    monkeypatch, module, expected_algo
-) -> None:
-    captured = []
-
-    def fake_main(argv):
-        captured.append(list(argv))
-        return 17
-
-    monkeypatch.setattr(train, "main", fake_main)
-    assert module.main(["--seed", "2"]) == 17
-    assert captured == [["--algo", expected_algo, "--seed", "2"]]
-    with pytest.raises(SystemExit, match="implies --algo"):
-        module.main(["--algo", expected_algo])
-
-
-@pytest.mark.parametrize("module", [_eval_ippo, _eval_mappo])
-def test_legacy_eval_entrypoints_only_delegate(monkeypatch, module) -> None:
-    captured = []
-
-    def fake_main(argv):
-        captured.append(list(argv))
-        return 19
-
-    monkeypatch.setattr(module, "_evaluate_main", fake_main)
-    assert module.main(["--checkpoint", "somewhere"]) == 19
-    assert captured == [["--checkpoint", "somewhere"]]
+def test_canonical_evaluator_uses_protocol_episode_default() -> None:
+    proto = BenchmarkProtocolConfig()
+    args = evaluate.build_arg_parser().parse_args(["--checkpoint", "somewhere"])
+    assert args.num_eval_eps == proto.num_eval_eps
 
 
 def test_ippo_and_mappo_are_a_single_factor_critic_ablation() -> None:

@@ -386,7 +386,8 @@ disables it so the command also works on a machine without W&B credentials.
 Defaults come directly from `BenchmarkProtocolConfig`: 5M environment steps,
 `gamma=0.8`, deterministic evaluation every 50k environment steps, and one run
 per seed. Each run writes `run_config.json`, `progress.jsonl`,
-`periodic_eval.jsonl` (F1 and one-copy shared team return), recoverable
+`periodic_eval.jsonl` (F1, one-copy shared team return, and MARL coordination
+metrics), recoverable
 checkpoints every 500k steps, a final RLlib checkpoint, and
 `eval_summary.json`. Standalone deterministic checkpoint evaluation is:
 
@@ -394,11 +395,18 @@ checkpoints every 500k steps, a final RLlib checkpoint, and
 MUJOCO_GL=egl python -m omnipiano.multiagent.evaluate --checkpoint <run-dir>
 ```
 
+The MARL terminal/evaluation metrics include
+`common_area_success_rate`, `common_area_duplicate_press_rate`, and
+`inter_agent_collision_step_rate`. Common-area metrics use target-note onsets
+on keys contained in at least two agents' measured fingertip reach; duplicate
+presses require fingertip contact from at least two distinct agents. The
+collision rate counts control steps with any physical hand contact across
+agents. These metrics are observational and do not change the task reward.
+
 `MUJOCO_GL` must be set before Python starts because importing the top-level
-package initializes the MuJoCo-backed environment registry. The old
-`_train_ippo`, `_train_mappo`, `_eval_ippo`, and `_eval_mappo` commands remain
-thin compatibility aliases to the same canonical trainer/evaluator; they do
-not contain independent implementations.
+package initializes the MuJoCo-backed environment registry. The supported
+MARL entrypoints are the canonical `omnipiano.multiagent.train` and
+`omnipiano.multiagent.evaluate` modules; select IPPO or MAPPO with `--algo`.
 
 ## Current Package Layout
 

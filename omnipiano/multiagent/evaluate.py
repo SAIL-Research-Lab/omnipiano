@@ -23,6 +23,7 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 from omnipiano.configs import BenchmarkProtocolConfig
 from omnipiano.multiagent.paths import resolve_run_path
 from omnipiano.multiagent._ippo_common import (
+    COORDINATION_RATE_METRICS,
     LEGACY_RLLIB_ENV_NAME,
     REQUIRED_MUSICAL_METRICS,
     RLLIB_ENV_NAME,
@@ -161,6 +162,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "ray_version": ray.__version__,
             "rllib_target_version": RLLIB_TARGET_VERSION,
             "required_terminal_metrics": list(REQUIRED_MUSICAL_METRICS),
+            "reported_coordination_metrics": list(COORDINATION_RATE_METRICS),
             "video_recording": not args.no_video,
             **evaluation,
         })
@@ -169,6 +171,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
               f"musical_f1={s['episode_task/musical_f1_mean']:.6f}  "
               f"precision={s['episode_task/musical_precision_mean']:.6f}  "
               f"recall={s['episode_task/musical_recall_mean']:.6f}")
+        coordination_summary_keys = [f"{key}_mean" for key in COORDINATION_RATE_METRICS]
+        if all(key in s for key in coordination_summary_keys):
+            print(
+                "[eval coordination] "
+                f"common_success={s[coordination_summary_keys[0]]:.6f}  "
+                f"duplicate_press={s[coordination_summary_keys[1]]:.6f}  "
+                f"inter_agent_collision={s[coordination_summary_keys[2]]:.6f}"
+            )
         print(f"[eval] summary={output_path}")
     except Exception as exc:
         write_json(output_dir / "failure.json", {

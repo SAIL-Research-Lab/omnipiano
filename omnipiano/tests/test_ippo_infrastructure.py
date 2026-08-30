@@ -24,6 +24,9 @@ TERMINAL_METRICS = {
     "episode_task/musical_precision": 0.6,
     "episode_task/musical_recall": 0.4,
     "episode_task/sustain_f1": 0.7,
+    "episode_coordination/common_area_success_rate": 0.75,
+    "episode_coordination/common_area_duplicate_press_rate": 0.25,
+    "episode_coordination/inter_agent_collision_step_rate": 0.1,
 }
 
 
@@ -237,6 +240,12 @@ class IPPOInfrastructureTest(unittest.TestCase):
         self.assertEqual(
             result["summary"]["episode_task/musical_f1_mean"], 0.5
         )
+        self.assertEqual(
+            result["summary"][
+                "episode_coordination/common_area_success_rate_mean"
+            ],
+            0.75,
+        )
 
     def test_eval_fails_when_terminal_f1_is_missing_and_closes_env(self):
         env = _TwoStepSharedEnv(include_metrics=False)
@@ -250,6 +259,12 @@ class IPPOInfrastructureTest(unittest.TestCase):
                 action_computer=_zero_action,
             )
         self.assertTrue(env.closed)
+
+    def test_terminal_coordination_rates_are_range_checked(self):
+        invalid = dict(TERMINAL_METRICS)
+        invalid["episode_coordination/common_area_duplicate_press_rate"] = 1.1
+        with self.assertRaisesRegex(RuntimeError, "terminal rate metrics"):
+            common.extract_terminal_metrics({"_global_": invalid})
 
     def test_eval_rejects_non_shared_rewards(self):
         env = _TwoStepSharedEnv(unequal_rewards=True)

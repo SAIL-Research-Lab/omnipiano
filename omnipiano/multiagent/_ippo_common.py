@@ -31,6 +31,11 @@ REQUIRED_MUSICAL_METRICS = (
     "episode_task/musical_recall",
     "episode_task/sustain_f1",
 )
+COORDINATION_RATE_METRICS = (
+    "episode_coordination/common_area_success_rate",
+    "episode_coordination/common_area_duplicate_press_rate",
+    "episode_coordination/inter_agent_collision_step_rate",
+)
 CHECKPOINT_METADATA_MARKERS = (
     # Current Ray Checkpointable and legacy RLlib metadata formats.
     "metadata.json",
@@ -213,13 +218,16 @@ def extract_terminal_metrics(infos: Mapping[str, Any]) -> Dict[str, float]:
         raise RuntimeError(
             "terminal musical metrics are incomplete; missing " + ", ".join(missing)
         )
+    bounded_metrics = REQUIRED_MUSICAL_METRICS + tuple(
+        key for key in COORDINATION_RATE_METRICS if key in metrics
+    )
     invalid = {
         key: metrics[key]
-        for key in REQUIRED_MUSICAL_METRICS
+        for key in bounded_metrics
         if not 0.0 <= metrics[key] <= 1.0
     }
     if invalid:
-        raise RuntimeError(f"terminal musical metrics must be in [0, 1]: {invalid}")
+        raise RuntimeError(f"terminal rate metrics must be in [0, 1]: {invalid}")
     return metrics
 
 

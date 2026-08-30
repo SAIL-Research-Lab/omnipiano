@@ -19,6 +19,13 @@ from omnipiano.multiagent import (
     list_parallel_envs,
     make_parallel,
 )
+from omnipiano.multiagent.coordination_metrics import (
+    COMMON_AREA_DUPLICATE_PRESS_RATE,
+    COMMON_AREA_SUCCESS_RATE,
+    COMMON_AREA_TARGET_COUNT,
+    INTER_AGENT_COLLISION_STEP_RATE,
+    OBSERVED_STEP_COUNT,
+)
 
 
 # Sub-phase 1A: 4-hand Duet.
@@ -449,8 +456,8 @@ class TestPlanInvariant:
 
     # --- Plan § 8: infos["_global_"]["episode_task/musical_f1"] ---
 
-    def test_global_musical_f1_present_at_episode_end(self) -> None:
-        """Plan § 8: infos['_global_']['episode_task/musical_f1'] populated at episode-end."""
+    def test_global_evaluation_metrics_present_at_episode_end(self) -> None:
+        """Musical and MARL coordination metrics are populated at episode end."""
         import numpy as np
         self.env.reset(seed=0)
         rng = np.random.default_rng(0)
@@ -473,6 +480,21 @@ class TestPlanInvariant:
         )
         f1 = last_infos["_global_"]["episode_task/musical_f1"]
         assert 0.0 <= f1 <= 1.0, f"F1 out of range: {f1}"
+
+        global_metrics = last_infos["_global_"]
+        assert global_metrics[COMMON_AREA_TARGET_COUNT] > 0, (
+            "WinterWind four-hand benchmark must contain common-area targets"
+        )
+        for key in (
+            COMMON_AREA_SUCCESS_RATE,
+            COMMON_AREA_DUPLICATE_PRESS_RATE,
+            INTER_AGENT_COLLISION_STEP_RATE,
+        ):
+            assert key in global_metrics, f"coordination metric missing: {key}"
+            assert 0.0 <= global_metrics[key] <= 1.0, (
+                f"coordination metric out of range: {key}={global_metrics[key]}"
+            )
+        assert global_metrics[OBSERVED_STEP_COUNT] > 0
 
     # --- Plan § 6: sustain_owner override actually takes effect ---
 

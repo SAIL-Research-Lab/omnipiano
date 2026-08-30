@@ -36,6 +36,7 @@ from omnipiano.configs import BenchmarkProtocolConfig
 from omnipiano.multiagent.algos import AlgoSpec, algo_table, get_algo, list_algos
 from omnipiano.multiagent.paths import logs_root, resolve_run_path
 from omnipiano.multiagent._ippo_common import (
+    COORDINATION_RATE_METRICS,
     LEGACY_RLLIB_ENV_NAME,
     REQUIRED_MUSICAL_METRICS,
     RLLIB_ENV_NAME,
@@ -92,13 +93,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ppo.add_argument("--num-epochs", type=int, default=10)
     ppo.add_argument("--lr", type=float, default=3e-4)
     ppo.add_argument("--gae-lambda", type=float, default=0.95,
-                     help="RLlib default 1.0 = pure Monte-Carlo advantage.")
+                     help="Shared PPO/MAPPO GAE setting.")
     ppo.add_argument("--clip-param", type=float, default=0.2,
                      help="RLlib default 0.3; PPO paper and MAPPO both use 0.2.")
     ppo.add_argument("--vf-clip-param", type=float, default=1000.0,
-                     help="RLlib default 10.0 clamps the SQUARED value error, so "
-                          "|V-target|>sqrt(10) gets ZERO gradient. Our returns "
-                          "are ~600, which would disable critic learning.")
+                     help="Wider value-loss clipping margin than RLlib's default; "
+                          "verify critic health with vf_explained_var.")
     ppo.add_argument("--vf-loss-coeff", type=float, default=1.0)
     ppo.add_argument("--entropy-coeff", type=float, default=0.0)
     ppo.add_argument("--use-kl-loss", action="store_true", default=False,
@@ -429,14 +429,12 @@ def _build_run_config(
             "grad_clip_by": "global_norm",
             "rllib_default_overrides": {
                 "lambda_": [1.0, float(args.gae_lambda),
-                            "GAE lambda=1 is pure Monte-Carlo; the variance is "
-                            "unusable over ~1000-step episodes"],
+                            "standard PPO/MAPPO GAE setting"],
                 "clip_param": [0.3, float(args.clip_param),
                                "PPO paper and MAPPO ablation both favour 0.2"],
                 "vf_clip_param": [10.0, float(args.vf_clip_param),
-                                  "RLlib clamps the SQUARED value error; at "
-                                  "return scale ~600 the default zeroes the "
-                                  "critic gradient on nearly every sample"],
+                                  "wider value-loss clipping margin; validate "
+                                  "critic health with vf_explained_var"],
                 "use_kl_loss": [True, bool(args.use_kl_loss),
                                 "MAPPO reference implementation uses clipping only"],
                 "grad_clip": [None, float(args.grad_clip),
@@ -465,25 +463,6 @@ def _build_run_config(
 # ===========================================================================
 # Main
 # ===========================================================================
-
-
-def run_algorithm_entrypoint(
-    algo_name: str, argv: Optional[Sequence[str]] = None
-) -> int:
-    """Run a legacy algorithm-specific module through the canonical trainer.
-
-    ``_train_ippo`` and ``_train_mappo`` are public commands used by existing
-    cluster manifests. They must force their advertised algorithm instead of
-    accepting a conflicting second ``--algo`` value.
-    """
-    get_algo(algo_name)
-    forwarded = list(sys.argv[1:] if argv is None else argv)
-    if any(arg == "--algo" or arg.startswith("--algo=") for arg in forwarded):
-        raise SystemExit(
-            f"this entry point implies --algo {algo_name}; use "
-            "python -m omnipiano.multiagent.train to select an algorithm"
-        )
-    return main(["--algo", algo_name, *forwarded])
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -760,6 +739,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 print(f"[{tag} eval] actual={total_steps:,} "
                       f"team_return={s['team_return_mean']:.3f} "
                       f"musical_f1={s['episode_task/musical_f1_mean']:.6f}")
+                coordination_summary_keys = [
+                    f"{key}_mean" for key in COORDINATION_RATE_METRICS
+                ]
+                if all(key in s for key in coordination_summary_keys):
+                    print(
+                        f"[{tag} coordination] "
+                        f"common_success={s[coordination_summary_keys[0]]:.6f} "
+                        f"duplicate_press={s[coordination_summary_keys[1]]:.6f} "
+                        f"inter_agent_collision={s[coordination_summary_keys[2]]:.6f}"
+                    )
 
         if final_ckpt is None or final_ckpt_ref is None:
             raise RuntimeError("training completed without a final checkpoint")
@@ -802,6 +791,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "effective_config": run_config["effective_config"],
             "library_versions": run_config["library_versions"],
             "required_terminal_metrics": list(REQUIRED_MUSICAL_METRICS),
+            "reported_coordination_metrics": list(COORDINATION_RATE_METRICS),
             "smoke_test": bool(args.smoke_test),
         }
         write_json(run_dir / "eval_summary.json", eval_summary)

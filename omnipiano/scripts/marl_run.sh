@@ -5,8 +5,8 @@
 #   bash scripts/marl_run.sh check      # unit tests + import sanity (~2 min)
 #   bash scripts/marl_run.sh smoke      # 5k steps, both algos, CPU (~10 min)
 #   bash scripts/marl_run.sh equiv      # prove MAPPO(own critic) == IPPO
-#   bash scripts/marl_run.sh pilot      # 100k steps on GPU; gate before 10M
-#   bash scripts/marl_run.sh paper      # THE RUN: 2 pieces x 2 algos x 10M
+#   bash scripts/marl_run.sh pilot      # 100k steps on GPU; pre-run gate
+#   bash scripts/marl_run.sh paper      # 2 pieces x 2 algos x 3 seeds x 5M
 #   bash scripts/marl_run.sh status     # live progress of every launched run
 #   bash scripts/marl_run.sh stop       # kill everything launched by `paper`
 #   bash scripts/marl_run.sh backfill   # push the 3 historical seeds to W&B
@@ -25,9 +25,9 @@ TRAIN="python -m omnipiano.multiagent.train"
 
 # --- experiment matrix (override from the shell) ---------------------------
 PIECES="${PIECES:-PicturesGreatKiev WinterWind}"
-SEEDS="${SEEDS:-0}"
-TOTAL_STEPS="${TOTAL_STEPS:-10000000}"
-EVAL_FREQ="${EVAL_FREQ:-500000}"
+SEEDS="${SEEDS:-0 1 2}"
+TOTAL_STEPS="${TOTAL_STEPS:-5000000}"
+EVAL_FREQ="${EVAL_FREQ:-50000}"
 ALGOS="${ALGOS:-ippo mappo}"
 WANDB_MODE="${WANDB_MODE:-online}"
 
@@ -77,13 +77,13 @@ launch () {  # $1=gpu $2=algo $3=piece $4=seed
   RAY_TMPDIR="/tmp/ray_${tag}_$$" \
   nohup $TRAIN \
       --algo "$algo" --env-id "$(env_id "$piece")" --seed "$seed" \
-      --total-steps "$TOTAL_STEPS" --eval-freq "$EVAL_FREQ" --num-eval-eps 10 \
-      --checkpoint-freq 1000000 \
+      --total-steps "$TOTAL_STEPS" --eval-freq "$EVAL_FREQ" --num-eval-eps 1 \
+      --checkpoint-freq 500000 \
       --num-workers "$NUM_WORKERS" --ray-num-cpus "$CPUS_PER_JOB" \
       --num-learners 1 --num-gpus-per-learner 1 \
       --run-dir "$run_dir" \
-      --wandb-mode "$WANDB_MODE" --wandb-entity omnipiano --wandb-project multiagent \
-      --wandb-tags "paper,10M" --wandb-upload-artifacts \
+      --wandb-mode "$WANDB_MODE" --wandb-entity omnipiano --wandb-project marl \
+      --wandb-tags "paper,5M" --wandb-upload-artifacts \
       > "${run_dir}.stdout.log" 2>&1 &
   echo "$!" > "$PIDDIR/${tag}.pid"
   sleep 15   # stagger MuJoCo/EGL init
@@ -174,27 +174,37 @@ pilot)
   TOTAL_STEPS=100000 EVAL_FREQ=20000 launch 1 mappo "$P" 0
   echo
   echo "Pilot launched. GATE: learner/*/vf_explained_var must rise above ~0.2."
-  echo "  https://wandb.ai/omnipiano/multiagent"
+  echo "  https://wandb.ai/omnipiano/marl"
   ;;
 
 paper)
   require_envs
   njobs=0
   for p in $PIECES; do for a in $ALGOS; do for s in $SEEDS; do njobs=$((njobs+1)); done; done; done
-  plan_cpus "$njobs"
+  [[ "$ALGOS" == "ippo mappo" ]] || die \
+    "paper scheduler currently requires ALGOS='ippo mappo'"
+  # Run one IPPO and one MAPPO job at a time. Launching the full 12-run
+  # matrix concurrently would oversubscribe both GPUs and invalidate timing.
+  plan_cpus 2
   echo "[plan] pieces=[$PIECES] algos=[$ALGOS] seeds=[$SEEDS] steps=$TOTAL_STEPS"
-  read -r -p "Launch $njobs jobs? [y/N] " ok; [[ "$ok" == "y" ]] || exit 1
-  gpu_for () { [[ "$1" == "ippo" ]] && echo 0 || echo 1; }   # IPPO->gpu0, MAPPO->gpu1
+  echo "[plan] $njobs total runs; at most two concurrent jobs (IPPO->GPU0, MAPPO->GPU1)"
+  read -r -p "Run $njobs jobs? [y/N] " ok; [[ "$ok" == "y" ]] || exit 1
   for piece in $PIECES; do
-    for algo in $ALGOS; do
-      for seed in $SEEDS; do
-        launch "$(gpu_for "$algo")" "$algo" "$piece" "$seed"
-      done
+    for seed in $SEEDS; do
+      launch 0 ippo "$piece" "$seed"
+      ippo_pid="$(cat "$PIDDIR/ippo_$(echo "$piece" | tr '[:upper:]' '[:lower:]')_seed${seed}.pid")"
+      launch 1 mappo "$piece" "$seed"
+      mappo_pid="$(cat "$PIDDIR/mappo_$(echo "$piece" | tr '[:upper:]' '[:lower:]')_seed${seed}.pid")"
+      pair_status=0
+      wait "$ippo_pid" || pair_status=1
+      wait "$mappo_pid" || pair_status=1
+      (( pair_status == 0 )) || die \
+        "one or both jobs failed for piece=$piece seed=$seed"
     done
   done
   echo
-  echo "All jobs launched."
-  echo "  dashboard : https://wandb.ai/omnipiano/multiagent"
+  echo "All paper jobs completed."
+  echo "  dashboard : https://wandb.ai/omnipiano/marl"
   echo "  progress  : bash scripts/marl_run.sh status"
   echo "  stop      : bash scripts/marl_run.sh stop"
   ;;
@@ -232,7 +242,7 @@ stop)
 backfill)
   python -m omnipiano.multiagent.wandb_sync \
     --run-dir 'examples/logs/ippo_rllib_*_seed*' \
-    --entity omnipiano --project multiagent "${@:2}"
+    --entity omnipiano --project marl "${@:2}"
   ;;
 
 *)

@@ -532,11 +532,11 @@ class BenchmarkProtocolConfig:
     in ``BenchmarkEnvConfig`` in train.py field order — that is the
     audit point for paper-vs-OmniPiano env diff.
     """
-    total_env_steps: int = 10_000_000
+    total_env_steps: int = 5_000_000
     seeds: Tuple[int, ...] = (0, 1, 2)
     seed: int = 0  # must stay == seeds[0]; guarded by test_protocol_wiring
     num_eval_eps: int = 1
     gamma: float = 0.8
-    eval_freq_env_steps: int = 500_000
-    protocol_version: str = "v2-10M" #"1.0"
+    eval_freq_env_steps: int = 50_000
+    protocol_version: str = "1.0"
     # TODO: Add perturbation_levels for robustness evaluation
