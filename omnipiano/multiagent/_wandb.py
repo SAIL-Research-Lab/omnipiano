@@ -72,7 +72,7 @@ class WandbRun:
         self, *,
         mode: str = "online",
         entity: Optional[str] = "omnipiano",
-        project: str = "marl",
+        project: str = "multiagent",
         name: Optional[str] = None,
         group: Optional[str] = None,
         job_type: str = "train",

@@ -52,6 +52,33 @@ from omnipiano.multiagent._ippo_common import (
 
 DEFAULT_ENV_ID = "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0"
 RLLIB_TARGET_VERSION = "2.55.1"
+# One empty sampling iteration is a slow-start symptom, not a bug: RLlib
+# DISCARDS a runner's result when it exceeds sample_timeout_s. Several in a row
+# means sampling is genuinely broken.
+MAX_SAMPLING_STALLS = 3
+
+def _install_sigterm_as_interrupt() -> None:
+    """Route SIGTERM through the same graceful path as Ctrl-C.
+
+    A multi-hour run is far more likely to be stopped by a launcher script, a
+    job scheduler or a container shutdown -- all of which send SIGTERM -- than
+    by a keyboard. Python's default SIGTERM handler terminates the process
+    outright, so the ``finally`` block never runs, W&B never flushes, and a
+    perfectly healthy run is displayed as crashed.
+
+    SIGHUP is deliberately NOT handled: ``nohup`` sets it to SIG_IGN, and
+    installing a handler would un-ignore it, killing the run when the terminal
+    closes -- the exact opposite of what nohup is for.
+    """
+    import signal
+
+    def _handler(signum, frame):  # noqa: ANN001
+        raise KeyboardInterrupt(f"received signal {signum}")
+
+    try:
+        signal.signal(signal.SIGTERM, _handler)
+    except (ValueError, OSError):  # not the main thread / unsupported platform
+        pass
 
 
 # ===========================================================================
@@ -121,6 +148,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     comp.add_argument("--ray-num-cpus", type=int, default=None,
                       help="Hard-cap Ray's CPU pool; required when two jobs "
                            "share one node.")
+    comp.add_argument("--sample-timeout-s", type=float, default=1800.0,
+                      help="Remote-sampling timeout per iteration. RLlib's 60s "
+                           "default is far too small here: every env runner must "
+                           "compile MJCF TWICE (reach probe env + real env) before "
+                           "returning its first fragment, and RLlib DISCARDS the "
+                           "result of any runner that exceeds this timeout.")
+    comp.add_argument("--ray-log-to-driver", action="store_true",
+                      help="Forward env-runner stdout/stderr to the driver. "
+                           "Required to see why sampling fails.")
     comp.add_argument("--checkpoint-freq", type=int, default=500_000,
                       help="Recoverable checkpoint cadence in env steps (0=off).")
     comp.add_argument("--log-every-iters", type=int, default=5)
@@ -131,7 +167,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     wb.add_argument("--wandb-mode", choices=("online", "offline", "disabled"),
                     default="online")
     wb.add_argument("--wandb-entity", default="omnipiano")
-    wb.add_argument("--wandb-project", default="marl")
+    wb.add_argument("--wandb-project", default="multiagent")
     wb.add_argument("--wandb-group", default=None,
                     help="Defaults to '<algo>__<env-token>' so seeds aggregate.")
     wb.add_argument("--wandb-name", default=None, help="Defaults to run-dir name.")
@@ -201,6 +237,8 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
         )
     if args.num_gpus_per_learner < 0:
         raise ValueError("num_gpus_per_learner must be non-negative")
+    if args.sample_timeout_s <= 0:
+        raise ValueError("sample_timeout_s must be positive")
     return spec
 
 
@@ -210,12 +248,21 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
 
 
 def make_env_for_rllib(env_config: Mapping[str, Any]) -> Any:
-    """RLlib env creator. ``include_global_state`` arrives via env_config."""
+    """RLlib env creator. ``include_global_state`` arrives via env_config.
+
+    Each env runner gets a DISTINCT env seed. ``EnvContext`` carries
+    worker_index / vector_index; a plain dict (evaluation path) does not, so
+    both fall back to 0 and the driver-side probe stays reproducible.
+    """
     from omnipiano.multiagent import make_parallel
+
+    base_seed = int(env_config.get("seed", 0))
+    worker_index = int(getattr(env_config, "worker_index", 0) or 0)
+    vector_index = int(getattr(env_config, "vector_index", 0) or 0)
 
     parallel_env = make_parallel(
         str(env_config.get("env_id", DEFAULT_ENV_ID)),
-        seed=int(env_config.get("seed", 0)),
+        seed=base_seed + 1_000 * worker_index + vector_index,
         flatten_obs=True,
         include_global_state=bool(env_config.get("include_global_state", False)),
     )
@@ -448,10 +495,12 @@ def _build_run_config(
             "num_learners": int(args.num_learners),
             "num_gpus_per_learner": float(args.num_gpus_per_learner),
             "ray_num_cpus": args.ray_num_cpus,
+            "sample_timeout_s": float(args.sample_timeout_s),
             "checkpoint_freq_env_steps": int(args.checkpoint_freq),
             "algorithm_seed": int(args.seed),
-            "worker_seeding": ("RLlib AlgorithmConfig.debugging(seed=...); each "
-                               "env runner uses seed + worker_index"),
+            "worker_seeding": ("env seed = seed + 1000*worker_index + "
+                               "vector_index; torch/module seeding via "
+                               "AlgorithmConfig.debugging(seed=...)"),
             "rllib_target_version": RLLIB_TARGET_VERSION,
         },
         "python": {"version": platform.python_version(),
@@ -467,6 +516,7 @@ def _build_run_config(
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    _install_sigterm_as_interrupt()
     if args.list_algos:
         print(algo_table())
         return 0
@@ -572,7 +622,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         })
         .framework("torch")
         .env_runners(num_env_runners=args.num_workers,
-                     num_cpus_per_env_runner=args.num_cpus_per_env_runner)
+                     num_cpus_per_env_runner=args.num_cpus_per_env_runner,
+                     sample_timeout_s=args.sample_timeout_s)
         .learners(num_learners=args.num_learners,
                   num_gpus_per_learner=args.num_gpus_per_learner)
         .multi_agent(
@@ -630,6 +681,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     final_eval: Optional[Dict[str, Any]] = None
     final_ckpt: Optional[str] = None
     final_ckpt_ref: Optional[str] = None
+    interrupted = False
 
     def _evaluate() -> Dict[str, Any]:
         # include_global_state MUST match training: a MAPPO policy expects the
@@ -643,7 +695,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
 
     try:
-        ray.init(ignore_reinit_error=True, log_to_driver=False,
+        ray.init(ignore_reinit_error=True,
+                 log_to_driver=bool(args.ray_log_to_driver),
                  num_cpus=args.ray_num_cpus)
         ray_started = True
         build = getattr(config, "build_algo", None)
@@ -668,13 +721,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 print(f"[{tag} warning] could not snapshot CTDE specs: {exc}")
 
         previous = -1
+        stalls = 0
         while total_steps < args.total_steps:
             result = algo.train()
             iterations += 1
             total_steps = extract_env_steps(result)
             if total_steps <= previous:
-                raise RuntimeError("RLlib lifetime env-step counter did not "
-                                   f"advance: {previous} -> {total_steps}")
+                stalls += 1
+                print(f"[{tag} warning] iteration {iterations} produced no new env "
+                      f"steps ({previous} -> {total_steps}); sampling stall "
+                      f"{stalls}/{MAX_SAMPLING_STALLS}. RLlib discards any env "
+                      f"runner slower than --sample-timeout-s "
+                      f"({args.sample_timeout_s:.0f}s); raise it or lower "
+                      f"--num-workers.")
+                if stalls >= MAX_SAMPLING_STALLS:
+                    raise RuntimeError(
+                        f"no new env steps for {MAX_SAMPLING_STALLS} consecutive "
+                        f"iterations (stuck at {total_steps}). Sampling is broken, "
+                        f"not merely slow. Reproduce in-process with "
+                        f"--num-workers 0 --ray-log-to-driver to see the real "
+                        f"exception.")
+                continue
+            stalls = 0
             previous = total_steps
 
             telemetry = _training_telemetry(result)
@@ -683,9 +751,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             append_jsonl(run_dir / "progress.jsonl", row)
             wandb_run.log_train(total_steps, row, result)
             if iterations == 1 or iterations % args.log_every_iters == 0:
+                elapsed = max(time.time() - start, 1e-9)
+                sps = total_steps / elapsed
+                eta_h = ((args.total_steps - total_steps) / sps / 3600.0
+                         if sps > 0 else float("inf"))
                 print(f"[{tag} iter {iterations:5d}] env_steps={total_steps:>10,}  "
-                      f"agent_sum_return={telemetry['rllib_agent_sum_return_mean']}  "
-                      f"wall={time.time() - start:.0f}s")
+                      f"{sps:7.1f} steps/s  wall={elapsed/3600:5.2f}h  "
+                      f"eta={eta_h:6.2f}h  "
+                      f"agent_sum_return={telemetry['rllib_agent_sum_return_mean']}")
 
             # Recovery checkpoints BEFORE evaluation: if inference or metric
             # extraction is broken, the policy that triggered it survives.
@@ -806,6 +879,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"[{tag}] eval summary:    {run_dir / 'eval_summary.json'}")
         if wandb_run.url:
             print(f"[{tag}] wandb:           {wandb_run.url}")
+    except KeyboardInterrupt:
+        # A deliberate stop is NOT a failure. Write a distinct artifact and let
+        # W&B close the run with exit_code=0, so a manually stopped run doesn't
+        # sit next to genuinely broken runs wearing the same red "Failed" badge.
+        interrupted = True
+        write_json(run_dir / "interrupted.json", {
+            "stage": "training_or_evaluation",
+            "reason": "KeyboardInterrupt (Ctrl-C or SIGTERM)",
+            "env_steps": int(total_steps),
+            "training_iterations": int(iterations)})
+        print(f"\n[{tag}] stopped by user at {total_steps:,} env steps "
+              f"({iterations} iterations). Artifacts flushed. NOT a failure.")
     except Exception as exc:
         write_json(run_dir / "failure.json", {
             "stage": "training_or_evaluation",
@@ -813,7 +898,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "env_steps": int(total_steps), "training_iterations": int(iterations)})
         raise
     finally:
-        active = sys.exc_info()[0] is not None
+        active = sys.exc_info()[0] is not None and not interrupted
         try:
             wandb_run.finish(exit_code=1 if active else 0)
         except Exception:
@@ -833,7 +918,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     cleanup = exc
         if cleanup is not None:
             raise cleanup
-    return 0
+    return 130 if interrupted else 0
 
 
 if __name__ == "__main__":

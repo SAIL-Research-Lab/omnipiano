@@ -159,7 +159,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--run-dir", action="append", required=True,
                         help="Run directory or glob. Repeatable.")
     parser.add_argument("--entity", default="omnipiano")
-    parser.add_argument("--project", default="marl")
+    parser.add_argument("--project", default="multiagent")
     parser.add_argument("--mode", choices=("online", "offline"), default="online")
     parser.add_argument("--upload-videos", action="store_true")
     parser.add_argument("--dry-run", action="store_true",

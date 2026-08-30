@@ -101,13 +101,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     algo_name = run_config.get("algo") or (
         "mappo" if run_config.get("is_centralized_critic") else "ippo")
 
-    output_dir = (
-        resolve_run_path(args.output_dir) if args.output_dir is not None
-        else (Path(effective and run_config.get("_path", ".")).parent
-              if run_config.get("_path") else requested if requested.is_dir()
-              else requested.parent)
-        / f"standalone_eval_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    ).resolve()
+    if args.output_dir is not None:
+        output_dir = resolve_run_path(args.output_dir).resolve()
+    else:
+        cfg_path = run_config.get("_path")
+        anchor = (Path(cfg_path).parent if cfg_path
+                  else (requested if requested.is_dir() else requested.parent))
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output_dir = (anchor / f"standalone_eval_{stamp}").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "eval_summary.json"
     if output_path.exists():
