@@ -37,24 +37,14 @@ _RUNTIME_BYPASS_FIELDS = frozenset({
 })
 
 
-# Runtime knobs the MA user can pass to make_parallel (don't change the
-# experiment identity / not part of the registered TaskSpec).
+# Runtime knobs the MA user may pass to make_parallel. These do not change the
+# experiment identity and are not part of the registered TaskSpec.
 _MA_RUNTIME_KWARGS = frozenset({
     "obs_visibility",
     "reward_mode",
     "flatten_obs",
-    "sustain_owner",  # override the morphology default (e.g. for exception
-                      # pieces like Bizet Jeux d'enfants where Primo controls
-                      # the pedal); see plan § 4 / § 6, design doc § 4.3.
-})
-
-
-_MA_RUNTIME_KWARGS = frozenset({
-    "obs_visibility",
-    "reward_mode",
-    "flatten_obs",
-    "sustain_owner",
-    "include_global_state",   # MAPPO: expose the CTDE centralized-critic state
+    "sustain_owner",         # override the morphology default (plan § 4 / § 6)
+    "include_global_state",  # MAPPO: emit the CTDE centralized-critic state
 })
 
 
@@ -154,62 +144,56 @@ def make_parallel(
         )
     sa_spec = _sa_registry[ma_spec.sa_env_id]
 
-    # Fail fast: the MA chain has no gym-layer SafetyWrapper / RobustWrapper
-    # equivalent (those are SA-only), so an SA env carrying safety
-    # constraints or action/reward robust channels would train with its
-    # costs / noise SILENTLY dropped — plausible-but-wrong benchmark data.
-    # Obs noise is allowed: DmEnvObsNoiseWrapper lives in the dm_env chain
-    # this factory does build — though with raw train-mode config (no
-    # mode/eval_noise_scale semantics; the MA/SA chain-parity refactor
-    # tracked as MA-review item 6 will lift this guard).
+    # Resolve the SA configs FIRST: every guard below reads them. (Previously
+    # the guards ran before these assignments, so make_parallel raised
+    # UnboundLocalError for every env.)
+    base_env_name = sa_spec.base_env_name
+    robust_config = sa_spec.robust_config or RobustConfig()
+    task_config = sa_spec.task_config or TaskVariantConfig()
+    env_config = sa_spec.env_config or BenchmarkEnvConfig()
+
+    # ---- Guard 1: the MA chain has no gym-layer Safety/Robust equivalent ----
+    # An SA env carrying safety constraints or action/reward robust channels
+    # would train with its costs / noise SILENTLY dropped: plausible-but-wrong
+    # benchmark data.
     if sa_spec.safety_config is not None and sa_spec.safety_config.constraints:
         raise ValueError(
             f"MA env {env_id!r}: underlying SA env {ma_spec.sa_env_id!r} has "
-            f"active safety constraints, but the MA chain has no "
-            f"SafetyWrapper — costs would be silently dropped. Register the "
-            f"MA env over a constraint-free SA env instead."
+            f"active safety constraints, but the MA chain has no SafetyWrapper "
+            f"— costs would be silently dropped. Register the MA env over a "
+            f"constraint-free SA env instead."
         )
-    if sa_spec.robust_config is not None:
-        for _ch in ("action", "reward"):
-            if sa_spec.robust_config.is_channel_active(_ch):
-                raise ValueError(
-                    f"MA env {env_id!r}: underlying SA env "
-                    f"{ma_spec.sa_env_id!r} has an active {_ch!r} robust "
-                    f"channel, but the MA chain has no RobustWrapper — the "
-                    f"noise would silently never be injected. Only clean or "
-                    f"obs-noise SA envs are supported."
-                )
-    
-    # MA review item 6: the MA chain is a *copy* of the SA chain builder and has
-    # already drifted.  Two concrete drifts are known and must not be silent:
-    #
-    #   (a) SA computes ``effective_robust_config`` from ``mode`` and
-    #       ``eval_noise_scale``; the MA copy passes the raw config, so an
-    #       obs-noise MA env would always run train-mode noise and could not
-    #       execute the robust branch's matched-eval / noise-scale protocol.
-    #   (b) SA applies FrameStacking *after* ConcatObservation and flattens to a
-    #       single vector.  The MA chain has no Concat, so a stacked Dict obs is
-    #       undefined and ``parallel_env`` slicing would silently mis-index it.
-    #
-    # Until the shared-chain refactor lands, fail loudly instead of producing
-    # plausible-but-wrong benchmark data.
+    for _ch in ("action", "reward"):
+        if robust_config.is_channel_active(_ch):
+            raise ValueError(
+                f"MA env {env_id!r}: underlying SA env {ma_spec.sa_env_id!r} has "
+                f"an active {_ch!r} robust channel, but the MA chain has no "
+                f"RobustWrapper — the noise would never be injected. Only clean "
+                f"or obs-noise SA envs are supported."
+            )
+
+    # ---- Guard 2: MA-review item 6, the two known SA/MA chain drifts ----
+    # (a) SA derives ``effective_robust_config`` from mode / eval_noise_scale;
+    #     this copy passes the raw config, so an obs-noise MA env would always
+    #     run train-mode noise while claiming matched-eval.
+    # (b) SA applies FrameStacking AFTER ConcatObservation. The MA chain has no
+    #     Concat, so a stacked Dict obs is undefined and parallel_env's slicing
+    #     would silently mis-index it.
+    # Until the shared-chain refactor lands, fail loudly.
     if robust_config.is_channel_active("obs"):
         sa_mode = getattr(sa_spec, "mode", None)
         if sa_mode is not None and str(sa_mode) != "train":
             raise ValueError(
-                f"MA env {env_id!r}: underlying SA env {ma_spec.sa_env_id!r} has "
+                f"MA env {env_id!r}: SA env {ma_spec.sa_env_id!r} has "
                 f"mode={sa_mode!r}, but the MA chain builder does not implement "
-                f"effective_robust_config() eval-noise scaling. Register the MA "
-                f"env over a train-mode SA env, or land the SA/MA chain-parity "
-                f"refactor (MA review item 6) first."
+                f"effective_robust_config() eval-noise scaling."
             )
     if env_config.frame_stack > 1:
         raise NotImplementedError(
             f"MA env {env_id!r}: frame_stack={env_config.frame_stack} is not "
             f"supported. The MA chain omits ConcatObservationWrapper, so "
             f"FrameStackingWrapper(flatten=True) would produce a stacked Dict "
-            f"observation that parallel_env's per-agent slicing cannot decode. "
-            f"Use frame_stack=1 for multi-agent envs."
+            f"observation that per-agent slicing cannot decode."
         )
 
     hand_specs = sa_spec.hand_specs
@@ -251,10 +235,6 @@ def make_parallel(
     # Sanity: each agent's hands now share the SAME key_range (= territory).
     # This is the Territorial-per-agent-clamp invariant.
 
-    base_env_name = sa_spec.base_env_name
-    robust_config = sa_spec.robust_config or RobustConfig()
-    task_config = sa_spec.task_config or TaskVariantConfig()
-    env_config = sa_spec.env_config or BenchmarkEnvConfig()
 
     # The env_builder closure — same as SA but stops before ConcatObservationWrapper.
     # CRITICAL: use ma_clamped_specs (per-agent clamps), not sa_spec.hand_specs

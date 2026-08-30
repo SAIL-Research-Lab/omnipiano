@@ -25,42 +25,6 @@ from omnipiano.multiagent.registration import (
     register_parallel,
 )
 
-_LAZY_ATTRS = {
-    "make_parallel":     "omnipiano.multiagent",
-    "register_parallel": "omnipiano.multiagent",
-    "list_parallel_envs":"omnipiano.multiagent",
-}
-
-
-def __getattr__(name: str):
-    """Lazily expose the multi-agent entrypoints promised by error messages.
-
-    ``omnipiano.envs.registration.make()`` tells users to call
-    ``omnipiano.make_parallel(...)``, and ``multi_agent_design.md`` § 4 documents
-    it as a top-level parallel entrypoint.  Importing it eagerly would make
-    PettingZoo a hard dependency of ``import omnipiano``, even though it is an
-    optional ``[marl]`` extra, so resolve it on first attribute access instead.
-    """
-    module_path = _LAZY_ATTRS.get(name)
-    if module_path is None:
-        raise AttributeError(f"module 'omnipiano' has no attribute {name!r}")
-    import importlib
-
-    try:
-        module = importlib.import_module(module_path)
-    except ImportError as exc:
-        raise ImportError(
-            f"omnipiano.{name} requires the multi-agent extra. "
-            f"Install it with: pip install -e '.[marl]'"
-        ) from exc
-    value = getattr(module, name)
-    globals()[name] = value          # cache; __getattr__ is not called again
-    return value
-
-
-def __dir__():
-    return sorted(set(globals()) | set(_LAZY_ATTRS))
-
 __all__ = [
     "AGENT_ASSIGNMENTS",
     "AgentDef",

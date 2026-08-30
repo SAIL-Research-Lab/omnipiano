@@ -548,6 +548,14 @@ class OmniPianoParallelEnv(ParallelEnv):
                     self._dict_observation_spaces[agent.name], agent_obs
                 )
                 
+            # CTDE: wrap BEFORE flattening, exactly once.
+            #
+            # gymnasium sorts Dict keys, so "global_state" precedes "own" and the
+            # flat layout is [global_state | own]. Because the `own` sub-dict is
+            # byte-identical to the non-CTDE observation, its flattened block is
+            # bit-identical to the IPPO observation -- which is what makes an
+            # IPPO/MAPPO comparison a single-factor ablation. Locked by
+            # global_state_test.test_own_block_matches_ippo_observation_bitwise.
             if self._include_global_state:
                 agent_obs = {
                     "global_state": self._build_global_state(dm_obs, agent.name),
