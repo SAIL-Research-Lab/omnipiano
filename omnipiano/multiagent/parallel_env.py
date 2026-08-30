@@ -542,26 +542,17 @@ class OmniPianoParallelEnv(ParallelEnv):
                 # prev_reward is a global scalar.
                 prev_reward = np.asarray(dm_obs["reward"], dtype=np.float32).reshape(1)
                 agent_obs["prev_reward"] = prev_reward
-
-            if self._flatten_obs:
-                agent_obs = gym.spaces.utils.flatten(
-                    self._dict_observation_spaces[agent.name], agent_obs
-                )
                 
-            # CTDE: wrap BEFORE flattening, exactly once.
-            #
-            # gymnasium sorts Dict keys, so "global_state" precedes "own" and the
-            # flat layout is [global_state | own]. Because the `own` sub-dict is
-            # byte-identical to the non-CTDE observation, its flattened block is
-            # bit-identical to the IPPO observation -- which is what makes an
-            # IPPO/MAPPO comparison a single-factor ablation. Locked by
-            # global_state_test.test_own_block_matches_ippo_observation_bitwise.
+            # CTDE: 在 flatten 之前包装 global_state，全程只 flatten 一次。
+            # gymnasium 对 Dict 的 key 排序 -> [global_state | own]，且 own 块
+            # 与 IPPO 观测逐字节相同（单因子消融的前提）。
             if self._include_global_state:
                 agent_obs = {
                     "global_state": self._build_global_state(dm_obs, agent.name),
                     "own": agent_obs,
                 }
 
+            # 唯一的一次 flatten，对齐 agent_obs 对应的那个 space。
             if self._flatten_obs:
                 agent_obs = gym.spaces.utils.flatten(
                     self._dict_observation_spaces[agent.name], agent_obs
