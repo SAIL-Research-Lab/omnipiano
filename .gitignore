@@ -35,5 +35,13 @@ __pycache__/
 # PIG dataset preprocessing artifacts (users run `robopianist preprocess` to generate)
 omnipiano/envs/robopianist/music/data/pig_single_finger/
 
+# Deprecated: experiments that did NOT run at BenchmarkProtocolConfig.gamma = 0.8,
+# and every figure derived from them. Kept locally for provenance, never shipped.
+# (Root is ignored by the `/*` rule above anyway; this line is here to be explicit.)
+/deprecated/
+
 # Whitelist .gitignore itself
 !.gitignore
+
+# local-only handoff docs (not part of the repo)
+/docs_local/

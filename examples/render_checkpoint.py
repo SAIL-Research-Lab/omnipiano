@@ -179,7 +179,14 @@ def main():
         "piano/back is the paper default; also available: "
         "piano/closeup, piano/left, piano/right, piano/egocentric).",
     )
+    parser.add_argument(
+        "--resolution",
+        default="480x640",
+        help="Render size HEIGHTxWIDTH (default 480x640, paper-same). "
+        "e.g. 960x1280 for a sharper full-keyboard topdown clip.",
+    )
     args = parser.parse_args()
+    rec_h, rec_w = (int(v) for v in args.resolution.lower().split("x"))
 
     # ---- algo selection -----------------------------------------------------
     detected = _detect_algo(args.ckpt)
@@ -210,6 +217,7 @@ def main():
         seed=args.seed,
         record_dir=out_dir,
         camera_id=args.camera,
+        record_resolution=(rec_h, rec_w),
     )
 
     # ---- shape sanity check before rolling out ------------------------------
