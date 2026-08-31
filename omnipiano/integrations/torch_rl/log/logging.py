@@ -7,6 +7,8 @@ import time
 from collections import deque
 from pathlib import Path
 
+from omnipiano.utils.info_keys import InfoKeys
+
 
 class TrainingEpisodeTracker:
     """Track SB3-style rolling episode return/length from collector batches."""
@@ -19,7 +21,7 @@ class TrainingEpisodeTracker:
 
     def update(self, batch) -> dict:
         traj_ids = batch["collector", "traj_ids"].detach().reshape(-1).cpu().tolist()
-        rewards = batch["next", "reward"].detach().reshape(-1).cpu().tolist()
+        rewards = (batch["next", InfoKeys.TASK_TRUE_REWARD].detach().reshape(-1).cpu().tolist())
         dones = batch["next", "done"].detach().reshape(-1).cpu().tolist()
         if not (len(traj_ids) == len(rewards) == len(dones)):
             raise RuntimeError(

@@ -63,6 +63,7 @@ class InfoKeys:
     TASK_KEY_PRESS_REWARD = "task/key_press_reward"
     TASK_SUSTAIN_REWARD = "task/sustain_reward"
 
+    TASK_TRUE_REWARD = "task/true_reward"
 class EpisodeInfoKeys:
     """Keys for episode-level aggregated metrics (injected at done)."""
     # Safety

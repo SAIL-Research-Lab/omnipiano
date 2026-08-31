@@ -40,13 +40,14 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 import numpy as np
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure as sb3_configure_logger
 from stable_baselines3.common.utils import get_latest_run_id
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from omnipiano import make
 from omnipiano.configs import BenchmarkProtocolConfig
+from omnipiano.integrations.sb3_reward_curve import make_vec_env
+from omnipiano.utils.info_keys import InfoKeys
 
 
 def _parse_net_arch(s: str) -> List[int]:
@@ -156,7 +157,7 @@ def _final_eval(
             while not done:
                 action, _ = model.predict(obs, deterministic=True)
                 obs, reward, terminated, truncated, info = env.step(action)
-                ep_return += float(reward)
+                ep_return += float(info[InfoKeys.TASK_TRUE_REWARD])
                 ep_length += 1
                 terminal_info = info
                 done = bool(terminated) or bool(truncated)

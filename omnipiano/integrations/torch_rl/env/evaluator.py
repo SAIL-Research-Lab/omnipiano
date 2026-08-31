@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from omnipiano.utils.info_keys import InfoKeys
+
 
 def evaluate_policy(
     policy,
@@ -20,7 +22,7 @@ def evaluate_policy(
         while not done:
             action = policy.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, terminal_info = env.step(action)
-            total += float(reward)
+            total += float(terminal_info[InfoKeys.TASK_TRUE_REWARD])
             length += 1
             done = bool(terminated or truncated)
         metrics = {

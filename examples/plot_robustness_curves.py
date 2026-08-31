@@ -34,8 +34,7 @@ import numpy as np
 
 # Metrics plotted vs eval_noise_scale.
 _F1_COL = "ep_f1"
-_RETURN_COL = "ep_return"
-_RETURN_TRUE_COL = "ep_return_true"
+_RETURN_COL = "ep_return_true"
 _SCALE_COL = "eval_noise_scale"
 
 
@@ -85,20 +84,16 @@ def _plot(series, out_path):
         s, m, sd = aggregate(rows, _F1_COL)
         if len(s):
             ax_f1.errorbar(s, m, yerr=sd, marker="o", capsize=3, label=label)
-        line = None  # bound per series; a stale binding would steal the
-        s, m, sd = aggregate(rows, _RETURN_COL)  # previous series' color
-        if len(s):
-            line = ax_ret.errorbar(s, m, yerr=sd, marker="o", capsize=3,
-                                   label=f"{label} (received)")
-        st, mt, _ = aggregate(rows, _RETURN_TRUE_COL)
+        st, mt, stdt = aggregate(rows, _RETURN_COL)
         if len(st):
-            color_kw = {"color": line[0].get_color()} if line is not None else {}
-            ax_ret.plot(st, mt, marker="x", linestyle="--",
-                        label=f"{label} (true)", **color_kw)
+            ax_ret.errorbar(
+                st, mt, yerr=stdt, marker="o", capsize=3,
+                label=label,
+            )
 
     ax_f1.set(xlabel="eval_noise_scale", ylabel="F1", title="F1 robustness")
-    ax_ret.set(xlabel="eval_noise_scale", ylabel="ep_return",
-               title="Return robustness (received vs true)")
+    ax_ret.set(xlabel="eval_noise_scale", ylabel="episode return",
+               title="Return robustness")
     for ax in (ax_f1, ax_ret):
         ax.grid(True, alpha=0.3)
         ax.legend(fontsize=8)

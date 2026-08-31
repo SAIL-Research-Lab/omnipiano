@@ -23,6 +23,7 @@ def make_env(
 
     import omnipiano
     from torchrl.envs import GymWrapper
+    from omnipiano.utils.info_keys import InfoKeys
 
     kwargs = {"seed": seed, "mode": mode, "log_dir": log_dir}
     if mode == "eval":
@@ -30,7 +31,7 @@ def make_env(
             1.0 if eval_noise_scale is None else eval_noise_scale
         )
     gym_env = omnipiano.make(env_id, **kwargs)
-    return GymWrapper(gym_env)
+    return GymWrapper(gym_env, info_keys=[InfoKeys.TASK_TRUE_REWARD],)
 
 
 def make_parallel_env(env_id: str, seed: int, n_envs: int):
