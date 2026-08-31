@@ -12,7 +12,7 @@ from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..env.observation import observation_indices
 from ..log.checkpoint import save_checkpoint
-from ..log.logging import ProgressLogger
+from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.networks import build_sac_modules
 from ..model.policy_adapter import TorchRLPolicyAdapter
 
@@ -142,26 +142,46 @@ def train_scpo(env_id, seed, run_dir, protocol, config: SCPOConfig,
     replay = make_replay_buffer(config.buffer_size, config.batch_size)
     collector = make_collector(train_env, actor, config.n_envs, config.total_env_steps, config.device, config.learning_starts)
     model_spec = {"observation_dim": int(obs_dim), "action_dim": int(action_dim), "action_low": action_spec.space.low.tolist(), "action_high": action_spec.space.high.tolist(), "hidden_sizes": list(hidden_sizes)}
-    logger = ProgressLogger(run_dir / "progress.csv")
+    logger = ProgressLogger(run_dir / "progress.csv", sb3_family="sac")
+    episode_tracker = TrainingEpisodeTracker()
+    update_steps = 0
     env_steps = 0; next_eval = protocol.eval_freq_env_steps; checkpoint_index = 0
     checkpoint_steps = sorted(checkpoint_steps)
     for batch in collector:
-        collected = batch_env_steps(batch); env_steps += collected; replay.extend(batch.reshape(-1).cpu())
+        collected = batch_env_steps(batch); env_steps += collected
+        rollout_stats = episode_tracker.update(batch)
+        replay.extend(batch.reshape(-1).cpu())
         latest = {"loss_actor": float("nan"), "loss_qvalue": float("nan"), "loss_alpha": float("nan"), "alpha": float("nan"), "entropy": float("nan")}
         if env_steps >= config.learning_starts and len(replay) >= config.batch_size:
             for _ in range(collected * config.utd):
                 losses = loss_module(replay.sample().to(config.device))
                 total = losses["loss_actor"] + losses["loss_qvalue"] + losses["loss_alpha"]
                 optimizer.zero_grad(); total.backward(); optimizer.step(); target_updater.step()
+                update_steps += 1
                 latest = {key: float(value.detach().mean()) for key, value in losses.items()}
             collector.update_policy_weights_()
-        logger.write({"env_steps": env_steps, "replay_size": len(replay), **latest,
-                      "state_gradient_l1": float(loss_module.last_gradient_l1),
-                      "state_gradient_penalty": float(loss_module.last_penalty)})
+        eval_stats = {
+            "eval/mean_reward": float("nan"),
+            "eval/mean_ep_length": float("nan"),
+        }
+        did_eval = False
         if env_steps >= next_eval:
             result = evaluate_policy(TorchRLPolicyAdapter(actor, model_spec, config.device), env_id, periodic_eval_env, seed + 10000, protocol.num_eval_eps)
             result["training_step"] = env_steps; write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
+            eval_stats.update({
+                "eval/mean_reward": result["summary"]["return_mean"],
+                "eval/mean_ep_length": result["summary"]["length_mean"],
+            })
+            did_eval = True
             while next_eval <= env_steps: next_eval += protocol.eval_freq_env_steps
+        logger.write({"env_steps": env_steps, **rollout_stats,
+                      "replay_size": len(replay),
+                      "learning_rate": config.learning_rate,
+                      "n_updates": update_steps, **latest,
+                      "state_gradient_l1": float(loss_module.last_gradient_l1),
+                      "state_gradient_penalty": float(loss_module.last_penalty),
+                      **eval_stats},
+                     force=did_eval)
         while checkpoint_index < len(checkpoint_steps) and env_steps >= checkpoint_steps[checkpoint_index]:
             target = checkpoint_steps[checkpoint_index]; save_checkpoint(run_dir / "checkpoints" / f"checkpoint_{target}", actor=actor, model_spec=model_spec); checkpoint_index += 1
         if env_steps >= config.total_env_steps: break

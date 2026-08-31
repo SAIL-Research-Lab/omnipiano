@@ -11,7 +11,7 @@ dm_env layer:
     suite.load_with_task(OmniPianoTask, stretch=, shift=)
     → EpisodeStatisticsWrapper
     → [PianoSoundVideoWrapper if record_dir]
-    → MidiEvaluationWrapper
+    → [MidiEvaluationWrapper if mode == "eval"]
     → [DmEnvObsNoiseWrapper if robust_config obs channel active]
     → [ObservationActionRewardWrapper if action_reward_observation]
     → ConcatObservationWrapper           # Dict → flat ndarray
@@ -23,7 +23,7 @@ gym boundary:
     DmEnvToGymnasium  (custom adapter — no shimmy, no monkey-patch)
 
 gym layer (OmniPiano modular wrappers):
-    → MetricsWrapper           # task reward terms + episode-end musical metrics → info
+    → MetricsWrapper           # reward terms; musical metrics only in eval
     → SafetyWrapper            # constraint costs → info
     → RobustWrapper            # action noise (gym layer) + obs noise reporting
     → [SafeRecordEpisodeStatistics if mode == "eval" and log_dir set]
@@ -462,10 +462,11 @@ def make(
                 width=record_width,
             )
 
-        # MidiEvaluationWrapper is required by MetricsWrapper's
-        # episode-end branch (it calls find_dm_env_wrapper(dm_env,
-        # MidiEvaluationWrapper)). Always include it.
-        env = MidiEvaluationWrapper(env, deque_size=1)
+        # Musical P/R/F1 is evaluation-only. Training consumes scalar reward
+        # directly and does not use these expensive per-timestep sklearn
+        # metrics, so its environment omits MidiEvaluationWrapper.
+        if mode == "eval":
+            env = MidiEvaluationWrapper(env, deque_size=1)
 
         # Per-key obs noise (only when ObservationRobust task requests it).
         # Must come BEFORE ConcatObservationWrapper so it can pick keys
@@ -522,7 +523,10 @@ def make(
     # 4. gym layer — OmniPiano modular wrappers
     #    Order: Metrics (innermost) → Safety (middle) → Robust (outermost)
     # ------------------------------------------------------------------
-    env = MetricsWrapper(gym_env)
+    env = MetricsWrapper(
+        gym_env,
+        include_musical_metrics=(mode == "eval"),
+    )
     env = SafetyWrapper(env, config=safety_config)
     env = RobustWrapper(env, config=effective_robust_config)
 

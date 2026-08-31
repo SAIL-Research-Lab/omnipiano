@@ -11,7 +11,7 @@ from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..log.checkpoint import save_checkpoint
-from ..log.logging import ProgressLogger
+from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.eppo.evidential import (
     build_evidential_critic,
     nig_loss,
@@ -189,7 +189,9 @@ def train_eppo(
     actor_optimizer = torch.optim.Adam(actor.parameters(), lr=config.learning_rate)
     critic_optimizer = torch.optim.Adam(critic.parameters(), lr=config.learning_rate)
     minibatches = make_replay_buffer(rollout_size, config.batch_size)
-    logger = ProgressLogger(run_dir / "progress.csv")
+    logger = ProgressLogger(run_dir / "progress.csv", sb3_family="ppo")
+    episode_tracker = TrainingEpisodeTracker()
+    update_steps = 0
     env_steps = 0
     next_eval = protocol.eval_freq_env_steps
     checkpoint_index = 0
@@ -198,6 +200,7 @@ def train_eppo(
         for rollout in collector:
             rollout = rollout.to(config.device)
             env_steps += batch_env_steps(rollout)
+            rollout_stats = episode_tracker.update(rollout)
             rollout.del_("state_value")
             diagnostics = _advantages(rollout, critic, config)
             minibatches.empty()
@@ -226,8 +229,13 @@ def train_eppo(
                     "value_nll": float(value_nll.detach()),
                     "evidential_regularizer": float(regularizer.detach()),
                 }
-            logger.write({"env_steps": env_steps, **latest, **diagnostics})
+            update_steps += config.n_epochs
             collector.update_policy_weights_()
+            eval_stats = {
+                "eval/mean_reward": float("nan"),
+                "eval/mean_ep_length": float("nan"),
+            }
+            did_eval = False
             if env_steps >= next_eval:
                 adapter = TorchRLPolicyAdapter(actor, model_spec, config.device)
                 result = evaluate_policy(
@@ -236,8 +244,23 @@ def train_eppo(
                 )
                 result["training_step"] = env_steps
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
+                eval_stats.update({
+                    "eval/mean_reward": result["summary"]["return_mean"],
+                    "eval/mean_ep_length": result["summary"]["length_mean"],
+                })
+                did_eval = True
                 while next_eval <= env_steps:
                     next_eval += protocol.eval_freq_env_steps
+            logger.write({
+                "env_steps": env_steps,
+                **rollout_stats,
+                "learning_rate": config.learning_rate,
+                "n_updates": update_steps,
+                "clip_range": config.clip_epsilon,
+                **latest,
+                **diagnostics,
+                **eval_stats,
+            }, force=did_eval)
             while checkpoint_index < len(checkpoint_steps) and env_steps >= checkpoint_steps[checkpoint_index]:
                 target = checkpoint_steps[checkpoint_index]
                 save_checkpoint(

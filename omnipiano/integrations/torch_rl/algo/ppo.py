@@ -11,7 +11,7 @@ from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..log.checkpoint import save_checkpoint
-from ..log.logging import ProgressLogger
+from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.networks import build_ppo_modules
 from ..model.policy_adapter import TorchRLPolicyAdapter
 
@@ -88,7 +88,9 @@ def train_ppo(
     loss_module.to(config.device)
     optimizer = torch.optim.Adam(loss_module.parameters(), lr=config.learning_rate)
     minibatches = make_replay_buffer(rollout_size, config.batch_size)
-    logger = ProgressLogger(run_dir / "progress.csv")
+    logger = ProgressLogger(run_dir / "progress.csv", sb3_family="ppo")
+    episode_tracker = TrainingEpisodeTracker()
+    update_steps = 0
     env_steps = 0
     next_eval = protocol.eval_freq_env_steps
     checkpoint_index = 0
@@ -97,6 +99,7 @@ def train_ppo(
         for rollout in collector:
             rollout = rollout.to(config.device)
             env_steps += batch_env_steps(rollout)
+            rollout_stats = episode_tracker.update(rollout)
             # GAE evaluates current and next observations together; remove the
             # collector-side value so both sides have the same input keys.
             rollout.del_("state_value")
@@ -116,8 +119,24 @@ def train_ppo(
                 total_loss.backward()
                 optimizer.step()
                 latest = {key: float(value.detach().mean()) for key, value in losses.items()}
-            logger.write({"env_steps": env_steps, **latest})
+                latest["loss"] = float(total_loss.detach().mean())
+            update_steps += config.n_epochs
+            if "state_value" in rollout.keys() and "value_target" in rollout.keys():
+                predicted = rollout["state_value"].detach()
+                target = rollout["value_target"].detach()
+                target_variance = target.var(unbiased=False)
+                latest["explained_variance"] = float(
+                    1.0 - (target - predicted).var(unbiased=False)
+                    / target_variance.clamp_min(1e-8)
+                )
+            if "scale" in rollout.keys():
+                latest["std"] = float(rollout["scale"].detach().mean())
             collector.update_policy_weights_()
+            eval_stats = {
+                "eval/mean_reward": float("nan"),
+                "eval/mean_ep_length": float("nan"),
+            }
+            did_eval = False
             if env_steps >= next_eval:
                 adapter = TorchRLPolicyAdapter(actor, model_spec, config.device)
                 result = evaluate_policy(
@@ -126,8 +145,22 @@ def train_ppo(
                 )
                 result["training_step"] = env_steps
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
+                eval_stats.update({
+                    "eval/mean_reward": result["summary"]["return_mean"],
+                    "eval/mean_ep_length": result["summary"]["length_mean"],
+                })
+                did_eval = True
                 while next_eval <= env_steps:
                     next_eval += protocol.eval_freq_env_steps
+            logger.write({
+                "env_steps": env_steps,
+                **rollout_stats,
+                "learning_rate": config.learning_rate,
+                "n_updates": update_steps,
+                "clip_range": config.clip_epsilon,
+                **latest,
+                **eval_stats,
+            }, force=did_eval)
             while (
                 checkpoint_index < len(checkpoint_steps)
                 and env_steps >= checkpoint_steps[checkpoint_index]

@@ -11,7 +11,7 @@ from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..log.checkpoint import save_checkpoint
-from ..log.logging import ProgressLogger
+from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.networks import build_sac_modules
 from ..model.policy_adapter import TorchRLPolicyAdapter
 
@@ -80,7 +80,9 @@ def train_sac(
         train_env, actor, config.n_envs, config.total_env_steps, config.device,
         config.learning_starts,
     )
-    logger = ProgressLogger(run_dir / "progress.csv")
+    logger = ProgressLogger(run_dir / "progress.csv", sb3_family="sac")
+    episode_tracker = TrainingEpisodeTracker()
+    update_steps = 0
     env_steps = 0
     next_eval = protocol.eval_freq_env_steps
     checkpoint_index = 0
@@ -89,6 +91,7 @@ def train_sac(
         for batch in collector:
             collected = batch_env_steps(batch)
             env_steps += collected
+            rollout_stats = episode_tracker.update(batch)
             replay.extend(batch.reshape(-1).cpu())
             latest = {
                 "loss_actor": float("nan"),
@@ -108,11 +111,16 @@ def train_sac(
                     total_loss.backward()
                     optimizer.step()
                     target_updater.step()
+                    update_steps += 1
                     latest = {
                         key: float(value.detach().mean()) for key, value in losses.items()
                     }
                 collector.update_policy_weights_()
-            logger.write({"env_steps": env_steps, "replay_size": len(replay), **latest})
+            eval_stats = {
+                "eval/mean_reward": float("nan"),
+                "eval/mean_ep_length": float("nan"),
+            }
+            did_eval = False
             if env_steps >= next_eval:
                 adapter = TorchRLPolicyAdapter(actor, model_spec, config.device)
                 result = evaluate_policy(
@@ -121,8 +129,22 @@ def train_sac(
                 )
                 result["training_step"] = env_steps
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
+                eval_stats.update({
+                    "eval/mean_reward": result["summary"]["return_mean"],
+                    "eval/mean_ep_length": result["summary"]["length_mean"],
+                })
+                did_eval = True
                 while next_eval <= env_steps:
                     next_eval += protocol.eval_freq_env_steps
+            logger.write({
+                "env_steps": env_steps,
+                **rollout_stats,
+                "replay_size": len(replay),
+                "learning_rate": config.learning_rate,
+                "n_updates": update_steps,
+                **latest,
+                **eval_stats,
+            }, force=did_eval)
             while (
                 checkpoint_index < len(checkpoint_steps)
                 and env_steps >= checkpoint_steps[checkpoint_index]

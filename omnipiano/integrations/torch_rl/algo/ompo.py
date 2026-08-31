@@ -13,7 +13,7 @@ from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..env.observation import observation_indices
 from ..log.checkpoint import save_checkpoint
-from ..log.logging import ProgressLogger
+from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.ompo.occupancy import (
     TransitionDiscriminator,
     TwinQNetwork,
@@ -238,7 +238,8 @@ def train_ompo(
         train_env, actor, config.n_envs, config.total_env_steps,
         config.device, config.learning_starts,
     )
-    logger = ProgressLogger(run_dir / "progress.csv")
+    logger = ProgressLogger(run_dir / "progress.csv", sb3_family="sac")
+    episode_tracker = TrainingEpisodeTracker()
     model_spec = {
         "model_type": "ompo",
         "observation_dim": int(observation_dim),
@@ -256,6 +257,7 @@ def train_ompo(
         for batch in collector:
             collected = batch_env_steps(batch)
             env_steps += collected
+            rollout_stats = episode_tracker.update(batch)
             flat = batch.reshape(-1).cpu()
             flat["sample_step"] = torch.full(flat.batch_size, env_steps, dtype=torch.int64)
             global_buffer.extend(flat)
@@ -333,11 +335,11 @@ def train_ompo(
                 "global_buffer_age": float(ages.mean()),
                 "local_buffer_age": float(local_age),
             }
-            logger.write(
-                {"env_steps": env_steps, "global_buffer_size": len(global_buffer),
-                 "local_buffer_size": len(local_buffer), **agent_metrics,
-                 **discriminator_metrics, **diagnostics}
-            )
+            eval_stats = {
+                "eval/mean_reward": float("nan"),
+                "eval/mean_ep_length": float("nan"),
+            }
+            did_eval = False
             if env_steps >= next_eval:
                 adapter = TorchRLPolicyAdapter(actor, model_spec, config.device)
                 result = evaluate_policy(
@@ -346,8 +348,20 @@ def train_ompo(
                 )
                 result["training_step"] = env_steps
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
+                eval_stats.update({
+                    "eval/mean_reward": result["summary"]["return_mean"],
+                    "eval/mean_ep_length": result["summary"]["length_mean"],
+                })
+                did_eval = True
                 while next_eval <= env_steps:
                     next_eval += protocol.eval_freq_env_steps
+            logger.write(
+                {"env_steps": env_steps, "global_buffer_size": len(global_buffer),
+                 **rollout_stats, "local_buffer_size": len(local_buffer), **agent_metrics,
+                 "learning_rate": config.learning_rate, "n_updates": update_steps,
+                 **discriminator_metrics, **diagnostics, **eval_stats},
+                force=did_eval,
+            )
             while checkpoint_index < len(checkpoint_steps) and env_steps >= checkpoint_steps[checkpoint_index]:
                 target = checkpoint_steps[checkpoint_index]
                 save_checkpoint(

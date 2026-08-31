@@ -11,7 +11,7 @@ from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
 from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..log.checkpoint import save_checkpoint
-from ..log.logging import ProgressLogger
+from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.a2p_sac.adversarial import (
     A2PCollectionPolicy,
     AdaptiveCoefficient,
@@ -214,7 +214,8 @@ def train_a2p_sac(
         train_env, collection_policy, config.n_envs, config.total_env_steps,
         config.device, config.learning_starts,
     )
-    logger = ProgressLogger(run_dir / "progress.csv")
+    logger = ProgressLogger(run_dir / "progress.csv", sb3_family="sac")
+    episode_tracker = TrainingEpisodeTracker()
     model_spec = {
         "observation_dim": int(obs_dim),
         "action_dim": int(action_dim),
@@ -231,6 +232,7 @@ def train_a2p_sac(
         for batch in collector:
             collected = batch_env_steps(batch)
             env_steps += collected
+            rollout_stats = episode_tracker.update(batch)
             replay.extend(batch.reshape(-1).cpu())
             latest = {
                 "loss_actor": float("nan"), "loss_qvalue": float("nan"),
@@ -263,7 +265,11 @@ def train_a2p_sac(
                 "executed_delta_l2": float(batch.get("executed_delta", torch.zeros_like(batch["action"])).norm(dim=-1).mean()),
                 "sustain_adversarial_delta": float(batch.get("executed_delta", torch.zeros_like(batch["action"]))[..., -1].abs().mean()),
             }
-            logger.write({"env_steps": env_steps, "replay_size": len(replay), **latest, **diagnostics})
+            eval_stats = {
+                "eval/mean_reward": float("nan"),
+                "eval/mean_ep_length": float("nan"),
+            }
+            did_eval = False
             if env_steps >= next_eval:
                 adapter = TorchRLPolicyAdapter(actor, model_spec, config.device)
                 result = evaluate_policy(
@@ -272,8 +278,23 @@ def train_a2p_sac(
                 )
                 result["training_step"] = env_steps
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
+                eval_stats.update({
+                    "eval/mean_reward": result["summary"]["return_mean"],
+                    "eval/mean_ep_length": result["summary"]["length_mean"],
+                })
+                did_eval = True
                 while next_eval <= env_steps:
                     next_eval += protocol.eval_freq_env_steps
+            logger.write({
+                "env_steps": env_steps,
+                **rollout_stats,
+                "replay_size": len(replay),
+                "learning_rate": config.learning_rate,
+                "n_updates": update_steps,
+                **latest,
+                **diagnostics,
+                **eval_stats,
+            }, force=did_eval)
             while checkpoint_index < len(checkpoint_steps) and env_steps >= checkpoint_steps[checkpoint_index]:
                 target = checkpoint_steps[checkpoint_index]
                 save_checkpoint(

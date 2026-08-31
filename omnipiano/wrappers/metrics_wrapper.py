@@ -15,8 +15,9 @@ class MetricsWrapper(gym.Wrapper):
     consistent logging of base performance metrics, regardless of safety/robustness configs.
     """
     
-    def __init__(self, env):
+    def __init__(self, env, include_musical_metrics=True):
         super().__init__(env)
+        self.include_musical_metrics = include_musical_metrics
         self.ep_reward_terms = {}
         
     def reset(self, **kwargs):
@@ -70,19 +71,24 @@ class MetricsWrapper(gym.Wrapper):
                     )
                 info[getattr(EpisodeInfoKeys, attr_name)] = term_val
                 
-            # Musical metrics
-            dm_env = get_dm_env_from_gym(self.env)
-            midi_eval_wrapper = find_dm_env_wrapper(dm_env, MidiEvaluationWrapper)
-            if midi_eval_wrapper is None:
-                raise RuntimeError(
-                    "MetricsWrapper expects MidiEvaluationWrapper in dm_env chain."
+            # Musical metrics are evaluation-only. Training keeps reward-term
+            # decomposition but deliberately omits MidiEvaluationWrapper.
+            if self.include_musical_metrics:
+                dm_env = get_dm_env_from_gym(self.env)
+                midi_eval_wrapper = find_dm_env_wrapper(
+                    dm_env, MidiEvaluationWrapper
                 )
-            metrics = midi_eval_wrapper.get_musical_metrics()
-            info[EpisodeInfoKeys.EPISODE_TASK_F1] = metrics['f1']
-            info[EpisodeInfoKeys.EPISODE_TASK_KEY_PRECISION] = metrics['precision']
-            info[EpisodeInfoKeys.EPISODE_TASK_KEY_RECALL] = metrics['recall']
-            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_F1] = metrics['sustain_f1']
-            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_PRECISION] = metrics['sustain_precision']
-            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_RECALL] = metrics['sustain_recall']
+                if midi_eval_wrapper is None:
+                    raise RuntimeError(
+                        "MetricsWrapper expects MidiEvaluationWrapper in "
+                        "the eval dm_env chain."
+                    )
+                metrics = midi_eval_wrapper.get_musical_metrics()
+                info[EpisodeInfoKeys.EPISODE_TASK_F1] = metrics['f1']
+                info[EpisodeInfoKeys.EPISODE_TASK_KEY_PRECISION] = metrics['precision']
+                info[EpisodeInfoKeys.EPISODE_TASK_KEY_RECALL] = metrics['recall']
+                info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_F1] = metrics['sustain_f1']
+                info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_PRECISION] = metrics['sustain_precision']
+                info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_RECALL] = metrics['sustain_recall']
                 
         return obs, reward, terminated, truncated, info

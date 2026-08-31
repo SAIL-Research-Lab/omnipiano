@@ -184,10 +184,6 @@ _CSV_HEADER = [
 _ROBUST_EVAL_COLS = [
     "eval_noise_scale", "ep_return_true",
     "ep_noise_action_l2", "ep_noise_obs_l2", "ep_noise_reward",
-    "ep_noise_gravity", "ep_noise_contact_friction",
-    "env_gravity_z", "env_contact_friction_sliding",
-    "env_hand_position_l2", "env_hand_position_max_l2",
-    "env_hand_position_offsets",
 ]
 _CSV_HEADER = _CSV_HEADER + _ROBUST_EVAL_COLS
 
@@ -368,7 +364,6 @@ def replay_all_checkpoints(
                 row.extend([
                     1.0, ep_return_true,
                     0.0, 0.0, 0.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "{}",
                 ])
                 writer.writerow(row)
 
