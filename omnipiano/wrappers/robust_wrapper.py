@@ -87,11 +87,6 @@ class RobustWrapper(gym.Wrapper):
         # docstring).
         self._reward_slice = self._compute_reward_slice()
 
-    def reset(self, **kwargs):
-        obs, info = self.env.reset(**kwargs)
-        info[InfoKeys.TASK_TRUE_REWARD] = 0.0
-        return obs, info
-
     # ------------------------------------------------------------------
     # Reward-slot override — construction-time layout computation
     # ------------------------------------------------------------------
@@ -195,8 +190,6 @@ class RobustWrapper(gym.Wrapper):
             )
 
         obs, reward, terminated, truncated, info = self.env.step(action)
-        info[InfoKeys.TASK_TRUE_REWARD] = float(reward)
-
         # 2. Obs noise — already injected at dm_env layer by
         #    DmEnvObsNoiseWrapper.step (if present). Just read its L2
         #    snapshot for logging.
