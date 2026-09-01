@@ -6,9 +6,11 @@ future baseline are guaranteed to differ *only* where their spec differs.
 
 Canonical invocation::
 
-    python -m omnipiano.multiagent.train --algo mappo \\
-        --env-id OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0 \\
-        --seed 0 --total-steps 5000000
+    python -m omnipiano.multiagent.train --algo mappo --seed 0
+
+All numerical defaults come from ``marl_train_config.json``. Pass
+``--config path/to/variant.json`` for an experiment configuration; explicit
+CLI flags override the selected JSON values.
 
 Every deviation from an RLlib default or from ``BenchmarkProtocolConfig`` is
 recorded with its rationale in ``run_config.json``.
@@ -50,12 +52,191 @@ from omnipiano.multiagent._ippo_common import (
     write_json,
 )
 
-DEFAULT_ENV_ID = "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0"
+DEFAULT_TRAIN_CONFIG_PATH = Path(__file__).with_name("marl_train_config.json")
 RLLIB_TARGET_VERSION = "2.55.1"
-# One empty sampling iteration is a slow-start symptom, not a bug: RLlib
-# DISCARDS a runner's result when it exceeds sample_timeout_s. Several in a row
-# means sampling is genuinely broken.
-MAX_SAMPLING_STALLS = 3
+
+# JSON keys are deliberately mapped to argparse destinations in one place.
+# Unknown keys are rejected, so a typo in a long cluster run cannot silently
+# fall back to some other default.
+_CONFIG_FIELDS: Dict[str, Dict[str, str]] = {
+    "experiment": {
+        "algo": "algo", "env_id": "env_id", "seed": "seed",
+        "run_dir": "run_dir",
+    },
+    "protocol": {
+        "total_steps": "total_steps", "gamma": "gamma",
+        "eval_freq": "eval_freq", "num_eval_eps": "num_eval_eps",
+        "eval_seed_offset": "eval_seed_offset",
+    },
+    "ppo": {
+        "train_batch_size": "train_batch_size",
+        "minibatch_size": "minibatch_size", "num_epochs": "num_epochs",
+        "lr": "lr", "critic_lr": "critic_lr",
+        "adam_epsilon": "adam_epsilon", "gae_lambda": "gae_lambda",
+        "clip_param": "clip_param", "vf_clip_param": "vf_clip_param",
+        "vf_loss_coeff": "vf_loss_coeff",
+        "entropy_coeff": "entropy_coeff", "use_kl_loss": "use_kl_loss",
+        "grad_clip": "grad_clip", "grad_clip_by": "grad_clip_by",
+    },
+    "network": {
+        "hidden_sizes": "hidden_sizes", "activation": "activation",
+        "hidden_orthogonal_gain": "hidden_orthogonal_gain",
+        "policy_output_gain": "policy_output_gain",
+        "value_output_gain": "value_output_gain",
+        "initial_log_std": "initial_log_std",
+        "log_std_min": "log_std_min", "log_std_max": "log_std_max",
+        "input_layer_norm": "input_layer_norm", "value_norm": "value_norm",
+        "value_norm_beta": "value_norm_beta",
+        "value_norm_epsilon": "value_norm_epsilon",
+        "value_norm_variance_floor": "value_norm_variance_floor",
+    },
+    "compute": {
+        "num_workers": "num_workers",
+        "num_cpus_per_env_runner": "num_cpus_per_env_runner",
+        "num_learners": "num_learners",
+        "num_gpus_per_learner": "num_gpus_per_learner",
+        "ray_num_cpus": "ray_num_cpus",
+        "sample_timeout_s": "sample_timeout_s",
+        "max_sampling_stalls": "max_sampling_stalls",
+        "ray_log_to_driver": "ray_log_to_driver",
+        "checkpoint_freq": "checkpoint_freq",
+        "log_every_iters": "log_every_iters", "smoke_test": "smoke_test",
+    },
+    "wandb": {
+        "mode": "wandb_mode", "entity": "wandb_entity",
+        "project": "wandb_project", "group": "wandb_group",
+        "name": "wandb_name", "tags": "wandb_tags",
+        "notes": "wandb_notes",
+        "upload_artifacts": "wandb_upload_artifacts",
+    },
+}
+
+
+def _resolve_train_config_path(path: os.PathLike[str] | str) -> Path:
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    candidate = candidate.resolve()
+    if not candidate.is_file():
+        raise FileNotFoundError(f"MARL training config does not exist: {candidate}")
+    return candidate
+
+
+def _load_train_config(
+    path: os.PathLike[str] | str,
+    *,
+    algo_override: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Path]:
+    """Load, validate and flatten the canonical JSON configuration."""
+    config_path = _resolve_train_config_path(path)
+    try:
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON in {config_path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"{config_path}: top-level JSON value must be an object")
+    if raw.get("schema_version") != 1:
+        raise ValueError(
+            f"{config_path}: unsupported schema_version "
+            f"{raw.get('schema_version')!r}; expected 1"
+        )
+
+    allowed_top = {
+        "schema_version", "description", *_CONFIG_FIELDS,
+        "smoke_test_overrides", "algorithm_overrides",
+    }
+    unknown_top = sorted(set(raw) - allowed_top)
+    if unknown_top:
+        raise ValueError(f"{config_path}: unknown top-level keys {unknown_top}")
+
+    defaults: Dict[str, Any] = {}
+
+    def _merge_sections(container: Mapping[str, Any], *, label: str) -> None:
+        unknown_sections = sorted(set(container) - set(_CONFIG_FIELDS))
+        if unknown_sections:
+            raise ValueError(f"{config_path}: {label} has unknown sections "
+                             f"{unknown_sections}")
+        for section, values in container.items():
+            if not isinstance(values, Mapping):
+                raise ValueError(
+                    f"{config_path}: {label}.{section} must be an object"
+                )
+            field_map = _CONFIG_FIELDS[section]
+            unknown_fields = sorted(set(values) - set(field_map))
+            if unknown_fields:
+                raise ValueError(
+                    f"{config_path}: {label}.{section} has unknown fields "
+                    f"{unknown_fields}"
+                )
+            if label == "defaults":
+                missing_fields = sorted(set(field_map) - set(values))
+                if missing_fields:
+                    raise ValueError(
+                        f"{config_path}: defaults.{section} is missing fields "
+                        f"{missing_fields}"
+                    )
+            for key, value in values.items():
+                destination = field_map[key]
+                if label.startswith("algorithm_overrides") and destination == "algo":
+                    raise ValueError(
+                        f"{config_path}: an algorithm override cannot change algo"
+                    )
+                defaults[destination] = value
+
+    base_sections: Dict[str, Any] = {}
+    for section in _CONFIG_FIELDS:
+        if section not in raw:
+            raise ValueError(f"{config_path}: missing required section {section!r}")
+        base_sections[section] = raw[section]
+    _merge_sections(base_sections, label="defaults")
+
+    configured_algo = str(defaults.get("algo", ""))
+    if configured_algo not in list_algos():
+        raise ValueError(
+            f"{config_path}: unknown configured algorithm {configured_algo!r}; "
+            f"registered algorithms are {list_algos()}"
+        )
+    selected_algo = str(algo_override or configured_algo)
+    if selected_algo not in list_algos():
+        raise ValueError(
+            f"unknown --algo {selected_algo!r}; registered algorithms are "
+            f"{list_algos()}"
+        )
+    algorithm_overrides = raw.get("algorithm_overrides", {})
+    if not isinstance(algorithm_overrides, Mapping):
+        raise ValueError(f"{config_path}: algorithm_overrides must be an object")
+    unknown_algorithms = sorted(set(algorithm_overrides) - set(list_algos()))
+    if unknown_algorithms:
+        raise ValueError(
+            f"{config_path}: overrides reference unknown algorithms "
+            f"{unknown_algorithms}"
+        )
+    selected_overrides = algorithm_overrides.get(selected_algo, {})
+    if not isinstance(selected_overrides, Mapping):
+        raise ValueError(
+            f"{config_path}: algorithm_overrides.{selected_algo} must be an object"
+        )
+    _merge_sections(
+        selected_overrides, label=f"algorithm_overrides.{selected_algo}"
+    )
+    # A CLI --algo chooses the registry entry and its JSON overrides without
+    # rewriting the canonical experiment default.
+    defaults["algo"] = selected_algo
+
+    smoke_overrides = raw.get("smoke_test_overrides", {})
+    if not isinstance(smoke_overrides, Mapping):
+        raise ValueError(f"{config_path}: smoke_test_overrides must be an object")
+    valid_destinations = {
+        destination
+        for fields in _CONFIG_FIELDS.values()
+        for destination in fields.values()
+    }
+    unknown_smoke = sorted(set(smoke_overrides) - valid_destinations)
+    if unknown_smoke:
+        raise ValueError(
+            f"{config_path}: smoke_test_overrides has unknown fields {unknown_smoke}"
+        )
+    return defaults, dict(smoke_overrides), raw, config_path
 
 def _install_sigterm_as_interrupt() -> None:
     """Route SIGTERM through the same graceful path as Ctrl-C.
@@ -86,95 +267,194 @@ def _install_sigterm_as_interrupt() -> None:
 # ===========================================================================
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
+def build_arg_parser(
+    config_path: Optional[os.PathLike[str] | str] = None,
+    *,
+    algo_override: Optional[str] = None,
+) -> argparse.ArgumentParser:
+    defaults, smoke_overrides, config_snapshot, resolved_config_path = (
+        _load_train_config(
+            config_path or DEFAULT_TRAIN_CONFIG_PATH,
+            algo_override=algo_override,
+        )
+    )
     proto = BenchmarkProtocolConfig()
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    p.set_defaults(
+        _smoke_test_overrides=smoke_overrides,
+        _training_config_snapshot=config_snapshot,
+        _training_config_path=str(resolved_config_path),
+    )
 
     core = p.add_argument_group("experiment identity")
-    core.add_argument("--algo", default="ippo", choices=list_algos(),
+    core.add_argument("--config", default=str(resolved_config_path),
+                     help="MARL JSON config. CLI flags override its selected values.")
+    core.add_argument("--algo", default=defaults["algo"], choices=list_algos(),
                      help="Registered baseline; see --list-algos.")
     core.add_argument("--list-algos", action="store_true",
                      help="Print the algorithm registry and exit.")
     core.add_argument("--list-envs", action="store_true",
                      help="Print every registered multi-agent env id and exit.")
-    core.add_argument("--env-id", default=DEFAULT_ENV_ID)
-    core.add_argument("--seed", type=int, default=proto.seed,
+    core.add_argument("--env-id", default=defaults["env_id"])
+    core.add_argument("--seed", type=int, default=defaults["seed"],
                      help=f"One training seed. Protocol replication set: {proto.seeds}.")
-    core.add_argument("--run-dir", "--save-dir", dest="run_dir", default=None,
+    core.add_argument("--run-dir", "--save-dir", dest="run_dir",
+                     default=defaults["run_dir"],
                      help="Run artifact directory (repo-relative paths allowed).")
 
     proto_g = p.add_argument_group("protocol (BenchmarkProtocolConfig)")
-    proto_g.add_argument("--total-steps", type=int, default=proto.total_env_steps,
+    proto_g.add_argument("--total-steps", type=int, default=defaults["total_steps"],
                          help=f"ENVIRONMENT-step budget (protocol {proto.total_env_steps:,}).")
-    proto_g.add_argument("--gamma", type=float, default=proto.gamma)
-    proto_g.add_argument("--eval-freq", type=int, default=proto.eval_freq_env_steps,
+    proto_g.add_argument("--gamma", type=float, default=defaults["gamma"])
+    proto_g.add_argument("--eval-freq", type=int, default=defaults["eval_freq"],
                          help="Deterministic-evaluation cadence in lifetime env steps.")
-    proto_g.add_argument("--num-eval-eps", type=int, default=proto.num_eval_eps)
-    proto_g.add_argument("--eval-seed-offset", type=int, default=10_000)
+    proto_g.add_argument("--num-eval-eps", type=int,
+                         default=defaults["num_eval_eps"])
+    proto_g.add_argument("--eval-seed-offset", type=int,
+                         default=defaults["eval_seed_offset"])
 
     ppo = p.add_argument_group("ppo (RLlib defaults corrected for this benchmark)")
-    ppo.add_argument("--train-batch-size", type=int, default=4000)
-    ppo.add_argument("--minibatch-size", type=int, default=256)
-    ppo.add_argument("--num-epochs", type=int, default=10)
-    ppo.add_argument("--lr", type=float, default=3e-4)
-    ppo.add_argument("--gae-lambda", type=float, default=0.95,
+    ppo.add_argument("--train-batch-size", type=int,
+                     default=defaults["train_batch_size"])
+    ppo.add_argument("--minibatch-size", type=int,
+                     default=defaults["minibatch_size"],
+                     help="Full-batch PPO by default (official MAPPO uses one "
+                          "mini-batch per epoch).")
+    ppo.add_argument("--num-epochs", type=int, default=defaults["num_epochs"])
+    ppo.add_argument("--lr", type=float, default=defaults["lr"])
+    ppo.add_argument("--critic-lr", type=float, default=defaults["critic_lr"],
+                     help="Critic Adam learning rate; defaults to --lr.")
+    ppo.add_argument("--adam-epsilon", type=float,
+                     default=defaults["adam_epsilon"],
+                     help="Epsilon for the independent actor/critic Adam optimizers.")
+    ppo.add_argument("--gae-lambda", type=float, default=defaults["gae_lambda"],
                      help="Shared PPO/MAPPO GAE setting.")
-    ppo.add_argument("--clip-param", type=float, default=0.2,
+    ppo.add_argument("--clip-param", type=float, default=defaults["clip_param"],
                      help="RLlib default 0.3; PPO paper and MAPPO both use 0.2.")
-    ppo.add_argument("--vf-clip-param", type=float, default=1000.0,
-                     help="Wider value-loss clipping margin than RLlib's default; "
-                          "verify critic health with vf_explained_var.")
-    ppo.add_argument("--vf-loss-coeff", type=float, default=1.0)
-    ppo.add_argument("--entropy-coeff", type=float, default=0.0)
-    ppo.add_argument("--use-kl-loss", action="store_true", default=False,
+    ppo.add_argument("--vf-clip-param", type=float,
+                     default=defaults["vf_clip_param"],
+                     help="Maximum change from the rollout-time normalized value "
+                          "prediction (official PPO/MAPPO semantics).")
+    ppo.add_argument("--vf-loss-coeff", type=float,
+                     default=defaults["vf_loss_coeff"])
+    ppo.add_argument("--entropy-coeff", type=float,
+                     default=defaults["entropy_coeff"])
+    ppo.add_argument("--use-kl-loss", action=argparse.BooleanOptionalAction,
+                     default=defaults["use_kl_loss"],
                      help="RLlib defaults this ON; MAPPO reference uses clip only.")
-    ppo.add_argument("--grad-clip", type=float, default=10.0)
+    ppo.add_argument("--grad-clip", type=float, default=defaults["grad_clip"])
+    ppo.add_argument("--grad-clip-by",
+                     choices=("value", "norm", "global_norm"),
+                     default=defaults["grad_clip_by"])
 
     net = p.add_argument_group("network")
-    net.add_argument("--hidden-sizes", default="256,256")
-    net.add_argument("--activation", choices=("tanh", "relu"), default="tanh")
+    net.add_argument("--hidden-sizes", default=defaults["hidden_sizes"])
+    net.add_argument("--activation", choices=("tanh", "relu"),
+                     default=defaults["activation"])
+    net.add_argument("--hidden-orthogonal-gain", type=float,
+                     default=defaults["hidden_orthogonal_gain"])
+    net.add_argument("--policy-output-gain", type=float,
+                     default=defaults["policy_output_gain"])
+    net.add_argument("--value-output-gain", type=float,
+                     default=defaults["value_output_gain"])
+    net.add_argument("--initial-log-std", type=float,
+                     default=defaults["initial_log_std"])
+    net.add_argument("--log-std-min", type=float,
+                     default=defaults["log_std_min"])
+    net.add_argument("--log-std-max", type=float,
+                     default=defaults["log_std_max"])
+    net.add_argument("--input-layer-norm", action=argparse.BooleanOptionalAction,
+                     default=defaults["input_layer_norm"],
+                     help="MAPPO-style feature LayerNorm on each actor/critic input.")
+    net.add_argument("--value-norm", action=argparse.BooleanOptionalAction,
+                     default=defaults["value_norm"],
+                     help="Bias-corrected running normalization of critic targets.")
+    net.add_argument("--value-norm-beta", type=float,
+                     default=defaults["value_norm_beta"])
+    net.add_argument("--value-norm-epsilon", type=float,
+                     default=defaults["value_norm_epsilon"])
+    net.add_argument("--value-norm-variance-floor", type=float,
+                     default=defaults["value_norm_variance_floor"])
 
     comp = p.add_argument_group("compute")
-    comp.add_argument("--num-workers", type=int, default=4,
+    comp.add_argument("--num-workers", type=int, default=defaults["num_workers"],
                       help="RLlib env runners (sampling processes).")
-    comp.add_argument("--num-cpus-per-env-runner", type=int, default=1)
-    comp.add_argument("--num-learners", type=int, default=1,
+    comp.add_argument("--num-cpus-per-env-runner", type=int,
+                      default=defaults["num_cpus_per_env_runner"])
+    comp.add_argument("--num-learners", type=int,
+                      default=defaults["num_learners"],
                       help="Pinned to 1: total batch size scales with this.")
-    comp.add_argument("--num-gpus-per-learner", type=float, default=None,
-                      help="Default 1.0 (0.0 under --smoke-test). Select the "
+    comp.add_argument("--num-gpus-per-learner", type=float,
+                      default=defaults["num_gpus_per_learner"],
+                      help="Configured per learner (0.0 under canonical smoke test). "
+                           "Select the "
                            "device with CUDA_VISIBLE_DEVICES.")
-    comp.add_argument("--ray-num-cpus", type=int, default=None,
+    comp.add_argument("--ray-num-cpus", type=int, default=defaults["ray_num_cpus"],
                       help="Hard-cap Ray's CPU pool; required when two jobs "
                            "share one node.")
-    comp.add_argument("--sample-timeout-s", type=float, default=1800.0,
+    comp.add_argument("--sample-timeout-s", type=float,
+                      default=defaults["sample_timeout_s"],
                       help="Remote-sampling timeout per iteration. RLlib's 60s "
                            "default is far too small here: every env runner must "
                            "compile MJCF TWICE (reach probe env + real env) before "
                            "returning its first fragment, and RLlib DISCARDS the "
                            "result of any runner that exceeds this timeout.")
-    comp.add_argument("--ray-log-to-driver", action="store_true",
+    comp.add_argument("--max-sampling-stalls", type=int,
+                      default=defaults["max_sampling_stalls"],
+                      help="Abort after this many consecutive empty sample iterations.")
+    comp.add_argument("--ray-log-to-driver",
+                      action=argparse.BooleanOptionalAction,
+                      default=defaults["ray_log_to_driver"],
                       help="Forward env-runner stdout/stderr to the driver. "
                            "Required to see why sampling fails.")
-    comp.add_argument("--checkpoint-freq", type=int, default=500_000,
+    comp.add_argument("--checkpoint-freq", type=int,
+                      default=defaults["checkpoint_freq"],
                       help="Recoverable checkpoint cadence in env steps (0=off).")
-    comp.add_argument("--log-every-iters", type=int, default=5)
-    comp.add_argument("--smoke-test", action="store_true",
+    comp.add_argument("--log-every-iters", type=int,
+                      default=defaults["log_every_iters"])
+    comp.add_argument("--smoke-test", action=argparse.BooleanOptionalAction,
+                      default=defaults["smoke_test"],
                       help="5k-step ingestion/checkpoint/eval test; not a result.")
 
     wb = p.add_argument_group("weights & biases")
     wb.add_argument("--wandb-mode", choices=("online", "offline", "disabled"),
-                    default="online")
-    wb.add_argument("--wandb-entity", default="omnipiano")
-    wb.add_argument("--wandb-project", default="multiagent")
-    wb.add_argument("--wandb-group", default=None,
+                    default=defaults["wandb_mode"])
+    wb.add_argument("--wandb-entity", default=defaults["wandb_entity"])
+    wb.add_argument("--wandb-project", default=defaults["wandb_project"])
+    wb.add_argument("--wandb-group", default=defaults["wandb_group"],
                     help="Defaults to '<algo>__<env-token>' so seeds aggregate.")
-    wb.add_argument("--wandb-name", default=None, help="Defaults to run-dir name.")
-    wb.add_argument("--wandb-tags", default="")
-    wb.add_argument("--wandb-notes", default=None)
-    wb.add_argument("--wandb-upload-artifacts", action="store_true")
+    wb.add_argument("--wandb-name", default=defaults["wandb_name"],
+                    help="Defaults to run-dir name.")
+    wb.add_argument("--wandb-tags", default=defaults["wandb_tags"])
+    wb.add_argument("--wandb-notes", default=defaults["wandb_notes"])
+    wb.add_argument("--wandb-upload-artifacts",
+                    action=argparse.BooleanOptionalAction,
+                    default=defaults["wandb_upload_artifacts"])
     return p
+
+
+def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
+    """Two-phase parse so --config and --algo select the correct JSON defaults."""
+    tokens = list(argv) if argv is not None else sys.argv[1:]
+    bootstrap = argparse.ArgumentParser(add_help=False)
+    bootstrap.add_argument("--config", default=str(DEFAULT_TRAIN_CONFIG_PATH))
+    bootstrap.add_argument("--algo", default=None)
+    selected, _ = bootstrap.parse_known_args(tokens)
+    parser = build_arg_parser(
+        selected.config,
+        algo_override=selected.algo,
+    )
+    args = parser.parse_args(tokens)
+    explicit_destinations = set()
+    for token in tokens:
+        option = token.split("=", 1)[0]
+        action = parser._option_string_actions.get(option)
+        if action is not None:
+            explicit_destinations.add(action.dest)
+    args._explicit_cli_destinations = explicit_destinations
+    return args
 
 
 def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
@@ -182,20 +462,25 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
     spec = get_algo(args.algo)
 
     if args.smoke_test:
-        args.total_steps = 5_000
-        args.eval_freq = 5_000
-        args.num_eval_eps = 1
-        args.num_workers = 0
-        args.train_batch_size = 512
-        args.minibatch_size = 64
-        args.num_epochs = 2
-        args.checkpoint_freq = 0
+        for destination, value in args._smoke_test_overrides.items():
+            if destination not in getattr(args, "_explicit_cli_destinations", set()):
+                setattr(args, destination, value)
     if args.num_gpus_per_learner is None:
         args.num_gpus_per_learner = 0.0 if args.smoke_test else 1.0
+    if args.critic_lr is None:
+        args.critic_lr = args.lr
 
-    args.hidden_sizes_parsed = tuple(
-        int(t) for t in str(args.hidden_sizes).split(",") if t.strip()
-    )
+    if isinstance(args.hidden_sizes, str):
+        args.hidden_sizes_parsed = tuple(
+            int(t) for t in args.hidden_sizes.split(",") if t.strip()
+        )
+    elif isinstance(args.hidden_sizes, (list, tuple)):
+        args.hidden_sizes_parsed = tuple(int(t) for t in args.hidden_sizes)
+    else:
+        raise ValueError(
+            "hidden_sizes must be a JSON array or comma-separated CLI string, "
+            f"got {type(args.hidden_sizes).__name__}"
+        )
     if not args.hidden_sizes_parsed or any(h <= 0 for h in args.hidden_sizes_parsed):
         raise ValueError(f"invalid --hidden-sizes {args.hidden_sizes!r}")
 
@@ -210,10 +495,17 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
         raise ValueError(f"these CLI values must be positive: {bad}")
     if args.num_workers < 0 or args.checkpoint_freq < 0:
         raise ValueError("num_workers and checkpoint_freq must be non-negative")
+    if args.num_cpus_per_env_runner <= 0:
+        raise ValueError("num_cpus_per_env_runner must be positive")
+    if args.ray_num_cpus is not None and args.ray_num_cpus <= 0:
+        raise ValueError("ray_num_cpus must be null or positive")
     if not math.isfinite(args.gamma) or not 0.0 <= args.gamma <= 1.0:
         raise ValueError("gamma must be in [0, 1]")
-    if not math.isfinite(args.lr) or args.lr <= 0.0:
-        raise ValueError("lr must be positive")
+    if (not math.isfinite(args.lr) or args.lr <= 0.0
+            or not math.isfinite(args.critic_lr) or args.critic_lr <= 0.0):
+        raise ValueError("lr and critic_lr must be positive")
+    if not math.isfinite(args.adam_epsilon) or args.adam_epsilon <= 0.0:
+        raise ValueError("adam_epsilon must be positive")
     if args.minibatch_size > args.train_batch_size:
         raise ValueError("minibatch_size cannot exceed train_batch_size")
     if args.train_batch_size > args.eval_freq:
@@ -225,8 +517,34 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
         raise ValueError("gae_lambda must be in [0, 1]")
     if not 0.0 < args.clip_param < 1.0:
         raise ValueError("clip_param must be in (0, 1)")
-    if args.vf_clip_param <= 0.0 or args.grad_clip <= 0.0:
-        raise ValueError("vf_clip_param and grad_clip must be positive")
+    if args.grad_clip <= 0.0:
+        raise ValueError("grad_clip must be positive")
+    if spec.rl_module == "ctde" and not 0.0 < args.vf_clip_param < 1.0:
+        raise ValueError(
+            "CTDE vf_clip_param must be in (0, 1); stale vf_clip_param=1000 "
+            "arguments are invalid under prediction-delta clipping"
+        )
+    if spec.rl_module == "rllib_default" and args.vf_clip_param <= 0.0:
+        raise ValueError("RLlib-default vf_clip_param must be positive")
+    if not 0.0 <= args.value_norm_beta < 1.0:
+        raise ValueError("value_norm_beta must be in [0, 1)")
+    if args.value_norm_epsilon <= 0.0:
+        raise ValueError("value_norm_epsilon must be positive")
+    positive_network = {
+        "hidden_orthogonal_gain": args.hidden_orthogonal_gain,
+        "policy_output_gain": args.policy_output_gain,
+        "value_output_gain": args.value_output_gain,
+        "value_norm_variance_floor": args.value_norm_variance_floor,
+    }
+    if any(not math.isfinite(v) or v <= 0.0 for v in positive_network.values()):
+        raise ValueError(f"network gains and variance floor must be positive: "
+                         f"{positive_network}")
+    if not all(math.isfinite(v) for v in (
+        args.initial_log_std, args.log_std_min, args.log_std_max
+    )) or args.log_std_min >= args.log_std_max:
+        raise ValueError("log_std bounds must be finite and min < max")
+    if not args.log_std_min <= args.initial_log_std <= args.log_std_max:
+        raise ValueError("initial_log_std must lie within [log_std_min, log_std_max]")
     if args.entropy_coeff < 0.0 or args.vf_loss_coeff < 0.0:
         raise ValueError("entropy_coeff and vf_loss_coeff must be non-negative")
     if args.num_learners != 1:
@@ -239,6 +557,8 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
         raise ValueError("num_gpus_per_learner must be non-negative")
     if args.sample_timeout_s <= 0:
         raise ValueError("sample_timeout_s must be positive")
+    if args.max_sampling_stalls <= 0:
+        raise ValueError("max_sampling_stalls must be positive")
     return spec
 
 
@@ -261,7 +581,7 @@ def make_env_for_rllib(env_config: Mapping[str, Any]) -> Any:
     vector_index = int(getattr(env_config, "vector_index", 0) or 0)
 
     parallel_env = make_parallel(
-        str(env_config.get("env_id", DEFAULT_ENV_ID)),
+        str(env_config["env_id"]),
         seed=base_seed + 1_000 * worker_index + vector_index,
         flatten_obs=True,
         include_global_state=bool(env_config.get("include_global_state", False)),
@@ -387,7 +707,7 @@ def _resolved_ppo_config(config: Any) -> Dict[str, Any]:
             "train_batch_size_per_learner", "minibatch_size", "num_epochs",
             "shuffle_batch_per_epoch", "rollout_fragment_length", "batch_mode",
             "normalize_actions", "clip_actions", "framework", "framework_str",
-            "num_learners")
+            "num_learners", "learner_config_dict")
     out: Dict[str, Any] = {}
     for k in keys:
         if k not in raw:
@@ -435,6 +755,10 @@ def _build_run_config(
         "algorithm_notes": spec.notes,
         "is_centralized_critic": spec.is_centralized_critic,
         "source_script": "train.py",
+        "training_config": {
+            "path": args._training_config_path,
+            "snapshot": args._training_config_snapshot,
+        },
         "env_id": args.env_id,
         "run_dir": str(run_dir),
         "seed": int(args.seed),
@@ -454,9 +778,27 @@ def _build_run_config(
             "algo": spec.name,
             "critic_input": spec.critic_input,
             "rl_module": spec.rl_module,
+            "learner_class": (
+                "OmniPianoPPOTorchLearner"
+                if spec.rl_module == "ctde"
+                else "RLlib default PPOTorchLearner"
+            ),
             "include_global_state": bool(spec.needs_global_state),
             "hidden_sizes": list(args.hidden_sizes_parsed),
             "activation": args.activation,
+            "hidden_orthogonal_gain": float(args.hidden_orthogonal_gain),
+            "policy_output_gain": float(args.policy_output_gain),
+            "value_output_gain": float(args.value_output_gain),
+            "initial_log_std": float(args.initial_log_std),
+            "log_std_min": float(args.log_std_min),
+            "log_std_max": float(args.log_std_max),
+            "input_layer_norm": bool(args.input_layer_norm),
+            "value_norm": bool(args.value_norm),
+            "value_norm_beta": float(args.value_norm_beta),
+            "value_norm_epsilon": float(args.value_norm_epsilon),
+            "value_norm_variance_floor": float(
+                args.value_norm_variance_floor
+            ),
             # --- protocol ---
             "gamma": float(args.gamma),
             "eval_freq_env_steps": int(args.eval_freq),
@@ -466,26 +808,43 @@ def _build_run_config(
             "minibatch_size": int(args.minibatch_size),
             "num_epochs": int(args.num_epochs),
             "learning_rate": float(args.lr),
+            "critic_learning_rate": float(args.critic_lr),
+            "adam_epsilon": float(args.adam_epsilon),
+            "separate_actor_critic_optimizers": bool(spec.rl_module == "ctde"),
             "gae_lambda": float(args.gae_lambda),
             "clip_param": float(args.clip_param),
             "vf_clip_param": float(args.vf_clip_param),
+            "value_clip_semantics": (
+                "old_normalized_prediction_delta_then_max_loss"
+                if spec.rl_module == "ctde"
+                else "rllib_squared_error_ceiling"
+            ),
             "vf_loss_coeff": float(args.vf_loss_coeff),
             "entropy_coeff": float(args.entropy_coeff),
             "use_kl_loss": bool(args.use_kl_loss),
             "grad_clip": float(args.grad_clip),
-            "grad_clip_by": "global_norm",
+            "grad_clip_by": args.grad_clip_by,
             "rllib_default_overrides": {
                 "lambda_": [1.0, float(args.gae_lambda),
                             "standard PPO/MAPPO GAE setting"],
                 "clip_param": [0.3, float(args.clip_param),
                                "PPO paper and MAPPO ablation both favour 0.2"],
-                "vf_clip_param": [10.0, float(args.vf_clip_param),
-                                  "wider value-loss clipping margin; validate "
-                                  "critic health with vf_explained_var"],
+                "value_clip_semantics": [
+                    "RLlib squared-error ceiling",
+                    "old prediction delta clip + pessimistic max loss",
+                    "official PPO/MAPPO semantics; preserves critic gradients",
+                ],
                 "use_kl_loss": [True, bool(args.use_kl_loss),
                                 "MAPPO reference implementation uses clipping only"],
                 "grad_clip": [None, float(args.grad_clip),
-                              "MAPPO uses max_grad_norm=10"],
+                              "MAPPO uses max_grad_norm=10; applied separately "
+                              "to actor and critic"],
+                "minibatch_size": [128, int(args.minibatch_size),
+                                   "one full-batch minibatch per MAPPO epoch"],
+                "num_epochs": [30, int(args.num_epochs),
+                               "conservative end of MAPPO's 5-15 epoch guidance"],
+                "adam_epsilon": [1e-8, float(args.adam_epsilon),
+                                 "official MAPPO optimizer epsilon"],
             },
             # --- env / compute ---
             "flatten_obs": True,
@@ -496,6 +855,7 @@ def _build_run_config(
             "num_gpus_per_learner": float(args.num_gpus_per_learner),
             "ray_num_cpus": args.ray_num_cpus,
             "sample_timeout_s": float(args.sample_timeout_s),
+            "max_sampling_stalls": int(args.max_sampling_stalls),
             "checkpoint_freq_env_steps": int(args.checkpoint_freq),
             "algorithm_seed": int(args.seed),
             "worker_seeding": ("env seed = seed + 1000*worker_index + "
@@ -515,7 +875,7 @@ def _build_run_config(
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = build_arg_parser().parse_args(argv)
+    args = _parse_args(argv)
     _install_sigterm_as_interrupt()
     if args.list_algos:
         print(algo_table())
@@ -638,7 +998,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             lambda_=args.gae_lambda, clip_param=args.clip_param,
             vf_clip_param=args.vf_clip_param, vf_loss_coeff=args.vf_loss_coeff,
             entropy_coeff=args.entropy_coeff, use_kl_loss=args.use_kl_loss,
-            grad_clip=args.grad_clip, grad_clip_by="global_norm",
+            grad_clip=args.grad_clip, grad_clip_by=args.grad_clip_by,
             **dict(spec.training_overrides),
         )
         .debugging(seed=args.seed)
@@ -647,15 +1007,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from omnipiano.multiagent._ctde_module import (
             build_ctde_module_spec, build_multi_module_spec,
         )
-        config = config.rl_module(rl_module_spec=build_multi_module_spec({
-            a: build_ctde_module_spec(
-                observation_space=obs_spaces[a], action_space=act_spaces[a],
-                own_slice=layouts[a]["own"],
-                global_state_slice=layouts[a]["global_state"],
-                critic_input=spec.critic_input,
-                hidden_sizes=args.hidden_sizes_parsed, activation=args.activation,
-            ) for a in agents
-        }))
+        from omnipiano.multiagent._ppo_learner import OmniPianoPPOTorchLearner
+
+        config = (
+            config.learners(
+                learner_class=OmniPianoPPOTorchLearner,
+                learner_config_dict={
+                    "critic_lr": float(args.critic_lr),
+                    "adam_epsilon": float(args.adam_epsilon),
+                },
+            )
+            .rl_module(rl_module_spec=build_multi_module_spec({
+                a: build_ctde_module_spec(
+                    observation_space=obs_spaces[a], action_space=act_spaces[a],
+                    own_slice=layouts[a]["own"],
+                    global_state_slice=layouts[a]["global_state"],
+                    critic_input=spec.critic_input,
+                    hidden_sizes=args.hidden_sizes_parsed,
+                    activation=args.activation,
+                    hidden_orthogonal_gain=args.hidden_orthogonal_gain,
+                    policy_output_gain=args.policy_output_gain,
+                    value_output_gain=args.value_output_gain,
+                    initial_log_std=args.initial_log_std,
+                    log_std_min=args.log_std_min,
+                    log_std_max=args.log_std_max,
+                    input_layer_norm=args.input_layer_norm,
+                    value_norm=args.value_norm,
+                    value_norm_beta=args.value_norm_beta,
+                    value_norm_epsilon=args.value_norm_epsilon,
+                    value_norm_variance_floor=args.value_norm_variance_floor,
+                ) for a in agents
+            }))
+        )
 
     resolved_batch = getattr(config, "total_train_batch_size", None)
     if resolved_batch is None:
@@ -730,13 +1113,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 stalls += 1
                 print(f"[{tag} warning] iteration {iterations} produced no new env "
                       f"steps ({previous} -> {total_steps}); sampling stall "
-                      f"{stalls}/{MAX_SAMPLING_STALLS}. RLlib discards any env "
+                      f"{stalls}/{args.max_sampling_stalls}. RLlib discards any env "
                       f"runner slower than --sample-timeout-s "
                       f"({args.sample_timeout_s:.0f}s); raise it or lower "
                       f"--num-workers.")
-                if stalls >= MAX_SAMPLING_STALLS:
+                if stalls >= args.max_sampling_stalls:
                     raise RuntimeError(
-                        f"no new env steps for {MAX_SAMPLING_STALLS} consecutive "
+                        f"no new env steps for {args.max_sampling_stalls} consecutive "
                         f"iterations (stuck at {total_steps}). Sampling is broken, "
                         f"not merely slow. Reproduce in-process with "
                         f"--num-workers 0 --ray-log-to-driver to see the real "

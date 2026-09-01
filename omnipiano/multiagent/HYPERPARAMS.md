@@ -1,19 +1,26 @@
 # Multi-agent baseline hyperparameters
 
-Single source of truth for the OmniPiano MARL baselines. Every value here is
-also written into each run's `run_config.json → effective_config`, so an
-artifact is always self-describing; this file only adds the *rationale*.
+The machine-readable source of truth is `marl_train_config.json`; this file
+adds the rationale. The trainer snapshots that JSON and the final CLI-resolved
+values into every run's `run_config.json`, so an artifact is self-describing.
 
 `python -m omnipiano.multiagent.train --list-algos` prints the live registry.
+Canonical defaults require no long parameter list:
+
+    python -m omnipiano.multiagent.train --algo mappo --seed 0
+
+Use `--config path/to/variant.json` for an ablation. Explicit CLI flags remain
+available for one-off overrides. Resolution order is shared JSON < selected
+`algorithm_overrides` < `smoke_test_overrides` < explicit CLI.
 
 ## 1. Who owns what
 
 | Layer | Owner | Must be identical across algorithms? |
 |---|---|---|
-| Protocol (steps, seeds, gamma, eval cadence) | `BenchmarkProtocolConfig` | **Yes** |
-| PPO hyperparameters | `train.py` CLI defaults | **Yes** (IPPO vs MAPPO is a single-factor ablation) |
+| Protocol (steps, seeds, gamma, eval cadence) | `marl_train_config.json`, checked against `BenchmarkProtocolConfig` | **Yes** |
+| PPO and network hyperparameters | `marl_train_config.json` | **Yes** (IPPO vs MAPPO is a single-factor ablation) |
 | Algorithm identity (critic input, global state) | `algos/<name>.py` | No — this IS the independent variable |
-| Compute (workers, GPUs, CPU cap) | CLI / launch script | No (must not change results) |
+| Compute and W&B defaults | `marl_train_config.json` | No (may be overridden by the launcher and must be recorded) |
 
 ## 2. Algorithm registry
 
@@ -25,9 +32,11 @@ artifact is always self-describing; this file only adds the *rationale*.
 | `ippo-rllib-module` | `o_i` | `o_i` | no | debug anchor; different architecture, do NOT mix numbers |
 
 Actor and critic share no trunk, and critics are **not** parameter-shared
-across agents. Both choices are deliberate: they keep the per-agent parameter
-count identical between IPPO and MAPPO, so "parameters per critic" cannot
-become a second, uncontrolled variable.
+across agents. Both choices are deliberate: they prevent critic gradients from
+altering the actor and keep ownership identical across algorithms. MAPPO's
+first critic layer necessarily has more parameters because `s` is wider than
+`o_i`; `ctde_modules` in every `run_config.json` records that unavoidable
+input-dimensionality difference explicitly.
 
 ## 3. Protocol
 
@@ -40,41 +49,63 @@ become a second, uncontrolled variable.
 | `seed` | 0 / 1 / 2 | Paper needs all three. One seed is a validation run, not a result. |
 | `eval_seed` | `seed + 10000`, episode `i` uses `+ i*10000` | Deterministic and non-colliding across training seeds. |
 
-## 4. PPO — five corrected RLlib defaults
+## 4. PPO learner
 
-The PPO values below are shared by IPPO and MAPPO so the critic observation is
-the controlled algorithmic difference.
+The PPO values and implementation are shared by IPPO and MAPPO so the critic
+observation remains the controlled algorithmic difference.
 
-| Parameter | RLlib default | Ours | Why |
-|---|---|---|---|
-| `vf_clip_param` | **10.0** | **1000.0** | Widens RLlib's value-loss clipping margin for this reward scale. Critic health must still be verified from `vf_explained_var` during the pilot. |
-| `lambda_` (GAE λ) | 1.0 | 0.95 | Standard PPO/MAPPO GAE setting, shared by both baselines. |
-| `clip_param` (ε) | 0.3 | 0.2 | PPO paper and MAPPO's ablation both favour 0.2. |
-| `use_kl_loss` | True | False | RLlib adds an adaptive KL penalty *on top of* clipping. MAPPO's reference implementation uses clipping only; removing it also removes a hidden adaptive coefficient from the IPPO/MAPPO comparison. |
-| `grad_clip` | None | 10.0 (`global_norm`) | MAPPO uses `max_grad_norm=10`. |
+| Parameter | Ours | Rationale |
+|---|---|---|
+| train batch / minibatch | `4000 / 4000` | One full-batch minibatch per epoch, matching official MAPPO's `num_mini_batch=1`; avoids repeatedly fitting tiny correlated slices. |
+| epochs | `5` | Conservative end of MAPPO's recommended 5–15 range; the previous 10 remains a later ablation, not the recovery default. |
+| actor / critic LR | `3e-4 / 3e-4` | Separate Adam optimizers but matched rates, so optimizer state is no longer shared without introducing an LR confound. |
+| Adam epsilon | `1e-5` | Official MAPPO setting (instead of PyTorch Adam's `1e-8`). |
+| GAE λ | `0.95` | Standard PPO/MAPPO value; `gamma=0.8` remains task-specific and unchanged. |
+| policy clip ε | `0.2` | PPO/MAPPO clipping value. |
+| KL loss | off | Official MAPPO is clip-only. RLlib's adaptive KL penalty would make updates additionally conservative and introduces hidden coefficient dynamics. |
+| entropy coefficient | `0.0` | Kept at the task-proven recovery value. Official MAPPO's generic default is `0.01`, but that is a future `0 / 1e-4 / 3e-4` sweep rather than bundled into this recovery run. |
+| value loss coefficient | `1.0` | Official MAPPO configuration. |
+| actor / critic grad clip | `10 / 10`, separate global norms | Official MAPPO clips the two independently; RLlib now sees two named optimizers and therefore does the same. |
 
-Other PPO values: `lr=3e-4`, `train_batch_size=4000` (env steps per iteration),
-`minibatch_size=256`, `num_epochs=10` (MAPPO recommends 5–15),
-`entropy_coeff=0.0`, `vf_loss_coeff=1.0`.
+### ValueNorm and value clipping
 
-**Value normalization is deliberately NOT implemented.** It is MAPPO's factor
-#1, but a correct implementation needs a custom `PPOTorchLearner`. Instead the
-trainer logs `learner/<agent>/vf_explained_var` to W&B:
+`RunningValueNorm(beta=0.99999, epsilon=1e-5)` is enabled. The critic network
+predicts normalized values; GAE and explained variance receive denormalized
+values. Statistics are RLModule buffers, so checkpoints and learner→runner
+weight synchronization include them.
 
-    EV = 1 − Var[R̂ − V] / Var[R̂]
+RLlib 2.55.1's stock `vf_clip_param` is **not PPO value-prediction clipping**:
+it caps squared error (`clamp((V-target)^2, 0, limit)`), which gives every
+sample above the cap zero critic gradient. Therefore neither the previous
+`10` nor `1000` has the desired semantics. The custom learner instead uses:
 
-`EV → 1` = perfect critic; `EV ≈ 0` = the critic outputs a constant; `EV < 0` =
-worse than a constant. **If a pilot run shows EV flat near zero after the
-`vf_clip_param` fix, PopArt becomes necessary.** Measure before adding
-complexity.
+    V_clip = V_old + clamp(V_new - V_old, -0.2, +0.2)
+    L_v = max(0.5 (target_norm - V_new)^2,
+              0.5 (target_norm - V_clip)^2)
+
+`V_old` and `V_new` are normalized critic outputs; return targets are normalized
+with the running statistics. W&B records `value_clip_fraction`,
+`value_norm_mean`, `value_norm_std`, both optimizer gradient norms, and:
+
+    EV = 1 − Var[R̂ − V_denormalized] / Var[R̂]
+
+`EV → 1` means a good critic; `EV ≈ 0` means approximately constant prediction;
+`EV < 0` is worse than the constant baseline.
 
 ## 5. Network
 
-`MLP 256-256`, `tanh`, orthogonal init with gain `sqrt(2)` on hidden layers,
+`MLP 256-256`, `tanh`, feature `LayerNorm` on the separately sliced actor and
+critic inputs, orthogonal init with gain `sqrt(2)` on hidden layers,
 **0.01 on the policy output** (Engstrom et al. 2020: keeps the initial action
 distribution near-isotropic so exploration is not collapsed at step 0), `1.0`
 on the value head. Gaussian policy with a **state-independent** `log_std`
 parameter, clamped to `[-5, 2]`, matching MAPPO's continuous-control reference.
+
+Actor and critic remain completely separate MLPs. This newer architecture is
+kept: the official implementation also uses separate actor/critic networks,
+orthogonal initialization, zero biases, input feature normalization, a small
+policy-head gain, and state-independent action standard deviation. Changing it
+back to RLlib's default module would confound the IPPO/MAPPO comparison.
 
 ## 6. Global state (MAPPO only, agent-specific / AS variant)
 
@@ -99,8 +130,8 @@ The observation is `[global_state | own]`, and the `own` block is
 |---|---|---|
 | `num_learners` | 1 (hard-pinned) | `total_train_batch_size` scales with it. |
 | `num_gpus_per_learner` | 1.0 | Choose the device with `CUDA_VISIBLE_DEVICES`; also set `MUJOCO_EGL_DEVICE_ID` to the same physical id. |
-| `num_workers` | 4 | Env runners. Sampling is CPU-bound (MuJoCo). |
-| `ray_num_cpus` | `num_workers + 2` | **Required** when several jobs share a node, or the Ray instances fight over cores. |
+| `num_workers` | 9 | Keep the newer experiment's execution layout; sampling is CPU-bound (MuJoCo). |
+| `ray_num_cpus` | 11 (`num_workers + 2`) | Prevent concurrent Ray jobs from fighting over the whole node. |
 | `checkpoint_freq` | 500,000 | 10 recovery points; a crash costs at most 500k steps. |
 
 ## 8. Reading a run
@@ -111,4 +142,7 @@ The observation is `[global_state | own]`, and the `own` block is
 | `eval/team_return_mean` | **One copy** of the shared team return. |
 | `train/rllib_agent_sum_return_mean` | RLlib **sums** simultaneously-acting agents ⇒ ≈ N × the team return. Never report this as the team return. |
 | `learner/<agent>/vf_explained_var` | Critic health. Check this first. |
+| `learner/<agent>/value_clip_fraction` | Fraction of critic predictions whose update exceeds the ±0.2 value-delta clip. |
+| `learner/<agent>/value_norm_mean`, `value_norm_std` | Running scale of unnormalized return targets. |
+| `learner/<agent>/gradients_actor_global_norm`, `gradients_critic_global_norm` | Pre-clip gradient norms for the independent optimizers. |
 | `time/env_steps_per_second` | Throughput; `time/eta_hours_to_target` is the projected finish. |

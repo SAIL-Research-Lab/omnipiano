@@ -9,7 +9,10 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("ray.rllib")
 
-from omnipiano.multiagent._ctde_module import CtdePPOTorchRLModule
+from omnipiano.multiagent._ctde_module import (
+    CtdePPOTorchRLModule,
+    RunningValueNorm,
+)
 
 
 OWN_DIM, GLOBAL_DIM, ACT_DIM = 64, 128, 45
@@ -105,6 +108,39 @@ def test_actor_parameter_count_is_critic_independent() -> None:
     assert own["own_slice"] == glob["own_slice"]
     assert glob["critic_in_dim"] == GLOBAL_DIM
     assert own["critic_in_dim"] == OWN_DIM
+
+
+def test_actor_and_critic_optimizer_parameters_are_disjoint_and_complete() -> None:
+    module = _module("global")
+    actor_ids = {id(p) for p in module.actor_parameters()}
+    critic_ids = {id(p) for p in module.critic_parameters()}
+    trainable_ids = {id(p) for p in module.parameters() if p.requires_grad}
+    assert actor_ids.isdisjoint(critic_ids)
+    assert actor_ids | critic_ids == trainable_ids
+
+
+def test_value_norm_round_trip_and_checkpoint_buffers() -> None:
+    norm = RunningValueNorm(beta=0.5, epsilon=1e-5)
+    values = torch.tensor([1.0, 3.0, 5.0])
+    norm.update(values)
+    assert norm.mean.item() == pytest.approx(3.0)
+    assert norm.variance.item() == pytest.approx(8.0 / 3.0)
+    torch.testing.assert_close(norm.denormalize(norm.normalize(values)), values)
+    assert set(norm.state_dict()) == {
+        "running_mean", "running_mean_sq", "debiasing_term"
+    }
+
+
+def test_compute_values_exposes_denormalized_critic_output() -> None:
+    from ray.rllib.core.columns import Columns
+
+    module = _module("own")
+    batch = {Columns.OBS: _obs()}
+    module.update_value_normalizer(torch.tensor([10.0, 20.0, 30.0]))
+    normalized = module.compute_normalized_values(batch)
+    torch.testing.assert_close(
+        module.compute_values(batch), module.denormalize_values(normalized)
+    )
 
 
 def test_global_critic_requires_global_state() -> None:

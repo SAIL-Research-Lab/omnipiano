@@ -26,6 +26,8 @@ _LEARNER_KEYS: Sequence[str] = (
     "policy_loss", "vf_loss", "vf_loss_unclipped", "vf_explained_var",
     "entropy", "mean_kl_loss", "curr_kl_coeff", "curr_entropy_coeff",
     "total_loss", "gradients_default_optimizer_global_norm",
+    "gradients_actor_global_norm", "gradients_critic_global_norm",
+    "value_norm_mean", "value_norm_std", "value_clip_fraction",
 )
 
 
