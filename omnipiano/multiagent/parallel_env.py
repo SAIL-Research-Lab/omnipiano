@@ -31,6 +31,7 @@ from omnipiano.multiagent.assignment import (
     compute_boundary_hands,
     compute_inter_agent_boundaries,
 )
+from omnipiano.utils.info_keys import benchmark_metrics_to_episode_info
 
 
 # Phase 1 supported modes.
@@ -237,12 +238,13 @@ class OmniPianoParallelEnv(ParallelEnv):
             try:
                 midi_eval = _find_wrapper(self._env, self._midi_eval_wrapper_cls)
                 metrics = midi_eval.get_musical_metrics()
-                infos["_global_"] = {
+                global_info = benchmark_metrics_to_episode_info(metrics)
+                global_info.update({
                     "episode_task/musical_f1": float(metrics["f1"]),
                     "episode_task/musical_precision": float(metrics["precision"]),
                     "episode_task/musical_recall": float(metrics["recall"]),
-                    "episode_task/sustain_f1": float(metrics["sustain_f1"]),
-                }
+                })
+                infos["_global_"] = global_info
             except (ValueError, RuntimeError):
                 # Metrics not yet available — leave _global_ unpopulated.
                 pass
@@ -265,6 +267,12 @@ class OmniPianoParallelEnv(ParallelEnv):
     def close(self) -> None:
         if hasattr(self._env, "close"):
             self._env.close()
+
+    def get_last_episode_trace(self):
+        """Return the raw trace captured for the last completed episode."""
+
+        midi_eval = _find_wrapper(self._env, self._midi_eval_wrapper_cls)
+        return midi_eval.get_last_episode_trace()
 
     def render(self) -> None:
         return None

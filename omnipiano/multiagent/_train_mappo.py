@@ -26,7 +26,12 @@ def _make_env_for_rllib(env_config):
     """RLlib env_creator: returns flatten_obs=True ParallelEnv (Box obs per agent)."""
     from omnipiano.multiagent import make_parallel
     env_id = env_config.get("env_id", "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0")
-    return make_parallel(env_id, seed=env_config.get("seed", 0), flatten_obs=True)
+    return make_parallel(
+        env_id,
+        seed=env_config.get("seed", 0),
+        flatten_obs=True,
+        metrics_capture_physics=False,
+    )
 
 
 def main(argv=None) -> int:

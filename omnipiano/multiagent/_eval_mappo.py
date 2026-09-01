@@ -63,6 +63,7 @@ def main(argv=None) -> int:
                 seed=env_config.get("seed", args.seed),
                 flatten_obs=True,
                 record_dir=env_config.get("record_dir"),
+                metrics_capture_physics=True,
             )
         )
 
@@ -83,6 +84,7 @@ def main(argv=None) -> int:
             flatten_obs=True,
             record_dir=str(record_dir),
             record_every=1,
+            metrics_capture_physics=True,
         )
 
         # Resolve per-agent policy module via Algorithm's modules.

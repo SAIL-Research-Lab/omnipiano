@@ -29,6 +29,10 @@ FIELDS = (
     "primary_agent",
     "contacting_hands",
     "per_hand_force_sample_sum_n",
+    "attribution_event_valid",
+    "contact_nonfinite_sample_count",
+    "contact_negative_sample_count",
+    "invalid_reason",
 )
 
 
@@ -55,6 +59,10 @@ def _row(index: int, *, matched: bool, attributed: bool) -> dict[str, object]:
         "per_hand_force_sample_sum_n": (
             json.dumps({"lh_b": 2.5}) if attributed else json.dumps({"lh_b": 0.0})
         ),
+        "attribution_event_valid": True,
+        "contact_nonfinite_sample_count": 0,
+        "contact_negative_sample_count": 0,
+        "invalid_reason": "",
     }
 
 
@@ -86,8 +94,18 @@ def test_sampling_is_deterministic_and_covers_all_nonempty_strata(tmp_path: Path
 
     assert first == second
     assert first["status"] == "ok"
-    assert set(sample["stratum"] for sample in first["samples"]) == set(STRATA_ORDER)
-    assert set(first["sampling"]["selected_by_stratum"].values()) == {1}
+    assert first["schema_version"] == "omnipiano.contact_attribution_checklist.v2"
+    assert (
+        first["sampling"]["stratification"]
+        == "sensor_valid_then_matched_x_attributed"
+    )
+    expected = set(STRATA_ORDER) - {"invalid_contact_event"}
+    assert set(sample["stratum"] for sample in first["samples"]) == expected
+    assert first["sampling"]["selected_by_stratum"]["invalid_contact_event"] == 0
+    assert all(
+        first["sampling"]["selected_by_stratum"][name] == 1
+        for name in expected
+    )
     assert len({sample["actual_event_index"] for sample in first["samples"]}) == 4
 
 
@@ -127,6 +145,25 @@ def test_invalid_boolean_fails_loudly(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="attributed.*boolean"):
         build_contact_attribution_manifest(audit, seed=0, sample_size=1)
+
+
+def test_invalid_contact_event_has_its_own_stratum(tmp_path: Path) -> None:
+    audit = tmp_path / "contact_attribution_audit.csv"
+    row = _row(0, matched=True, attributed=False)
+    row.update({
+        "attribution_event_valid": False,
+        "attributed": "",
+        "contact_nonfinite_sample_count": 1,
+        "invalid_reason": "nonfinite_contact_force",
+    })
+    _write_audit(audit, [row])
+
+    manifest = build_contact_attribution_manifest(audit, seed=0, sample_size=1)
+
+    sample = manifest["samples"][0]
+    assert sample["stratum"] == "invalid_contact_event"
+    assert sample["attributed"] is None
+    assert sample["reported_attribution"]["contact_nonfinite_sample_count"] == 1
 
 
 def test_nonfinite_csv_values_are_rejected(tmp_path: Path) -> None:

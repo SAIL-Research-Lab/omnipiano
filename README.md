@@ -23,6 +23,10 @@ sb3-contrib, OmniSafe, RLlib, CleanRL, Mava, MARLlib, ...) that calls
 `omnipiano.make(env_id)` — see the "Training + evaluation" section
 below for the minimal boilerplate and the metrics surface.
 
+The paper-facing score definitions, force-quality gates, versioning rules,
+and immutable migration procedure are specified in
+[`omnipiano/docs/metrics_v2_1.md`](omnipiano/docs/metrics_v2_1.md).
+
 The framework employs a "sandwich" architecture design:
 1. **Top Layer (Registry & Examples)**: Provides a unified, extremely simple interface for users to instantiate pre-defined benchmark tasks via a Task Registry.
 2. **Middle Layer (Gymnasium Wrappers)**: Handles signal-level noise injection, safety cost calculation, and metric extraction through decoupled wrappers.
@@ -466,7 +470,7 @@ mirrors `robopianist-rl/train.py:get_env()` at the dm_env layer):
     2. `RobustConfig`: perturbation parameters (`action_noise_std`, `obs_noise_std`).
     3. `TaskVariantConfig`: **OmniPiano-only** XML/MJCF-level task variants applied inside `OmniPianoTask._apply_task_variants` (`left_hand_immobile`, `right_hand_immobile`). Paper-comparable env parameters (e.g., `disable_fingering_reward`) live in `BenchmarkEnvConfig`, not here.
     4. `LoggingConfig`: shared logging configuration (log directory, split).
-    5. `BenchmarkProtocolConfig`: **algorithm-agnostic** shared protocol (`total_env_steps`, `seed` + the `seeds` replication set, `num_eval_eps`, `gamma`, `eval_freq_env_steps`, `protocol_version`). The single source of truth for cross-framework comparability — every training script *reads* these rather than copying the values, which `omnipiano/tests/test_protocol_wiring.py` enforces. Note `gamma` lives here despite being a standard algorithm hyperparameter: OmniPiano treats it as a *task property* (short effective horizon), applied uniformly across SAC / PPO / TQC / PPOLag. Genuinely algorithm-specific hyperparameters (`batch_size`, `replay_capacity`, `warmstart_steps`, `target_entropy`, etc.) deliberately live in each trainer's argparse defaults and are dumped to `eval_summary.json["hparams"]`.
+    5. `BenchmarkProtocolConfig`: **algorithm-agnostic** shared protocol (`total_env_steps`, `seed` + the `seeds` replication set, `eval_seed_offset`, `num_eval_eps`, `gamma`, `eval_freq_env_steps`, `protocol_version`). The single source of truth for cross-framework comparability — every training script *reads* these rather than copying the values, which `omnipiano/tests/test_protocol_wiring.py` enforces. Protocol 1.1 also freezes silence trimming to global note-time extrema so stored-note order cannot shorten an episode. Note `gamma` lives here despite being a standard algorithm hyperparameter: OmniPiano treats it as a *task property* (short effective horizon), applied uniformly across SAC / PPO / TQC / PPOLag. Genuinely algorithm-specific hyperparameters (`batch_size`, `replay_capacity`, `warmstart_steps`, `target_entropy`, etc.) deliberately live in each trainer's argparse defaults and are dumped to `eval_summary.json["hparams"]`.
     6. `BenchmarkEnvConfig`: shared task-environment defaults — listed in the **same order as `robopianist-rl/train.py:Args`** (21 fields including `n_steps_lookahead`, `trim_silence`, `gravity_compensation`, `disable_fingering_reward`, `frame_stack`, `clip`, `action_reward_observation`, recording knobs, etc.), with each field annotated `=` (paper-same) / `≠ run.sh adopts` / `≠ OmniPiano-fixed`. This is the audit point for paper-vs-OmniPiano env diff.
 * **`omnipiano/envs/__init__.py`**
   * **Role**: The official repository of benchmark task declarations.

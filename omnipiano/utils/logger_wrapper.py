@@ -3,7 +3,12 @@ import csv
 import os
 import time
 import uuid
-from omnipiano.utils.info_keys import EpisodeInfoKeys, InfoKeys
+
+from omnipiano.utils.episode_csv import (
+    EPISODE_CSV_HEADER,
+    build_episode_csv_row,
+)
+from omnipiano.utils.info_keys import InfoKeys
 
 
 class SafeRecordEpisodeStatistics(gym.Wrapper):
@@ -12,9 +17,10 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
     Writes one CSV row per completed episode (env_step_count, episode index,
     ep_return, ep_length, ep_cost, ep_violations, F1 / precision / recall,
     sustain_*, and reward decomposition) to
-    ``<log_dir>/<split>_episode_metrics_<env_id>.csv``. Schema is locked
-    to ``examples/checkpoint_replay_eval.py``'s ``_CSV_HEADER`` so SB3 +
-    OmniSafe eval data plot with the same downstream code.
+    ``<log_dir>/<split>_episode_metrics_<env_id>.csv``. Both this wrapper and
+    ``examples/checkpoint_replay_eval.py`` use the shared
+    :mod:`omnipiano.utils.episode_csv` serializer so SB3 and OmniSafe eval
+    data plot with the same downstream code.
 
     NOT a drop-in for ``gymnasium.wrappers.RecordEpisodeStatistics``
     --------------------------------------------------------------------
@@ -85,32 +91,7 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
         # Initialize CSV header
         with open(self.csv_path, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([
-                # `episode` is a per-env cumulative completed-episode index.
-                'env_step_count', 'episode', 'time_elapsed', 'ep_return', 'ep_length',
-                'ep_cost', 'ep_violations', 'ep_f1', 'ep_precision', 'ep_recall',
-                'ep_sustain_f1', 'ep_sustain_precision', 'ep_sustain_recall',
-                # Reward decomposition. ``fingering_reward`` and
-                # ``ot_fingering_reward`` are mutually exclusive per env
-                # (controlled by ``disable_fingering_reward``); each row
-                # populates exactly one and leaves the other blank. Keep
-                # them in separate columns so they're never confused at
-                # paper-writing time — the two functions have different
-                # mathematical definitions (annotation-pair distance vs.
-                # Hungarian-matched K-to-K distance) and are not directly
-                # comparable.
-                'energy_reward', 'fingering_reward', 'ot_fingering_reward',
-                'forearm_reward', 'key_press_reward', 'sustain_reward',
-                # Robust-eval columns (§0.6, decision 11), appended so existing
-                # column indices are unchanged. `ep_return` (col 4) stays the
-                # received/accumulated return (= noised for reward-noise tasks);
-                # `ep_return_true` is the clean/denoised return = sum of the
-                # reward-decomposition terms above. F1 remains the noise-immune
-                # headline. `eval_noise_scale` locates the robustness-curve
-                # point; `ep_noise_*` are the per-episode summed injected noise.
-                'eval_noise_scale', 'ep_return_true',
-                'ep_noise_action_l2', 'ep_noise_obs_l2', 'ep_noise_reward',
-            ])
+            writer.writerow(EPISODE_CSV_HEADER)
 
     def reset(self, **kwargs):
         # Reset the wrapped env first to obtain the initial observation/info pair
@@ -138,52 +119,19 @@ class SafeRecordEpisodeStatistics(gym.Wrapper):
             self.completed_episode_count += 1
             t = time.perf_counter() - self.t0
             
-            ep_cost = info.get(EpisodeInfoKeys.EPISODE_SAFETY_COST_TOTAL, 0.0)
-            ep_violations = info.get(EpisodeInfoKeys.EPISODE_SAFETY_VIOLATIONS, 0)
-            
-            ep_f1 = info.get(EpisodeInfoKeys.EPISODE_TASK_F1, "")
-            ep_precision = info.get(EpisodeInfoKeys.EPISODE_TASK_KEY_PRECISION, "")
-            ep_recall = info.get(EpisodeInfoKeys.EPISODE_TASK_KEY_RECALL, "")
-            
-            ep_sus_f1 = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_F1, "")
-            ep_sus_prec = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_PRECISION, "")
-            ep_sus_rec = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_RECALL, "")
-            
-            energy_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_ENERGY_REWARD, "")
-            fingering_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_FINGERING_REWARD, "")
-            ot_fingering_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_OT_FINGERING_REWARD, "")
-            forearm_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_FOREARM_REWARD, "")
-            key_press_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_KEY_PRESS_REWARD, "")
-            sustain_rew = info.get(EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_REWARD, "")
-
-            # Clean/denoised return = sum of the reward-decomposition terms
-            # (MetricsWrapper reads pre-noise physics, so this is noise-immune).
-            # Inactive terms are logged blank ("") and skipped. Equals the
-            # received ep_return minus the accumulated reward noise.
-            ep_return_true = sum(
-                float(x) for x in (
-                    energy_rew, fingering_rew, ot_fingering_rew,
-                    forearm_rew, key_press_rew, sustain_rew,
-                ) if x != ""
-            )
-
             with open(self.csv_path, mode='a', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow([
-                    self.env_step_count,
-                    self.completed_episode_count,
-                    round(t, 2),
-                    self.episode_return,
-                    self.episode_length,
-                    ep_cost,
-                    ep_violations,
-                    ep_f1, ep_precision, ep_recall,
-                    ep_sus_f1, ep_sus_prec, ep_sus_rec,
-                    energy_rew, fingering_rew, ot_fingering_rew,
-                    forearm_rew, key_press_rew, sustain_rew,
-                    self.eval_noise_scale, ep_return_true,
-                    self.ep_noise_action_l2, self.ep_noise_obs_l2,
-                    self.ep_noise_reward,
-                ])
+                writer.writerow(build_episode_csv_row(
+                    env_step_count=self.env_step_count,
+                    episode=self.completed_episode_count,
+                    time_elapsed=round(t, 2),
+                    ep_return=self.episode_return,
+                    ep_length=self.episode_length,
+                    info=info,
+                    eval_noise_scale=self.eval_noise_scale,
+                    ep_noise_action_l2=self.ep_noise_action_l2,
+                    ep_noise_obs_l2=self.ep_noise_obs_l2,
+                    ep_noise_reward=self.ep_noise_reward,
+                ))
                 
         return obs, reward, terminated, truncated, info

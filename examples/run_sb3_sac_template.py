@@ -80,6 +80,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     proto = BenchmarkProtocolConfig()
     p.add_argument("--total-steps", type=int, default=proto.total_env_steps)
     p.add_argument("--seed", type=int, default=proto.seed)
+    p.add_argument(
+        "--eval-seed-offset", type=int, default=proto.eval_seed_offset,
+        help="Evaluation episode i uses training seed + offset + i.",
+    )
     p.add_argument("--num-eval-eps", type=int, default=proto.num_eval_eps,
                    help="Episodes per eval call -- BOTH the periodic eval that "
                         "draws the learning curve and the final benchmark eval. "
@@ -158,7 +162,7 @@ def _final_eval(
     episodes: List[Dict[str, Any]] = []
     try:
         for ep_idx in range(num_eval_eps):
-            obs, _ = env.reset(seed=eval_seed + ep_idx * 10_000)
+            obs, _ = env.reset(seed=eval_seed + ep_idx)
             ep_return, ep_length, terminal_info = 0.0, 0, {}
             done = False
             while not done:
@@ -207,6 +211,8 @@ def _final_eval(
 
 def main():
     args = _build_arg_parser().parse_args()
+    if args.eval_seed_offset < 0:
+        raise ValueError("--eval-seed-offset must be non-negative")
 
     if args.smoke_test:
         args.total_steps = 20_000
@@ -224,7 +230,7 @@ def main():
     log_dir = os.path.join(logs_root, experiment_id)
     os.makedirs(log_dir, exist_ok=True)
 
-    eval_seed = args.seed + args.n_envs + 1
+    eval_seed = args.seed + args.eval_seed_offset
 
     print(f"Env: {args.env}")
     print(
@@ -249,7 +255,7 @@ def main():
     periodic_eval_env = make_vec_env(
         _env_creator(args.env, log_dir, "eval"),
         n_envs=1,
-        seed=args.seed + 10_000,
+        seed=eval_seed,
     )
     eval_freq = max(args.eval_interval_env_steps // args.n_envs, 1)
     periodic_eval = EvalCallback(
@@ -306,12 +312,15 @@ def main():
     result = _final_eval(model, args.env, log_dir, eval_seed, args.num_eval_eps)
     proto = BenchmarkProtocolConfig()
     result["seed"] = int(args.seed)
+    result["eval_seed_offset"] = int(args.eval_seed_offset)
     result["total_env_steps"] = int(args.total_steps)
     result["protocol_version"] = proto.protocol_version
+    result["metrics_protocol_version"] = proto.metrics_protocol_version
     result["algorithm"] = "SAC (SB3, paper-matched hyperparameters)"
     result["smoke_test"] = bool(args.smoke_test)
     result["hparams"] = {
         "n_envs": args.n_envs,
+        "eval_seed_offset": args.eval_seed_offset,
         "gamma": args.gamma,
         "batch_size": args.batch_size,
         "buffer_size": args.buffer_size,

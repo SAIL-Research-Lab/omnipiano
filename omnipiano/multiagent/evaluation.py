@@ -18,7 +18,14 @@ import numpy as np
 
 from omnipiano.benchmark.aggregation import aggregate_seed_values
 from omnipiano.benchmark.metrics import (
+    DEFAULT_ATTRIBUTION_WINDOW_SECONDS,
+    DEFAULT_COLLISION_FORCE_THRESHOLD_N,
+    DEFAULT_CONTACT_FORCE_THRESHOLD_N,
+    DEFAULT_MOTOR_POWER_THRESHOLD_WATTS,
+    DEFAULT_ONSET_TOLERANCE_SECONDS,
+    METRICS_PROTOCOL_VERSION,
     EpisodeTrace,
+    attribute_note_events,
     attribution_window_weights,
     extract_note_events,
     match_note_events,
@@ -101,6 +108,13 @@ def write_scorecards(
 def export_episode_trace(
     trace: EpisodeTrace,
     output_dir: str | Path,
+    *,
+    contact_force_threshold_n: float = DEFAULT_CONTACT_FORCE_THRESHOLD_N,
+    collision_force_threshold_n: float = DEFAULT_COLLISION_FORCE_THRESHOLD_N,
+    attribution_window_seconds: float = DEFAULT_ATTRIBUTION_WINDOW_SECONDS,
+    onset_tolerance_seconds: float = DEFAULT_ONSET_TOLERANCE_SECONDS,
+    motor_power_threshold_watts: float = DEFAULT_MOTOR_POWER_THRESHOLD_WATTS,
+    include_trace_npz: bool = True,
 ) -> Dict[str, str]:
     """Write the raw arrays and contact-attribution audit table.
 
@@ -112,18 +126,24 @@ def export_episode_trace(
     destination = Path(output_dir).expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
     npz_path = destination / "episode_trace.npz"
-    np.savez_compressed(
-        npz_path,
-        target_keys=trace.target_keys,
-        actual_keys=trace.actual_keys,
-        target_sustain=trace.target_sustain,
-        actual_sustain=trace.actual_sustain,
-        key_contact_force=trace.key_contact_force,
-        hand_power=trace.hand_power,
-        hand_collision_force=trace.hand_collision_force,
-        control_timestep=np.asarray(trace.control_timestep),
-        hand_names=np.asarray(trace.hand_names),
-    )
+    if include_trace_npz:
+        arrays = {
+            "target_keys": trace.target_keys,
+            "actual_keys": trace.actual_keys,
+            "target_sustain": trace.target_sustain,
+            "actual_sustain": trace.actual_sustain,
+            "control_timestep": np.asarray(trace.control_timestep),
+            "hand_names": np.asarray(trace.hand_names),
+        }
+        for name in (
+            "key_contact_force",
+            "hand_power",
+            "hand_collision_force",
+        ):
+            value = getattr(trace, name)
+            if value is not None:
+                arrays[name] = value
+        np.savez_compressed(npz_path, **arrays)
 
     audit_path = destination / "contact_attribution_audit.csv"
     events = extract_note_events(trace.actual_keys)
@@ -132,7 +152,9 @@ def export_episode_trace(
         if trace.key_contact_force is None
         else np.asarray(trace.key_contact_force, dtype=np.float64)
     )
-    window_weights = attribution_window_weights(trace.control_timestep, 0.05)
+    window_weights = attribution_window_weights(
+        trace.control_timestep, attribution_window_seconds
+    )
     fieldnames = [
         "actual_event_index",
         "pitch_key_index",
@@ -155,6 +177,10 @@ def export_episode_trace(
         "per_hand_force_impulse_ns",
         "per_hand_peak_force_n",
         "per_hand_peak_force_frame",
+        "attribution_event_valid",
+        "contact_nonfinite_sample_count",
+        "contact_negative_sample_count",
+        "invalid_reason",
         "attributed",
     ]
     target_events = extract_note_events(trace.target_keys)
@@ -162,11 +188,17 @@ def export_episode_trace(
         target_events,
         events,
         control_timestep=trace.control_timestep,
-        onset_tolerance_seconds=0.05,
+        onset_tolerance_seconds=onset_tolerance_seconds,
     )
     actual_to_target = {
         match.predicted_index: match.target_index for match in matches
     }
+    attribution = attribute_note_events(
+        trace,
+        events,
+        onset_window_seconds=attribution_window_seconds,
+        contact_force_threshold_n=contact_force_threshold_n,
+    )
     note_names = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
     def midi_note_name(midi_pitch: int) -> str:
@@ -176,14 +208,16 @@ def export_episode_trace(
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
         for event_index, event in enumerate(events):
-            per_hand = np.zeros(len(trace.hand_names), dtype=np.float64)
-            per_hand_peak = np.zeros(len(trace.hand_names), dtype=np.float64)
-            per_hand_peak_frame = np.full(len(trace.hand_names), -1, dtype=np.int64)
-            stop = event.onset_frame
-            if force is not None and trace.hand_names:
-                stop = min(
-                    force.shape[0], event.onset_frame + len(window_weights)
-                )
+            stop = min(
+                trace.actual_keys.shape[0],
+                event.onset_frame + len(window_weights),
+            )
+            event_valid = bool(attribution.event_valid[event_index])
+            per_hand = None
+            per_hand_impulse = None
+            per_hand_peak = None
+            per_hand_peak_frame = None
+            if event_valid and force is not None and trace.hand_names:
                 force_window = force[event.onset_frame:stop, :, event.pitch]
                 per_hand = force_window.sum(axis=0)
                 per_hand_impulse = (
@@ -195,26 +229,37 @@ def export_episode_trace(
                     per_hand_peak_frame = (
                         event.onset_frame + force_window.argmax(axis=0)
                     )
-            else:
-                per_hand_impulse = np.zeros(
-                    len(trace.hand_names), dtype=np.float64
-                )
-            touched = [
-                trace.hand_names[index]
-                for index in np.flatnonzero(per_hand_impulse > 0.0)
-            ]
+            touched_indices = attribution.participant_hand_indices[event_index]
+            touched = [trace.hand_names[index] for index in touched_indices]
             primary_hand = ""
             primary_agent = ""
-            if touched:
-                primary_hand = trace.hand_names[
-                    int(np.argmax(per_hand_impulse))
-                ]
+            primary_index = int(
+                attribution.primary_hand_indices[event_index]
+            )
+            if primary_index >= 0:
+                primary_hand = trace.hand_names[primary_index]
                 primary_agent = trace.hand_to_agent[primary_hand]
             target_index = actual_to_target.get(event_index)
             target_event = (
                 target_events[target_index] if target_index is not None else None
             )
             midi_pitch = event.pitch + 21
+            invalid_reasons = []
+            if not attribution.available:
+                invalid_reasons.append("contact_channel_unavailable")
+            if attribution.nonfinite_sample_counts_by_event[event_index]:
+                invalid_reasons.append("nonfinite_contact_force")
+            if attribution.negative_sample_counts_by_event[event_index]:
+                invalid_reasons.append("negative_contact_force")
+
+            def per_hand_json(values) -> str:
+                if values is None:
+                    return ""
+                return strict_json_dumps({
+                    hand: float(values[index])
+                    for index, hand in enumerate(trace.hand_names)
+                }, sort_keys=True)
+
             writer.writerow({
                 "actual_event_index": event_index,
                 "pitch_key_index": event.pitch,
@@ -245,23 +290,26 @@ def export_episode_trace(
                 "primary_hand": primary_hand,
                 "primary_agent": primary_agent,
                 "contacting_hands": "|".join(touched),
-                "per_hand_force_sample_sum_n": strict_json_dumps({
-                    hand: float(per_hand[index])
-                    for index, hand in enumerate(trace.hand_names)
-                }, sort_keys=True),
-                "per_hand_force_impulse_ns": strict_json_dumps({
-                    hand: float(per_hand_impulse[index])
-                    for index, hand in enumerate(trace.hand_names)
-                }, sort_keys=True),
-                "per_hand_peak_force_n": strict_json_dumps({
-                    hand: float(per_hand_peak[index])
-                    for index, hand in enumerate(trace.hand_names)
-                }, sort_keys=True),
-                "per_hand_peak_force_frame": strict_json_dumps({
-                    hand: int(per_hand_peak_frame[index])
-                    for index, hand in enumerate(trace.hand_names)
-                }, sort_keys=True),
-                "attributed": bool(touched),
+                "per_hand_force_sample_sum_n": per_hand_json(per_hand),
+                "per_hand_force_impulse_ns": per_hand_json(per_hand_impulse),
+                "per_hand_peak_force_n": per_hand_json(per_hand_peak),
+                "per_hand_peak_force_frame": (
+                    ""
+                    if per_hand_peak_frame is None
+                    else strict_json_dumps({
+                        hand: int(per_hand_peak_frame[index])
+                        for index, hand in enumerate(trace.hand_names)
+                    }, sort_keys=True)
+                ),
+                "attribution_event_valid": event_valid,
+                "contact_nonfinite_sample_count": int(
+                    attribution.nonfinite_sample_counts_by_event[event_index]
+                ),
+                "contact_negative_sample_count": int(
+                    attribution.negative_sample_counts_by_event[event_index]
+                ),
+                "invalid_reason": "|".join(invalid_reasons),
+                "attributed": bool(touched) if event_valid else "",
             })
 
     metadata_path = destination / "episode_trace_metadata.json"
@@ -274,8 +322,35 @@ def export_episode_trace(
                 hand: list(key_range)
                 for hand, key_range in trace.hand_key_ranges.items()
             },
-            "contact_attribution_window_seconds": 0.05,
-            "contact_force_threshold_n": 0.0,
+            "metrics_protocol_version": METRICS_PROTOCOL_VERSION,
+            "contact_attribution_window_seconds": attribution_window_seconds,
+            "contact_force_threshold_n": contact_force_threshold_n,
+            "collision_force_threshold_n": collision_force_threshold_n,
+            "note_onset_tolerance_seconds": onset_tolerance_seconds,
+            "motor_power_threshold_watts": motor_power_threshold_watts,
+            "contact_attribution_rule": (
+                "participant iff peak force in half-open onset window is "
+                "strictly greater than threshold_n; primary is the "
+                "participant with maximum integrated impulse"
+            ),
+            "contact_attribution_valid": attribution.valid,
+            "contact_attribution_nonfinite_event_count": (
+                attribution.nonfinite_event_count
+            ),
+            "contact_attribution_nonfinite_sample_count": (
+                attribution.nonfinite_sample_count
+            ),
+            "contact_attribution_negative_event_count": (
+                attribution.negative_event_count
+            ),
+            "contact_attribution_negative_sample_count": (
+                attribution.negative_sample_count
+            ),
+            "physical_channels_available": {
+                "key_contact_force": trace.key_contact_force is not None,
+                "hand_power": trace.hand_power is not None,
+                "hand_collision_force": trace.hand_collision_force is not None,
+            },
             "video_frames_per_second": 1.0 / trace.control_timestep,
             "video_reset_frame_offset": 1,
             "video_frame_rule": "video_frame = trace_frame + 1",
@@ -283,11 +358,13 @@ def export_episode_trace(
         }, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    return {
-        "trace": str(npz_path),
+    files = {
         "audit": str(audit_path),
         "metadata": str(metadata_path),
     }
+    if include_trace_npz:
+        files["trace"] = str(npz_path)
+    return files
 
 
 def evaluate_policy(
@@ -333,6 +410,7 @@ def evaluate_policy(
         kwargs: Dict[str, Any] = {
             "seed": int(seed),
             "flatten_obs": True,
+            "metrics_capture_physics": True,
         }
         if should_record:
             if destination is None:
@@ -413,11 +491,25 @@ def evaluate_policy(
             }
             if context:
                 card.update(context)
+            card["metrics_protocol_version"] = METRICS_PROTOCOL_VERSION
             scorecards.append(card)
             if episode_index == 0 and destination is not None and export_trace:
                 audit_files = export_episode_trace(
                     env.get_last_episode_trace(), destination / "audit"
                 )
+                from omnipiano.benchmark.contact_attribution_checklist import (
+                    build_contact_attribution_manifest,
+                    write_contact_attribution_manifest,
+                )
+
+                checklist_path = (
+                    destination / "audit" / "contact_attribution_checklist.json"
+                )
+                checklist = build_contact_attribution_manifest(
+                    audit_files["audit"], seed=0, sample_size=12
+                )
+                write_contact_attribution_manifest(checklist, checklist_path)
+                audit_files["checklist"] = str(checklist_path)
             if episode_index == 0 and destination is not None and export_actions:
                 actions_dir = destination / "audit"
                 actions_dir.mkdir(parents=True, exist_ok=True)
@@ -459,6 +551,7 @@ def evaluate_policy(
     })
     if context:
         summary.update(context)
+    summary["metrics_protocol_version"] = METRICS_PROTOCOL_VERSION
     files: Dict[str, str] = {}
     if destination is not None:
         files = write_scorecards(destination, scorecards, summary)

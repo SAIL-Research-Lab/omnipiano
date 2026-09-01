@@ -61,6 +61,21 @@ class MidiFileTest(parameterized.TestCase):
         midi_trimmed = midi.trim_silence()
         self.assertEqual(midi_trimmed.seq.notes[0].start_time, 0.0)
 
+    def test_trim_silence_uses_global_note_extrema(self) -> None:
+        seq = music_pb2.NoteSequence(total_time=10.0)
+        seq.notes.add(start_time=2.0, end_time=10.0, pitch=60, velocity=80)
+        seq.notes.add(start_time=3.0, end_time=4.0, pitch=64, velocity=80)
+
+        trimmed = midi_file.MidiFile(seq).trim_silence()
+
+        self.assertEqual(trimmed.seq.notes[0].start_time, 0.0)
+        self.assertEqual(trimmed.duration, 8.0)
+        self.assertLen(trimmed.seq.notes, 2)
+
+    def test_trim_silence_rejects_empty_sequence(self) -> None:
+        with self.assertRaisesRegex(ValueError, "no notes"):
+            midi_file.MidiFile(music_pb2.NoteSequence()).trim_silence()
+
 
 class PianoNoteTest(absltest.TestCase):
     def test_constructor(self) -> None:

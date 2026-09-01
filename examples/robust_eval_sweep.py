@@ -58,9 +58,10 @@ if _REPO_ROOT not in sys.path:
 
 import omnipiano  # noqa: E402  (triggers env registration side-effect)
 from omnipiano.envs.registration import make  # noqa: E402
+from omnipiano.configs import BenchmarkProtocolConfig  # noqa: E402
 
-# Match the SB3 / checkpoint_replay convention (examples/checkpoint_replay_eval.py:48).
-EVAL_SEED_OFFSET = 10_000
+# Match the shared SB3 / OmniSafe / checkpoint-replay convention.
+EVAL_SEED_OFFSET = BenchmarkProtocolConfig().eval_seed_offset
 
 
 # ---------------------------------------------------------------------------

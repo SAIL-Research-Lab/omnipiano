@@ -137,6 +137,7 @@ _RUNTIME_BYPASS_FIELDS = frozenset({
     "record_every",
     "record_resolution",
     "camera_id",
+    "record_sound",
 })
 
 
@@ -298,6 +299,35 @@ def make(
     env_config = task_spec.env_config or BenchmarkEnvConfig()
     hand_specs = task_spec.hand_specs
 
+    # Coordination metrics describe physical player groups, not policy-module
+    # count.  N-hand monolithic baselines therefore use the same virtual player
+    # grouping as the corresponding IPPO/MAPPO morphology; ordinary two-hand
+    # tasks remain one monolithic player.
+    if hand_specs is None:
+        benchmark_hand_to_agent = {"rh": "monolithic", "lh": "monolithic"}
+    else:
+        from omnipiano.multiagent.assignment import AGENT_ASSIGNMENTS
+
+        registered_hands = {spec.name for spec in hand_specs}
+        benchmark_hand_to_agent = None
+        for assignment in AGENT_ASSIGNMENTS.values():
+            assignment_hands = {
+                hand
+                for agent in assignment.agents
+                for hand in agent.hand_names
+            }
+            if registered_hands == assignment_hands:
+                benchmark_hand_to_agent = {
+                    hand: agent.name
+                    for agent in assignment.agents
+                    for hand in agent.hand_names
+                }
+                break
+        if benchmark_hand_to_agent is None:
+            benchmark_hand_to_agent = {
+                spec.name: "monolithic" for spec in hand_specs
+            }
+
     # Apply env_config defaults to kwargs. Caller's runtime-bypass
     # kwargs (e.g., record_dir override) win via setdefault.
     for k, v in dataclasses.asdict(env_config).items():
@@ -378,6 +408,7 @@ def make(
     record_every = kwargs.pop("record_every")
     record_height, record_width = kwargs.pop("record_resolution")
     camera_id = kwargs.pop("camera_id")
+    record_sound = kwargs.pop("record_sound", True)
     action_reward_observation = kwargs.pop("action_reward_observation")
 
     # Whatever remains in `kwargs` is task-level — forwarded to OmniPianoTask
@@ -417,8 +448,13 @@ def make(
         env = EpisodeStatisticsWrapper(env, deque_size=1)
 
         if record_dir is not None:
-            from robopianist.wrappers.sound import PianoSoundVideoWrapper
-            env = PianoSoundVideoWrapper(
+            if record_sound:
+                from robopianist.wrappers.sound import PianoSoundVideoWrapper
+                video_wrapper = PianoSoundVideoWrapper
+            else:
+                from dm_env_wrappers import DmControlVideoWrapper
+                video_wrapper = DmControlVideoWrapper
+            env = video_wrapper(
                 env,
                 record_dir=record_dir,
                 record_every=record_every,
@@ -430,7 +466,14 @@ def make(
         # MidiEvaluationWrapper is required by MetricsWrapper's
         # episode-end branch (it calls find_dm_env_wrapper(dm_env,
         # MidiEvaluationWrapper)). Always include it.
-        env = MidiEvaluationWrapper(env, deque_size=1)
+        env = MidiEvaluationWrapper(
+            env,
+            deque_size=1,
+            hand_to_agent=benchmark_hand_to_agent,
+            # Physical attribution scans MuJoCo contacts every step. Training
+            # only needs musical metrics; evaluation keeps the audit trace.
+            capture_physics_metrics=(mode == "eval"),
+        )
 
         # Per-key obs noise (only when ObservationRobust task requests it).
         # Must come BEFORE ConcatObservationWrapper so it can pick keys

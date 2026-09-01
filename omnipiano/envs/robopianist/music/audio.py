@@ -17,7 +17,6 @@
 import time
 
 import numpy as np
-import pyaudio
 
 from robopianist.music import constants as consts
 
@@ -26,6 +25,17 @@ def play_sound(
     waveform: np.ndarray, sampling_rate: int = consts.SAMPLING_RATE, chunk: int = 1024
 ) -> None:
     """Play a waveform using PyAudio."""
+    # Speaker playback is optional and irrelevant to headless simulation,
+    # training, and silent MP4 recording. Import PyAudio only on demand so a
+    # server without the PortAudio system library can still import OmniPiano.
+    try:
+        import pyaudio
+    except ImportError as exc:
+        raise RuntimeError(
+            "Real-time audio playback requires PyAudio and PortAudio; "
+            "headless training and silent video recording do not."
+        ) from exc
+
     if waveform.dtype != np.int16:
         raise ValueError("waveform must be an np.int16 array.")
 

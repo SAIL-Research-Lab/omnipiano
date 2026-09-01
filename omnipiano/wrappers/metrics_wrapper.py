@@ -1,6 +1,10 @@
 import gymnasium as gym
 from robopianist.wrappers.evaluation import MidiEvaluationWrapper
-from omnipiano.utils.info_keys import InfoKeys, EpisodeInfoKeys
+from omnipiano.utils.info_keys import (
+    InfoKeys,
+    EpisodeInfoKeys,
+    benchmark_metrics_to_episode_info,
+)
 from omnipiano.utils.env_unwrap import (
     get_composer_env_from_gym,
     get_dm_env_from_gym,
@@ -78,11 +82,6 @@ class MetricsWrapper(gym.Wrapper):
                     "MetricsWrapper expects MidiEvaluationWrapper in dm_env chain."
                 )
             metrics = midi_eval_wrapper.get_musical_metrics()
-            info[EpisodeInfoKeys.EPISODE_TASK_F1] = metrics['f1']
-            info[EpisodeInfoKeys.EPISODE_TASK_KEY_PRECISION] = metrics['precision']
-            info[EpisodeInfoKeys.EPISODE_TASK_KEY_RECALL] = metrics['recall']
-            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_F1] = metrics['sustain_f1']
-            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_PRECISION] = metrics['sustain_precision']
-            info[EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_RECALL] = metrics['sustain_recall']
+            info.update(benchmark_metrics_to_episode_info(metrics))
                 
         return obs, reward, terminated, truncated, info

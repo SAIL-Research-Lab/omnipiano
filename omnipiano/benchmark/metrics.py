@@ -26,6 +26,44 @@ from typing import Dict, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 
+METRICS_PROTOCOL_VERSION = "2.1"
+DEFAULT_ONSET_TOLERANCE_SECONDS = 0.05
+DEFAULT_ATTRIBUTION_WINDOW_SECONDS = 0.05
+# This is a numerical floor, not a claim about the minimum force required to
+# depress a physical piano key.  The frozen MARL traces contain a separated
+# cluster of denormal values (roughly 1e-323--1e-311 N); 1e-6 N removes that
+# cluster while preserving the stable attribution plateau observed from
+# 1e-7--1e-6 N.  Every exported artifact records the exact value so later
+# physical calibration can be versioned rather than silently changing scores.
+DEFAULT_CONTACT_FORCE_THRESHOLD_N = 1e-6
+DEFAULT_COLLISION_FORCE_THRESHOLD_N = 1e-6
+DEFAULT_MOTOR_POWER_THRESHOLD_WATTS = 1e-6
+
+
+@dataclass(frozen=True)
+class ContactAttribution:
+    """Per-event hand attribution plus channel-validity diagnostics."""
+
+    primary_hand_indices: np.ndarray
+    participant_hand_indices: Tuple[Tuple[int, ...], ...]
+    event_valid: np.ndarray
+    nonfinite_sample_counts_by_event: np.ndarray
+    negative_sample_counts_by_event: np.ndarray
+    nonfinite_event_count: int
+    nonfinite_sample_count: int
+    negative_event_count: int
+    negative_sample_count: int
+    available: bool
+
+    @property
+    def valid(self) -> bool:
+        return (
+            self.available
+            and self.nonfinite_event_count == 0
+            and self.negative_event_count == 0
+        )
+
+
 def attribution_window_weights(
     control_timestep: float,
     window_seconds: float,
@@ -251,12 +289,19 @@ def match_note_events(
     predicted_events: Sequence[NoteEvent],
     *,
     control_timestep: float,
-    onset_tolerance_seconds: float = 0.05,
+    onset_tolerance_seconds: float = DEFAULT_ONSET_TOLERANCE_SECONDS,
 ) -> Tuple[EventMatch, ...]:
     """One-to-one, exact-pitch note matching under an onset tolerance."""
 
-    if control_timestep <= 0 or onset_tolerance_seconds < 0:
-        raise ValueError("timesteps/tolerances must be non-negative and dt must be positive")
+    if not np.isfinite(control_timestep) or control_timestep <= 0:
+        raise ValueError("control_timestep must be finite and positive")
+    if (
+        not np.isfinite(onset_tolerance_seconds)
+        or onset_tolerance_seconds < 0
+    ):
+        raise ValueError(
+            "onset_tolerance_seconds must be finite and non-negative"
+        )
     tolerance_frames = onset_tolerance_seconds / control_timestep
     target_by_pitch: Dict[int, list] = {}
     pred_by_pitch: Dict[int, list] = {}
@@ -329,34 +374,103 @@ def _event_metrics(
     return result
 
 
-def _event_attribution(
+def attribute_note_events(
     trace: EpisodeTrace,
     actual_events: Sequence[NoteEvent],
     *,
-    onset_window_seconds: float,
-) -> Tuple[np.ndarray, Tuple[Tuple[int, ...], ...]]:
-    """Return primary hand index and all contacting hands for each event."""
+    onset_window_seconds: float = DEFAULT_ATTRIBUTION_WINDOW_SECONDS,
+    contact_force_threshold_n: float = DEFAULT_CONTACT_FORCE_THRESHOLD_N,
+) -> ContactAttribution:
+    """Attribute note events using force in N and rank participants by impulse.
+
+    A hand participates when its peak force anywhere in the half-open onset
+    window is strictly greater than ``contact_force_threshold_n``.  The
+    primary hand is the participating hand with the largest integrated
+    impulse.  Comparing the threshold to force rather than impulse preserves
+    the threshold's physical unit and avoids timestep-dependent semantics.
+
+    Non-finite samples in an event's relevant key/window invalidate that event
+    instead of being treated as zero or being selected by ``argmax``.  Samples
+    elsewhere in the trace cannot affect attribution and are not counted.
+    """
+
+    threshold = float(contact_force_threshold_n)
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError(
+            "contact_force_threshold_n must be finite and strictly positive"
+        )
 
     primary = np.full(len(actual_events), -1, dtype=np.int32)
-    participants = []
+    event_valid = np.zeros(len(actual_events), dtype=bool)
+    nonfinite_counts = np.zeros(len(actual_events), dtype=np.int64)
+    negative_counts = np.zeros(len(actual_events), dtype=np.int64)
+    participants: list[Tuple[int, ...]] = []
     if trace.key_contact_force is None or not trace.hand_names:
-        return primary, tuple(() for _ in actual_events)
+        return ContactAttribution(
+            primary_hand_indices=primary,
+            participant_hand_indices=tuple(() for _ in actual_events),
+            event_valid=event_valid,
+            nonfinite_sample_counts_by_event=nonfinite_counts,
+            negative_sample_counts_by_event=negative_counts,
+            nonfinite_event_count=0,
+            nonfinite_sample_count=0,
+            negative_event_count=0,
+            negative_sample_count=0,
+            available=False,
+        )
     force = np.asarray(trace.key_contact_force, dtype=np.float64)
     window_weights = attribution_window_weights(
         trace.control_timestep, onset_window_seconds
     )
+    nonfinite_event_count = 0
+    nonfinite_sample_count = 0
+    negative_event_count = 0
+    negative_sample_count = 0
     for event_index, event in enumerate(actual_events):
         start = event.onset_frame
         stop = min(force.shape[0], start + len(window_weights))
         force_window = force[start:stop, :, event.pitch]
+        finite = np.isfinite(force_window)
+        event_nonfinite = int(np.count_nonzero(~finite))
+        event_negative = int(np.count_nonzero(force_window[finite] < 0.0))
+        nonfinite_counts[event_index] = event_nonfinite
+        negative_counts[event_index] = event_negative
+        if event_nonfinite:
+            nonfinite_event_count += 1
+            nonfinite_sample_count += event_nonfinite
+        if event_negative:
+            negative_event_count += 1
+            negative_sample_count += event_negative
+        if event_nonfinite or event_negative:
+            participants.append(())
+            continue
+        if not force_window.shape[0]:
+            participants.append(())
+            continue
+        event_valid[event_index] = True
+        peak_force = force_window.max(axis=0)
         impulse = (
             force_window * window_weights[: force_window.shape[0], None]
         ).sum(axis=0)
-        touched = tuple(int(i) for i in np.flatnonzero(impulse > 0.0))
+        touched_array = np.flatnonzero(peak_force > threshold)
+        touched = tuple(int(i) for i in touched_array)
         participants.append(touched)
         if touched:
-            primary[event_index] = int(np.argmax(impulse))
-    return primary, tuple(participants)
+            primary[event_index] = int(
+                touched_array[int(np.argmax(impulse[touched_array]))]
+            )
+    return ContactAttribution(
+        primary_hand_indices=primary,
+        participant_hand_indices=tuple(participants),
+        event_valid=event_valid,
+        nonfinite_sample_counts_by_event=nonfinite_counts,
+        negative_sample_counts_by_event=negative_counts,
+        nonfinite_event_count=nonfinite_event_count,
+        nonfinite_sample_count=nonfinite_sample_count,
+        negative_event_count=negative_event_count,
+        negative_sample_count=negative_sample_count,
+        available=True,
+    )
 
 
 def _rising_event_count(active: np.ndarray) -> int:
@@ -393,11 +507,22 @@ def _js_divergence(p: np.ndarray, q: np.ndarray) -> float:
 def compute_episode_metrics(
     trace: EpisodeTrace,
     *,
-    onset_tolerance_seconds: float = 0.05,
-    attribution_window_seconds: float = 0.05,
-    motor_power_threshold_watts: float = 1e-6,
+    onset_tolerance_seconds: float = DEFAULT_ONSET_TOLERANCE_SECONDS,
+    attribution_window_seconds: float = DEFAULT_ATTRIBUTION_WINDOW_SECONDS,
+    contact_force_threshold_n: float = DEFAULT_CONTACT_FORCE_THRESHOLD_N,
+    collision_force_threshold_n: float = DEFAULT_COLLISION_FORCE_THRESHOLD_N,
+    motor_power_threshold_watts: float = DEFAULT_MOTOR_POWER_THRESHOLD_WATTS,
 ) -> Dict[str, float]:
     """Compute the complete reward-independent episode scorecard."""
+
+    for name, value in (
+        ("attribution_window_seconds", attribution_window_seconds),
+        ("contact_force_threshold_n", contact_force_threshold_n),
+        ("collision_force_threshold_n", collision_force_threshold_n),
+        ("motor_power_threshold_watts", motor_power_threshold_watts),
+    ):
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError(f"{name} must be finite and strictly positive")
 
     target = trace.target_keys
     actual = trace.actual_keys
@@ -406,6 +531,13 @@ def compute_episode_metrics(
     metrics: Dict[str, float] = {
         "episode_steps": float(steps),
         "episode_duration_seconds": float(steps * dt),
+        "note_onset_tolerance_seconds": float(onset_tolerance_seconds),
+        "contact_attribution_window_seconds": float(
+            attribution_window_seconds
+        ),
+        "contact_force_threshold_n": float(contact_force_threshold_n),
+        "collision_force_threshold_n": float(collision_force_threshold_n),
+        "motor_power_threshold_watts": float(motor_power_threshold_watts),
     }
 
     # Historical compatibility metric (frame macro, empty frames score 1).
@@ -477,9 +609,30 @@ def compute_episode_metrics(
     if not hand_names:
         return metrics
 
-    primary_hand, participants = _event_attribution(
-        trace, actual_events, onset_window_seconds=attribution_window_seconds
+    attribution = attribute_note_events(
+        trace,
+        actual_events,
+        onset_window_seconds=attribution_window_seconds,
+        contact_force_threshold_n=contact_force_threshold_n,
     )
+    primary_hand = attribution.primary_hand_indices
+    participants = attribution.participant_hand_indices
+    metrics.update({
+        "contact_attribution_available": float(attribution.available),
+        "contact_attribution_valid": float(attribution.valid),
+        "contact_attribution_nonfinite_event_count": float(
+            attribution.nonfinite_event_count
+        ),
+        "contact_attribution_nonfinite_sample_count": float(
+            attribution.nonfinite_sample_count
+        ),
+        "contact_attribution_negative_event_count": float(
+            attribution.negative_event_count
+        ),
+        "contact_attribution_negative_sample_count": float(
+            attribution.negative_sample_count
+        ),
+    })
     matched_pred_to_target = {m.predicted_index: m.target_index for m in matches}
     unattributed = int(np.count_nonzero(primary_hand < 0))
     duplicate_hands = sum(len(touched) > 1 for touched in participants)
@@ -494,8 +647,10 @@ def compute_episode_metrics(
     agent_index = {agent: i for i, agent in enumerate(agent_names)}
     hand_actual = np.zeros(len(hand_names), dtype=np.int64)
     hand_correct = np.zeros(len(hand_names), dtype=np.int64)
+    hand_eligible_correct = np.zeros(len(hand_names), dtype=np.int64)
     agent_actual = np.zeros(len(agent_names), dtype=np.int64)
     agent_correct = np.zeros(len(agent_names), dtype=np.int64)
+    agent_eligible_correct = np.zeros(len(agent_names), dtype=np.int64)
     duplicate_agents = 0
     for event_index, hand_i in enumerate(primary_hand):
         touched_agents = {
@@ -511,6 +666,21 @@ def compute_episode_metrics(
         if event_index in matched_pred_to_target:
             hand_correct[hand_i] += 1
             agent_correct[agent_i] += 1
+            target_event = target_events[matched_pred_to_target[event_index]]
+            primary_hand_name = hand_names[hand_i]
+            hand_lo, hand_hi = trace.hand_key_ranges.get(
+                primary_hand_name, (0, 87)
+            )
+            if hand_lo <= target_event.pitch <= hand_hi:
+                hand_eligible_correct[hand_i] += 1
+            agent_name = hand_to_agent[primary_hand_name]
+            if any(
+                lo <= target_event.pitch <= hi
+                for owned_hand in hand_names
+                if hand_to_agent[owned_hand] == agent_name
+                for lo, hi in (trace.hand_key_ranges.get(owned_hand, (0, 87)),)
+            ):
+                agent_eligible_correct[agent_i] += 1
     metrics["duplicate_agent_note_rate"] = (
         duplicate_agents / len(actual_events) if actual_events else 0.0
     )
@@ -528,13 +698,35 @@ def compute_episode_metrics(
         for agent in eligible_agents:
             agent_eligible[agent_index[agent]] += 1
 
-    if trace.hand_power is None:
-        hand_work = np.zeros(len(hand_names), dtype=np.float64)
-        hand_motor_ratio = np.zeros(len(hand_names), dtype=np.float64)
-    else:
-        power = np.maximum(np.asarray(trace.hand_power, dtype=np.float64), 0.0)
+    power_available = trace.hand_power is not None
+    power_nonfinite_count = 0
+    power_negative_count = 0
+    power_valid = False
+    power: Optional[np.ndarray] = None
+    if power_available:
+        raw_power = np.asarray(trace.hand_power, dtype=np.float64)
+        power_nonfinite_count = int(np.count_nonzero(~np.isfinite(raw_power)))
+        finite_power = raw_power[np.isfinite(raw_power)]
+        power_negative_count = int(np.count_nonzero(finite_power < 0.0))
+        power_valid = power_nonfinite_count == 0 and power_negative_count == 0
+        if power_valid:
+            power = raw_power
+    metrics.update({
+        "hand_power_available": float(power_available),
+        "hand_power_metrics_valid": float(power_valid),
+        "hand_power_nonfinite_sample_count": float(power_nonfinite_count),
+        "hand_power_negative_sample_count": float(power_negative_count),
+    })
+    if power_valid and power is not None:
         hand_work = power.sum(axis=0) * dt
-        hand_motor_ratio = np.mean(power > motor_power_threshold_watts, axis=0) if steps else np.zeros(len(hand_names))
+        hand_motor_ratio = (
+            np.mean(power > motor_power_threshold_watts, axis=0)
+            if steps
+            else np.zeros(len(hand_names))
+        )
+    else:
+        hand_work = np.full(len(hand_names), np.nan, dtype=np.float64)
+        hand_motor_ratio = np.full(len(hand_names), np.nan, dtype=np.float64)
 
     total_attributed_correct = int(hand_correct.sum())
     for i, hand in enumerate(hand_names):
@@ -542,8 +734,9 @@ def compute_episode_metrics(
         metrics.update({
             prefix + "actual_events": float(hand_actual[i]),
             prefix + "correct_events": float(hand_correct[i]),
+            prefix + "eligible_correct_events": float(hand_eligible_correct[i]),
             prefix + "eligible_target_events": float(hand_eligible[i]),
-            prefix + "target_recall": hand_correct[i] / hand_eligible[i] if hand_eligible[i] else 0.0,
+            prefix + "target_recall": hand_eligible_correct[i] / hand_eligible[i] if hand_eligible[i] else 0.0,
             prefix + "contribution_share": hand_correct[i] / total_attributed_correct if total_attributed_correct else 0.0,
             prefix + "motor_active_ratio": float(hand_motor_ratio[i]),
             prefix + "actuator_work_joule": float(hand_work[i]),
@@ -556,11 +749,18 @@ def compute_episode_metrics(
         owned = [hand_index[h] for h in hand_names if hand_to_agent[h] == agent]
         agent_work[agent_i] = float(np.sum(hand_work[owned]))
         if owned:
-            if trace.hand_power is None:
-                agent_motor[agent_i] = 0.0
+            if not power_valid or power is None:
+                agent_motor[agent_i] = float("nan")
             else:
-                power = np.asarray(trace.hand_power, dtype=np.float64)[:, owned]
-                agent_motor[agent_i] = float(np.mean(np.any(power > motor_power_threshold_watts, axis=1))) if steps else 0.0
+                owned_power = power[:, owned]
+                agent_motor[agent_i] = float(
+                    np.mean(
+                        np.any(
+                            owned_power > motor_power_threshold_watts,
+                            axis=1,
+                        )
+                    )
+                ) if steps else 0.0
 
     total_agent_correct = int(agent_correct.sum())
     for i, agent in enumerate(agent_names):
@@ -568,8 +768,9 @@ def compute_episode_metrics(
         metrics.update({
             prefix + "actual_events": float(agent_actual[i]),
             prefix + "correct_events": float(agent_correct[i]),
+            prefix + "eligible_correct_events": float(agent_eligible_correct[i]),
             prefix + "eligible_target_events": float(agent_eligible[i]),
-            prefix + "target_recall": agent_correct[i] / agent_eligible[i] if agent_eligible[i] else 0.0,
+            prefix + "target_recall": agent_eligible_correct[i] / agent_eligible[i] if agent_eligible[i] else 0.0,
             prefix + "contribution_share": agent_correct[i] / total_agent_correct if total_agent_correct else 0.0,
             prefix + "motor_active_ratio": float(agent_motor[i]),
             prefix + "actuator_work_joule": float(agent_work[i]),
@@ -577,13 +778,19 @@ def compute_episode_metrics(
         })
 
     active_agents = int(np.count_nonzero(agent_correct))
-    motor_active_agents = int(np.count_nonzero(agent_motor > 0.0))
+    motor_active_agents = (
+        int(np.count_nonzero(agent_motor > 0.0)) if power_valid else 0
+    )
     metrics.update({
         "active_agent_count": float(active_agents),
         "effective_active_agents": _entropy_effective_count(agent_correct),
         "agent_coverage": active_agents / len(agent_names) if agent_names else 0.0,
         "task_idle_agent_rate": 1.0 - active_agents / len(agent_names) if agent_names else 0.0,
-        "motor_idle_agent_rate": 1.0 - motor_active_agents / len(agent_names) if agent_names else 0.0,
+        "motor_idle_agent_rate": (
+            1.0 - motor_active_agents / len(agent_names)
+            if agent_names and power_valid
+            else float("nan")
+        ),
         "actuator_work_joule": float(agent_work.sum()),
         "work_per_correct_event": agent_work.sum() / len(matches) if matches else float("nan"),
     })
@@ -596,12 +803,45 @@ def compute_episode_metrics(
         metrics["workload_l1_mismatch"] = float("nan")
         metrics["workload_js_divergence"] = float("nan")
 
+    # A single non-finite force in an event's relevant key/window makes the
+    # trace unsuitable for formal attribution claims.  Preserve independent
+    # music, eligibility, power, and global efficiency metrics, but make every
+    # attribution-derived scalar explicitly missing so consumers cannot
+    # accidentally rank policies while ignoring the validity gate.
+    if not attribution.valid:
+        attribution_top_level = {
+            "unattributed_note_rate",
+            "duplicate_hand_note_rate",
+            "duplicate_agent_note_rate",
+            "active_agent_count",
+            "effective_active_agents",
+            "agent_coverage",
+            "task_idle_agent_rate",
+            "workload_l1_mismatch",
+            "workload_js_divergence",
+        }
+        attribution_entity_suffixes = (
+            "/actual_events",
+            "/correct_events",
+            "/eligible_correct_events",
+            "/target_recall",
+            "/contribution_share",
+            "/work_per_correct_event",
+        )
+        for name in tuple(metrics):
+            if name in attribution_top_level or (
+                (name.startswith("hand/") or name.startswith("agent/"))
+                and name.endswith(attribution_entity_suffixes)
+            ):
+                metrics[name] = float("nan")
+
     # Physical collision metrics.  Pairwise rising edges define collision
     # events; force is integrated over control steps to produce N*s.
-    if trace.hand_collision_force is not None:
-        collision = np.maximum(
-            np.asarray(trace.hand_collision_force, dtype=np.float64), 0.0
-        )
+    collision_available = trace.hand_collision_force is not None
+    hand_pair_series: Optional[list[np.ndarray]] = None
+    agent_pair_series: Optional[list[np.ndarray]] = None
+    if collision_available:
+        collision = np.asarray(trace.hand_collision_force, dtype=np.float64)
         hand_pair_series = []
         agent_pair_series = []
         for i in range(len(hand_names)):
@@ -611,20 +851,76 @@ def compute_episode_metrics(
                 if hand_to_agent[hand_names[i]] != hand_to_agent[hand_names[j]]:
                     agent_pair_series.append(series)
 
-        def add_collision_metrics(prefix: str, series_list: Sequence[np.ndarray]) -> None:
-            if not series_list:
-                metrics[prefix + "collision_step_rate"] = 0.0
-                metrics[prefix + "collision_event_count"] = 0.0
-                metrics[prefix + "collision_force_time_integral_ns"] = 0.0
-                metrics[prefix + "max_collision_force_n"] = 0.0
-                return
-            stacked = np.stack(series_list, axis=1)
-            metrics[prefix + "collision_step_rate"] = float(np.mean(np.any(stacked > 0.0, axis=1))) if steps else 0.0
-            metrics[prefix + "collision_event_count"] = float(sum(_rising_event_count(stacked[:, i] > 0.0) for i in range(stacked.shape[1])))
-            metrics[prefix + "collision_force_time_integral_ns"] = float(stacked.sum() * dt)
-            metrics[prefix + "max_collision_force_n"] = float(stacked.max()) if stacked.size else 0.0
+    def add_collision_metrics(
+        prefix: str,
+        series_list: Optional[Sequence[np.ndarray]],
+    ) -> None:
+        value_names = (
+            "collision_step_rate",
+            "collision_event_count",
+            "collision_force_time_integral_ns",
+            "max_collision_force_n",
+        )
+        metrics[prefix + "collision_metrics_available"] = float(
+            series_list is not None
+        )
+        if series_list is None:
+            metrics[prefix + "collision_metrics_valid"] = 0.0
+            metrics[prefix + "collision_nonfinite_sample_count"] = 0.0
+            metrics[prefix + "collision_negative_sample_count"] = 0.0
+            for name in value_names:
+                metrics[prefix + name] = float("nan")
+            return
+        if not series_list:
+            metrics[prefix + "collision_metrics_valid"] = 1.0
+            metrics[prefix + "collision_nonfinite_sample_count"] = 0.0
+            metrics[prefix + "collision_negative_sample_count"] = 0.0
+            for name in value_names:
+                metrics[prefix + name] = 0.0
+            return
+        stacked = np.stack(series_list, axis=1)
+        nonfinite_count = int(np.count_nonzero(~np.isfinite(stacked)))
+        finite = np.isfinite(stacked)
+        negative_count = int(np.count_nonzero(stacked[finite] < 0.0))
+        metrics[prefix + "collision_nonfinite_sample_count"] = float(
+            nonfinite_count
+        )
+        metrics[prefix + "collision_negative_sample_count"] = float(
+            negative_count
+        )
+        metrics[prefix + "collision_metrics_valid"] = float(
+            nonfinite_count == 0 and negative_count == 0
+        )
+        if nonfinite_count or negative_count:
+            # Never publish the old mixed state where rate/count looked valid
+            # while integral/max serialized as null.  One invalid sample makes
+            # all four metrics in that collision scope unavailable.
+            for name in value_names:
+                metrics[prefix + name] = float("nan")
+            return
+        filtered = np.where(
+            stacked > collision_force_threshold_n,
+            np.maximum(stacked, 0.0),
+            0.0,
+        )
+        active = filtered > 0.0
+        metrics[prefix + "collision_step_rate"] = (
+            float(np.mean(np.any(active, axis=1))) if steps else 0.0
+        )
+        metrics[prefix + "collision_event_count"] = float(
+            sum(
+                _rising_event_count(active[:, i])
+                for i in range(active.shape[1])
+            )
+        )
+        metrics[prefix + "collision_force_time_integral_ns"] = float(
+            filtered.sum() * dt
+        )
+        metrics[prefix + "max_collision_force_n"] = (
+            float(filtered.max()) if filtered.size else 0.0
+        )
 
-        add_collision_metrics("inter_hand_", hand_pair_series)
-        add_collision_metrics("inter_agent_", agent_pair_series)
+    add_collision_metrics("inter_hand_", hand_pair_series)
+    add_collision_metrics("inter_agent_", agent_pair_series)
 
     return metrics

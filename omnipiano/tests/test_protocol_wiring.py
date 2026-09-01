@@ -2,9 +2,10 @@
 
 Motivation
 ----------
-``BenchmarkProtocolConfig`` is the single source of truth for the five
+``BenchmarkProtocolConfig`` is the single source of truth for the six
 cross-library constants (``total_env_steps``, ``seed``, ``num_eval_eps``,
-``gamma``, ``eval_freq_env_steps``). A script that hardcodes the *current*
+``gamma``, ``eval_freq_env_steps``, ``eval_seed_offset``). A script that
+hardcodes the *current*
 value looks correct forever — its ``eval_summary.json`` reports the right
 number and nothing warns — right up until the protocol constant changes,
 at which point that one script silently keeps producing curves on the old
@@ -53,6 +54,7 @@ if _EXAMPLES not in sys.path:
 SENTINELS = {
     "total_env_steps": 1_234_567,
     "seed": 777,
+    "eval_seed_offset": 45_678,
     "num_eval_eps": 9,
     "gamma": 0.1234,
     "eval_freq_env_steps": 31_337,
@@ -76,6 +78,7 @@ SCRIPTS = [
         {
             "total_env_steps": "total_steps",
             "seed": "seed",
+            "eval_seed_offset": "eval_seed_offset",
             "num_eval_eps": "num_eval_eps",
             "gamma": "gamma",
             "eval_freq_env_steps": "eval_interval_env_steps",
@@ -87,6 +90,7 @@ SCRIPTS = [
         {
             "total_env_steps": "total_steps",
             "seed": "seed",
+            "eval_seed_offset": "eval_seed_offset",
             "num_eval_eps": "num_eval_eps",
             "gamma": "gamma",
             "eval_freq_env_steps": "eval_interval_env_steps",
@@ -98,6 +102,7 @@ SCRIPTS = [
         {
             "total_env_steps": "total_steps",
             "seed": "seed",                  # was hardcoded 0; bound 2026-08-02
+            "eval_seed_offset": "eval_seed_offset",
             "num_eval_eps": "num_eval_eps",  # was hardcoded 1; bound 2026-08-02
             "gamma": "gamma",
             "eval_freq_env_steps": "eval_freq",

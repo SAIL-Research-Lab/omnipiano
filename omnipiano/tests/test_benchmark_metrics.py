@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import csv
+import json
+
 import numpy as np
 import pytest
 
 from omnipiano.benchmark.metrics import (
+    DEFAULT_CONTACT_FORCE_THRESHOLD_N,
+    METRICS_PROTOCOL_VERSION,
     EpisodeTrace,
     NoteEvent,
+    attribute_note_events,
     attribution_window_weights,
     compute_episode_metrics,
     extract_note_events,
@@ -19,6 +25,8 @@ from omnipiano.benchmark.aggregation import (
     normalized_curve_auc,
     steps_to_threshold,
 )
+from omnipiano.configs import BenchmarkProtocolConfig
+from omnipiano.multiagent.evaluation import export_episode_trace
 from omnipiano.utils.info_keys import benchmark_metrics_to_episode_info
 
 
@@ -123,6 +131,17 @@ def test_matcher_maximizes_cardinality_before_timing_error() -> None:
     assert len(matches) == 2
 
 
+@pytest.mark.parametrize("bad_tolerance", [float("nan"), float("inf")])
+def test_matcher_rejects_nonfinite_tolerance(bad_tolerance: float) -> None:
+    with pytest.raises(ValueError, match="onset_tolerance_seconds"):
+        match_note_events(
+            (),
+            (),
+            control_timestep=0.05,
+            onset_tolerance_seconds=bad_tolerance,
+        )
+
+
 def test_attribution_participation_energy_and_collision_metrics() -> None:
     target = np.zeros((8, 88), dtype=bool)
     target[1:3, 10] = True
@@ -186,6 +205,34 @@ def test_idle_duplicate_and_unattributed_agents_are_detected() -> None:
     assert metrics["agent/primo/correct_events"] == 0
 
 
+def test_territory_recall_excludes_correct_events_outside_territory() -> None:
+    target = np.zeros((6, 88), dtype=bool)
+    target[1, 5] = True
+    target[3, 40] = True
+    forces = np.zeros((6, 1, 88), dtype=np.float64)
+    forces[1, 0, 5] = 1.0
+    forces[3, 0, 40] = 1.0
+    trace = _trace(
+        target,
+        hand_names=("bass",),
+        hand_to_agent={"bass": "secondo"},
+        hand_key_ranges={"bass": (0, 10)},
+        key_contact_force=forces,
+        hand_power=np.zeros((6, 1)),
+        hand_collision_force=np.zeros((6, 1, 1)),
+    )
+
+    metrics = compute_episode_metrics(trace)
+
+    assert metrics["hand/bass/correct_events"] == 2
+    assert metrics["hand/bass/eligible_correct_events"] == 1
+    assert metrics["hand/bass/eligible_target_events"] == 1
+    assert metrics["hand/bass/target_recall"] == 1.0
+    assert metrics["agent/secondo/correct_events"] == 2
+    assert metrics["agent/secondo/eligible_correct_events"] == 1
+    assert metrics["agent/secondo/target_recall"] == 1.0
+
+
 def test_contact_attribution_uses_half_open_50ms_window() -> None:
     target = np.zeros((4, 88), dtype=bool)
     target[1:3, 40] = True
@@ -212,6 +259,355 @@ def test_contact_attribution_uses_half_open_50ms_window() -> None:
     assert attribution_window_weights(0.02, 0.05) == pytest.approx(
         [0.02, 0.02, 0.01]
     )
+
+
+def test_contact_threshold_rejects_denormals_but_keeps_real_force() -> None:
+    target = np.zeros((4, 88), dtype=bool)
+    target[1:3, 40] = True
+    forces = np.zeros((4, 2, 88), dtype=np.float64)
+    forces[1, 0, 40] = 1e-310
+    forces[1, 1, 40] = 2.0 * DEFAULT_CONTACT_FORCE_THRESHOLD_N
+    trace = _trace(
+        target,
+        hand_names=("denormal", "finite"),
+        hand_to_agent={"denormal": "a", "finite": "b"},
+        key_contact_force=forces,
+        hand_power=np.zeros((4, 2)),
+        hand_collision_force=np.zeros((4, 2, 2)),
+    )
+
+    metrics = compute_episode_metrics(trace)
+
+    assert metrics["hand/denormal/actual_events"] == 0
+    assert metrics["hand/finite/actual_events"] == 1
+    assert metrics["contact_attribution_valid"] == 1.0
+
+
+def test_contact_threshold_is_force_not_impulse_and_primary_is_participant() -> None:
+    target = np.zeros((6, 88), dtype=bool)
+    target[1:4, 40] = True
+    forces = np.zeros((6, 2, 88), dtype=np.float64)
+    # Hand zero stays below the 1 N participant threshold for all three
+    # samples, but its total impulse exceeds hand one's.  It must not win.
+    forces[1:4, 0, 40] = (0.9, 1.0, 0.9)
+    forces[1, 1, 40] = 1.1
+    trace = EpisodeTrace(
+        target_keys=target,
+        actual_keys=target,
+        target_sustain=np.zeros(6, dtype=bool),
+        actual_sustain=np.zeros(6, dtype=bool),
+        control_timestep=0.02,
+        hand_names=("below", "participant"),
+        hand_to_agent={"below": "a", "participant": "b"},
+        key_contact_force=forces,
+    )
+    events = extract_note_events(target)
+
+    attribution = attribute_note_events(
+        trace,
+        events,
+        onset_window_seconds=0.05,
+        contact_force_threshold_n=1.0,
+    )
+
+    assert attribution.participant_hand_indices == ((1,),)
+    assert attribution.primary_hand_indices.tolist() == [1]
+
+
+@pytest.mark.parametrize("threshold", [0.0, -1.0, float("nan"), float("inf")])
+def test_invalid_contact_threshold_fails_loudly(threshold: float) -> None:
+    target = np.zeros((2, 88), dtype=bool)
+    trace = _trace(target)
+    with pytest.raises(ValueError, match="contact_force_threshold_n"):
+        compute_episode_metrics(trace, contact_force_threshold_n=threshold)
+
+
+@pytest.mark.parametrize("window", [0.0, -1.0, float("nan"), float("inf")])
+def test_invalid_attribution_window_fails_even_without_hands(window: float) -> None:
+    target = np.zeros((2, 88), dtype=bool)
+    with pytest.raises(ValueError, match="attribution_window_seconds"):
+        compute_episode_metrics(
+            _trace(target), attribution_window_seconds=window
+        )
+
+
+def test_nonfinite_contact_invalidates_only_attribution_metrics() -> None:
+    target = np.zeros((4, 88), dtype=bool)
+    target[1:3, 40] = True
+    forces = np.zeros((4, 2, 88), dtype=np.float64)
+    forces[1, 0, 40] = np.nan
+    forces[1, 1, 40] = 2.0
+    trace = _trace(
+        target,
+        hand_names=("bad", "finite"),
+        hand_to_agent={"bad": "a", "finite": "b"},
+        key_contact_force=forces,
+        hand_power=np.zeros((4, 2)),
+        hand_collision_force=np.zeros((4, 2, 2)),
+    )
+
+    metrics = compute_episode_metrics(trace)
+
+    assert metrics["note_event_f1"] == 1.0
+    assert metrics["contact_attribution_valid"] == 0.0
+    assert metrics["contact_attribution_nonfinite_event_count"] == 1.0
+    assert metrics["contact_attribution_nonfinite_sample_count"] == 1.0
+    assert np.isnan(metrics["active_agent_count"])
+    assert np.isnan(metrics["hand/finite/correct_events"])
+    assert metrics["work_per_correct_event"] == 0.0
+
+
+def test_nonfinite_contact_outside_event_window_is_irrelevant() -> None:
+    target = np.zeros((5, 88), dtype=bool)
+    target[1:3, 40] = True
+    forces = np.zeros((5, 1, 88), dtype=np.float64)
+    forces[1, 0, 40] = 1.0
+    forces[4, 0, 40] = np.nan
+    trace = _trace(
+        target,
+        hand_names=("hand",),
+        hand_to_agent={"hand": "agent"},
+        key_contact_force=forces,
+    )
+
+    metrics = compute_episode_metrics(trace)
+
+    assert metrics["contact_attribution_valid"] == 1.0
+    assert metrics["hand/hand/correct_events"] == 1.0
+
+
+@pytest.mark.parametrize("bad_value", [float("inf"), -1.0])
+def test_invalid_relevant_contact_force_fails_attribution_gate(
+    bad_value: float,
+) -> None:
+    target = np.zeros((3, 88), dtype=bool)
+    target[1, 40] = True
+    forces = np.zeros((3, 1, 88), dtype=np.float64)
+    forces[1, 0, 40] = bad_value
+    trace = _trace(
+        target,
+        hand_names=("hand",),
+        hand_to_agent={"hand": "agent"},
+        key_contact_force=forces,
+    )
+
+    metrics = compute_episode_metrics(trace)
+
+    assert metrics["contact_attribution_valid"] == 0.0
+    if np.isfinite(bad_value):
+        assert metrics["contact_attribution_negative_sample_count"] == 1.0
+    else:
+        assert metrics["contact_attribution_nonfinite_sample_count"] == 1.0
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_collision_invalidates_the_complete_scope(
+    bad_value: float,
+) -> None:
+    target = np.zeros((4, 88), dtype=bool)
+    target[1:3, 40] = True
+    collision = np.zeros((4, 2, 2), dtype=np.float64)
+    collision[1, 0, 1] = bad_value
+    trace = _trace(
+        target,
+        hand_names=("left", "right"),
+        hand_to_agent={"left": "a", "right": "b"},
+        key_contact_force=np.zeros((4, 2, 88)),
+        hand_power=np.zeros((4, 2)),
+        hand_collision_force=collision,
+    )
+
+    metrics = compute_episode_metrics(trace)
+
+    assert metrics["note_event_f1"] == 1.0
+    for prefix in ("inter_hand_", "inter_agent_"):
+        assert metrics[prefix + "collision_metrics_valid"] == 0.0
+        assert metrics[prefix + "collision_nonfinite_sample_count"] == 1.0
+        for suffix in (
+            "collision_step_rate",
+            "collision_event_count",
+            "collision_force_time_integral_ns",
+            "max_collision_force_n",
+        ):
+            assert np.isnan(metrics[prefix + suffix])
+
+
+def test_collision_threshold_rejects_denormal_force() -> None:
+    target = np.zeros((3, 88), dtype=bool)
+    collision = np.zeros((3, 2, 2), dtype=np.float64)
+    collision[1, 0, 1] = 1e-310
+    trace = _trace(
+        target,
+        hand_names=("left", "right"),
+        hand_to_agent={"left": "a", "right": "b"},
+        key_contact_force=np.zeros((3, 2, 88)),
+        hand_power=np.zeros((3, 2)),
+        hand_collision_force=collision,
+    )
+
+    metrics = compute_episode_metrics(trace)
+
+    assert metrics["inter_agent_collision_metrics_valid"] == 1.0
+    assert metrics["inter_agent_collision_step_rate"] == 0.0
+    assert metrics["inter_agent_collision_event_count"] == 0.0
+    assert metrics["inter_agent_collision_force_time_integral_ns"] == 0.0
+    assert metrics["inter_agent_max_collision_force_n"] == 0.0
+
+
+def test_collision_at_exact_threshold_is_excluded() -> None:
+    target = np.zeros((3, 88), dtype=bool)
+    collision = np.zeros((3, 2, 2), dtype=np.float64)
+    collision[1, 0, 1] = 1e-6
+    trace = _trace(
+        target,
+        hand_names=("left", "right"),
+        hand_to_agent={"left": "a", "right": "b"},
+        key_contact_force=np.zeros((3, 2, 88)),
+        hand_collision_force=collision,
+    )
+    metrics = compute_episode_metrics(trace)
+    assert metrics["inter_agent_collision_event_count"] == 0.0
+
+
+def test_negative_collision_force_fails_the_scope_gate() -> None:
+    target = np.zeros((3, 88), dtype=bool)
+    collision = np.zeros((3, 2, 2), dtype=np.float64)
+    collision[1, 0, 1] = -1.0
+    trace = _trace(
+        target,
+        hand_names=("left", "right"),
+        hand_to_agent={"left": "a", "right": "b"},
+        key_contact_force=np.zeros((3, 2, 88)),
+        hand_collision_force=collision,
+    )
+    metrics = compute_episode_metrics(trace)
+    assert metrics["inter_agent_collision_metrics_valid"] == 0.0
+    assert metrics["inter_agent_collision_negative_sample_count"] == 1.0
+    assert np.isnan(metrics["inter_agent_collision_event_count"])
+
+
+def test_intra_agent_bad_collision_only_invalidates_inter_hand_scope() -> None:
+    target = np.zeros((3, 88), dtype=bool)
+    collision = np.zeros((3, 2, 2), dtype=np.float64)
+    collision[1, 0, 1] = np.nan
+    trace = _trace(
+        target,
+        hand_names=("left", "right"),
+        hand_to_agent={"left": "same", "right": "same"},
+        key_contact_force=np.zeros((3, 2, 88)),
+        hand_collision_force=collision,
+    )
+    metrics = compute_episode_metrics(trace)
+    assert metrics["inter_hand_collision_metrics_valid"] == 0.0
+    assert metrics["inter_agent_collision_metrics_valid"] == 1.0
+    assert metrics["inter_agent_collision_event_count"] == 0.0
+
+
+@pytest.mark.parametrize("bad_power", [float("nan"), float("inf")])
+def test_nonfinite_hand_power_has_an_explicit_gate(bad_power: float) -> None:
+    target = np.zeros((2, 88), dtype=bool)
+    trace = _trace(
+        target,
+        hand_names=("hand",),
+        hand_to_agent={"hand": "agent"},
+        key_contact_force=np.zeros((2, 1, 88)),
+        hand_power=np.asarray([[bad_power], [0.0]]),
+    )
+    metrics = compute_episode_metrics(trace)
+    assert metrics["hand_power_available"] == 1.0
+    assert metrics["hand_power_metrics_valid"] == 0.0
+    assert np.isnan(metrics["actuator_work_joule"])
+
+
+def test_negative_hand_power_has_an_explicit_gate() -> None:
+    target = np.zeros((2, 88), dtype=bool)
+    trace = _trace(
+        target,
+        hand_names=("hand",),
+        hand_to_agent={"hand": "agent"},
+        key_contact_force=np.zeros((2, 1, 88)),
+        hand_power=np.asarray([[-1.0], [0.0]]),
+    )
+    metrics = compute_episode_metrics(trace)
+    assert metrics["hand_power_available"] == 1.0
+    assert metrics["hand_power_metrics_valid"] == 0.0
+    assert metrics["hand_power_negative_sample_count"] == 1.0
+    assert np.isnan(metrics["actuator_work_joule"])
+
+
+def test_metrics_protocol_version_is_v21() -> None:
+    assert METRICS_PROTOCOL_VERSION == "2.1"
+    assert BenchmarkProtocolConfig().metrics_protocol_version == (
+        METRICS_PROTOCOL_VERSION
+    )
+
+
+def test_exported_audit_uses_same_threshold_semantics(
+    tmp_path,
+) -> None:
+    target = np.zeros((4, 88), dtype=bool)
+    target[1:3, 40] = True
+    forces = np.zeros((4, 2, 88), dtype=np.float64)
+    forces[1, 0, 40] = 1e-310
+    forces[1, 1, 40] = 2.0 * DEFAULT_CONTACT_FORCE_THRESHOLD_N
+    trace = _trace(
+        target,
+        hand_names=("denormal", "finite"),
+        hand_to_agent={"denormal": "a", "finite": "b"},
+        hand_key_ranges={"denormal": (0, 87), "finite": (0, 87)},
+        key_contact_force=forces,
+        hand_power=np.zeros((4, 2)),
+        hand_collision_force=np.zeros((4, 2, 2)),
+    )
+
+    files = export_episode_trace(
+        trace,
+        tmp_path,
+        include_trace_npz=False,
+    )
+
+    with open(files["audit"], newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    metadata = json.loads(
+        (tmp_path / "episode_trace_metadata.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert len(rows) == 1
+    assert rows[0]["contacting_hands"] == "finite"
+    assert rows[0]["primary_hand"] == "finite"
+    assert rows[0]["attributed"] == "True"
+    assert metadata["metrics_protocol_version"] == "2.1"
+    assert metadata["contact_force_threshold_n"] == (
+        DEFAULT_CONTACT_FORCE_THRESHOLD_N
+    )
+    assert metadata["contact_attribution_valid"] is True
+    assert "trace" not in files
+
+
+def test_exported_invalid_contact_event_is_not_plain_unattributed(
+    tmp_path,
+) -> None:
+    target = np.zeros((3, 88), dtype=bool)
+    target[1, 40] = True
+    forces = np.zeros((3, 1, 88), dtype=np.float64)
+    forces[1, 0, 40] = np.nan
+    trace = _trace(
+        target,
+        hand_names=("bad",),
+        hand_to_agent={"bad": "agent"},
+        key_contact_force=forces,
+    )
+
+    files = export_episode_trace(trace, tmp_path, include_trace_npz=False)
+
+    with open(files["audit"], newline="", encoding="utf-8") as stream:
+        row = list(csv.DictReader(stream))[0]
+    assert row["attribution_event_valid"] == "False"
+    assert row["attributed"] == ""
+    assert row["invalid_reason"] == "nonfinite_contact_force"
+    assert row["per_hand_peak_force_n"] == ""
+    assert row["per_hand_peak_force_frame"] == ""
 
 
 def test_every_scorer_metric_has_a_stable_info_namespace() -> None:

@@ -152,6 +152,7 @@ _TASK_METRICS = frozenset({
     "note_event_recall",
     "note_event_f1",
     "note_event_f1_100ms",
+    "note_onset_tolerance_seconds",
     "note_event_tp",
     "note_event_fp",
     "note_event_fn",
@@ -172,6 +173,15 @@ _TASK_METRICS = frozenset({
 })
 
 _COORDINATION_METRICS = frozenset({
+    "contact_attribution_available",
+    "contact_attribution_valid",
+    "contact_attribution_nonfinite_event_count",
+    "contact_attribution_nonfinite_sample_count",
+    "contact_attribution_negative_event_count",
+    "contact_attribution_negative_sample_count",
+    "contact_attribution_window_seconds",
+    "contact_force_threshold_n",
+    "collision_force_threshold_n",
     "active_agent_count",
     "effective_active_agents",
     "agent_coverage",
@@ -186,13 +196,26 @@ _COORDINATION_METRICS = frozenset({
     "inter_hand_collision_event_count",
     "inter_hand_collision_force_time_integral_ns",
     "inter_hand_max_collision_force_n",
+    "inter_hand_collision_metrics_available",
+    "inter_hand_collision_metrics_valid",
+    "inter_hand_collision_nonfinite_sample_count",
+    "inter_hand_collision_negative_sample_count",
     "inter_agent_collision_step_rate",
     "inter_agent_collision_event_count",
     "inter_agent_collision_force_time_integral_ns",
     "inter_agent_max_collision_force_n",
+    "inter_agent_collision_metrics_available",
+    "inter_agent_collision_metrics_valid",
+    "inter_agent_collision_nonfinite_sample_count",
+    "inter_agent_collision_negative_sample_count",
 })
 
 _PHYSICAL_METRICS = frozenset({
+    "hand_power_available",
+    "hand_power_metrics_valid",
+    "hand_power_nonfinite_sample_count",
+    "hand_power_negative_sample_count",
+    "motor_power_threshold_watts",
     "actuator_work_joule",
     "work_per_correct_event",
 })

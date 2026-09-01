@@ -110,6 +110,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "set — run this script once per seed and aggregate offline.",
     )
     p.add_argument(
+        "--eval-seed-offset",
+        type=int,
+        default=proto.eval_seed_offset,
+        help="Evaluation episode i uses training seed + this offset + i; "
+        "the stream is independent of n_envs and algorithm.",
+    )
+    p.add_argument(
         "--total-steps",
         type=int,
         default=proto.total_env_steps,
@@ -342,7 +349,7 @@ def _final_eval(
     episodes: List[Dict[str, Any]] = []
     try:
         for ep_idx in range(num_eval_eps):
-            obs, _ = env.reset(seed=eval_seed + ep_idx * 10_000)
+            obs, _ = env.reset(seed=eval_seed + ep_idx)
             ep_return, ep_length, terminal_info = 0.0, 0, {}
             done = False
             while not done:
@@ -392,6 +399,8 @@ def _final_eval(
 
 def main():
     args = _build_arg_parser().parse_args()
+    if args.eval_seed_offset < 0:
+        raise ValueError("--eval-seed-offset must be non-negative")
 
     AlgoCls, policy_name, default_n_envs, default_extras = ALGO_REGISTRY[args.algo]
     n_envs = args.n_envs if args.n_envs is not None else default_n_envs
@@ -416,7 +425,7 @@ def main():
     log_dir = os.path.join(logs_root, experiment_id)
     os.makedirs(log_dir, exist_ok=True)
 
-    eval_seed = args.seed + n_envs + 1
+    eval_seed = args.seed + args.eval_seed_offset
 
     print(f"[run_baseline] algo={args.algo.upper()}  env={args.env}")
     print(
@@ -440,7 +449,7 @@ def main():
     eval_env = make_vec_env(
         _env_creator(args.env, log_dir, "eval"),
         n_envs=1,
-        seed=args.seed + 10_000,
+        seed=eval_seed,
     )
 
     # EvalCallback's eval_freq is vec-env-step count, not aggregate env steps.
@@ -531,8 +540,10 @@ def main():
     proto = BenchmarkProtocolConfig()
     result["algorithm"] = f"{args.algo.upper()} (SB3, library defaults)"
     result["seed"] = int(args.seed)
+    result["eval_seed_offset"] = int(args.eval_seed_offset)
     result["total_env_steps"] = int(args.total_steps)
     result["protocol_version"] = proto.protocol_version
+    result["metrics_protocol_version"] = proto.metrics_protocol_version
     result["smoke_test"] = bool(args.smoke_test)
     # Source-script audit field — lets a downstream analysis script tell runs
     # of this script apart from the per-algorithm template scripts' runs
@@ -546,6 +557,7 @@ def main():
     }
     result["effective_config"] = {
         "n_envs": n_envs,
+        "eval_seed_offset": int(args.eval_seed_offset),
         "eval_freq_env_steps": int(args.eval_freq),
         "default_hparams": default_hparams,
         "overrides": extra_hparams,

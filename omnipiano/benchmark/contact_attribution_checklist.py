@@ -1,7 +1,8 @@
 """Build a deterministic manual-review manifest for contact attribution.
 
 The input is ``audit/contact_attribution_audit.csv`` produced by OmniPiano's
-multi-agent evaluation.  Rows are sampled across the Cartesian product of
+multi-agent evaluation. Sensor-invalid events receive a dedicated stratum;
+the remaining rows are sampled across the Cartesian product of
 matched/unmatched and attributed/unattributed events so a small manual review
 does not silently inspect only the common success case.
 
@@ -29,16 +30,18 @@ from typing import Any, Mapping, Sequence
 from omnipiano.utils.json_utils import strict_json_dumps
 
 
-SCHEMA_VERSION = "omnipiano.contact_attribution_checklist.v1"
+SCHEMA_VERSION = "omnipiano.contact_attribution_checklist.v2"
 REQUIRED_COLUMNS = frozenset({
     "actual_event_index",
     "is_matched_correct_event",
     "attributed",
 })
 
-# The diagonal first gives both binary axes coverage with only two samples;
-# a complete round covers all four cells before any cell receives a second.
+# Sensor-invalid events are reviewed first. The diagonal then gives both
+# binary axes coverage with two samples; a complete round covers all five
+# strata before any stratum receives a second sample.
 STRATA_ORDER = (
+    "invalid_contact_event",
     "matched_attributed",
     "unmatched_unattributed",
     "matched_unattributed",
@@ -117,7 +120,9 @@ def _optional_json_mapping(
     return parsed
 
 
-def _stratum(*, matched: bool, attributed: bool) -> str:
+def _stratum(*, matched: bool, attributed: bool | None) -> str:
+    if attributed is None:
+        return "invalid_contact_event"
     return (
         ("matched" if matched else "unmatched")
         + "_"
@@ -166,16 +171,30 @@ def _read_rows(csv_path: Path) -> tuple[list[dict[str, Any]], str]:
                 column="is_matched_correct_event",
                 line_number=line_number,
             )
-            attributed = _parse_bool(
-                row["attributed"],
-                column="attributed",
-                line_number=line_number,
+            event_valid = (
+                _parse_bool(
+                    row["attribution_event_valid"],
+                    column="attribution_event_valid",
+                    line_number=line_number,
+                )
+                if "attribution_event_valid" in row
+                else True
+            )
+            attributed = (
+                _parse_bool(
+                    row["attributed"],
+                    column="attributed",
+                    line_number=line_number,
+                )
+                if event_valid
+                else None
             )
             rows.append({
                 "source_csv_line": line_number,
                 "actual_event_index": event_index,
                 "matched": matched,
                 "attributed": attributed,
+                "attribution_event_valid": event_valid,
                 "stratum": _stratum(matched=matched, attributed=attributed),
                 "row": row,
             })
@@ -194,7 +213,8 @@ def _sample_payload(item: Mapping[str, Any], rank: int) -> dict[str, Any]:
         "source_csv_line": line_number,
         "actual_event_index": int(item["actual_event_index"]),
         "matched": bool(item["matched"]),
-        "attributed": bool(item["attributed"]),
+        "attributed": item["attributed"],
+        "attribution_event_valid": bool(item["attribution_event_valid"]),
         "event": {
             "pitch_key_index": _optional_int(row, "pitch_key_index", line_number),
             "midi_pitch": _optional_int(row, "midi_pitch", line_number),
@@ -228,12 +248,20 @@ def _sample_payload(item: Mapping[str, Any], rank: int) -> dict[str, Any]:
             "peak_force_frame": _optional_json_mapping(
                 row, "per_hand_peak_force_frame", line_number
             ),
+            "contact_nonfinite_sample_count": _optional_int(
+                row, "contact_nonfinite_sample_count", line_number
+            ),
+            "contact_negative_sample_count": _optional_int(
+                row, "contact_negative_sample_count", line_number
+            ),
+            "invalid_reason": row.get("invalid_reason", "") or None,
         },
         "manual_review": {
             "video_key_onset_visible": None,
             "reported_primary_hand_matches_video": None,
             "contacting_hands_plausible": None,
             "force_trace_plausible": None,
+            "sensor_channel_valid": None,
             "reviewer_notes": None,
         },
     }
@@ -245,7 +273,7 @@ def build_contact_attribution_manifest(
     seed: int,
     sample_size: int,
 ) -> dict[str, Any]:
-    """Return a deterministic, four-stratum contact-attribution checklist."""
+    """Return a deterministic, five-stratum contact-attribution checklist."""
 
     if sample_size <= 0:
         raise ValueError(f"sample_size must be positive, got {sample_size}")
@@ -271,7 +299,7 @@ def build_contact_attribution_manifest(
             "seed": int(seed),
             "requested_sample_size": int(sample_size),
             "selected_sample_size": 0,
-            "stratification": "matched_x_attributed",
+            "stratification": "sensor_valid_then_matched_x_attributed",
             "strata_order": list(STRATA_ORDER),
             "population_by_stratum": population_counts,
             "selected_by_stratum": {name: 0 for name in STRATA_ORDER},
@@ -282,6 +310,7 @@ def build_contact_attribution_manifest(
             "Confirm that the reported key activation is visible at the stated onset.",
             "Compare the visible touching hand with reported_attribution.primary_hand.",
             "Flag zero, implausible, or contradictory force/contact values in reviewer_notes.",
+            "Review invalid_contact_event samples as sensor-quality failures, not ordinary unattributed notes.",
         ],
         "samples": [],
     }
@@ -354,7 +383,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Deterministically sample a contact-attribution audit CSV into a "
-            "four-stratum manual-review JSON manifest."
+            "five-stratum manual-review JSON manifest."
         )
     )
     parser.add_argument("audit_csv", help="evaluation audit/contact_attribution_audit.csv")

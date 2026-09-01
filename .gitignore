@@ -33,7 +33,7 @@
 __pycache__/
 
 # PIG dataset preprocessing artifacts (users run `robopianist preprocess` to generate)
-omnipiano/envs/robopianist/music/data/pig_single_finger/
+omnipiano/envs/robopianist/music/data/pig_single_finger
 
 # Deprecated: experiments that did NOT run at BenchmarkProtocolConfig.gamma = 0.8,
 # and every figure derived from them. Kept locally for provenance, never shipped.

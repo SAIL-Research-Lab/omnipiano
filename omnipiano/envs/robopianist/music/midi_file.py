@@ -229,10 +229,19 @@ class MidiFile:
         return MidiFile(seq=seq)
 
     def trim_silence(self) -> "MidiFile":
+        """Trim silence using global note-time extrema.
+
+        Notes are conventionally onset-sorted, not offset-sorted.  The last
+        stored note may therefore end before an earlier long note; using it as
+        the horizon clips valid music and changes the episode length.
+        """
+
+        if not self.seq.notes:
+            raise ValueError("cannot trim silence from a MIDI sequence with no notes")
         seq = sequences_lib.extract_subsequence(
             sequence=self.seq,
-            start_time=self.seq.notes[0].start_time,
-            end_time=self.seq.notes[-1].end_time,
+            start_time=min(note.start_time for note in self.seq.notes),
+            end_time=max(note.end_time for note in self.seq.notes),
         )
         return MidiFile(seq=seq)
 

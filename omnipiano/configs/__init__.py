@@ -454,6 +454,10 @@ class BenchmarkProtocolConfig:
         ``sac_3hand_kiev_proto_*_ablation_seed42_1``, the gamma ablation
         cited above. They remain valid — a single-variable ablation at a
         fixed seed — they are simply not part of any replication set.)
+      - ``eval_seed_offset``: fixed separation between training and evaluation
+        streams. Evaluation episode ``i`` for training seed ``s`` uses
+        ``s + eval_seed_offset + i``, independent of algorithm or vector-env
+        count.
       - ``num_eval_eps``:    episodes per eval call. Default 1 matches the
         RoboPianist paper convention ("we evaluate the F1 every 10K
         training steps for 1 episode (no stochasticity in the
@@ -535,8 +539,15 @@ class BenchmarkProtocolConfig:
     total_env_steps: int = 5_000_000
     seeds: Tuple[int, ...] = (0, 1, 2)
     seed: int = 0  # must stay == seeds[0]; guarded by test_protocol_wiring
+    eval_seed_offset: int = 10_000
     num_eval_eps: int = 1
     gamma: float = 0.8
     eval_freq_env_steps: int = 50_000
-    protocol_version: str = "1.0"
+    # v1.1 fixes silence trimming to use global note extrema. Compared runs
+    # must use a source snapshot carrying the same horizon rule.
+    protocol_version: str = "1.1"
+    # Scorer semantics are versioned independently from the training budget.
+    # A regression test binds this value to benchmark.metrics so metadata
+    # cannot silently claim v2.0 while running the v2.1 force gates.
+    metrics_protocol_version: str = "2.1"
     # TODO: Add perturbation_levels for robustness evaluation

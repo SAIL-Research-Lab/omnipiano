@@ -14,10 +14,19 @@
 
 from robopianist.wrappers.evaluation import MidiEvaluationWrapper
 from robopianist.wrappers.pixels import PixelWrapper
-from robopianist.wrappers.sound import PianoSoundVideoWrapper
 
 __all__ = [
     "MidiEvaluationWrapper",
     "PianoSoundVideoWrapper",
     "PixelWrapper",
 ]
+
+
+def __getattr__(name):
+    """Load the optional FluidSynth-backed wrapper only when requested."""
+
+    if name == "PianoSoundVideoWrapper":
+        from robopianist.wrappers.sound import PianoSoundVideoWrapper
+
+        return PianoSoundVideoWrapper
+    raise AttributeError(name)

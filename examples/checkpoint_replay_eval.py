@@ -43,13 +43,6 @@ import time
 import uuid
 from typing import Any, Dict, List, Tuple
 
-# Eval RNG decoupled from training by a large offset:
-# replay seed = train_seed + EVAL_SEED_OFFSET + ep_i. NOTE: this is NOT
-# the SB3 templates' scheme (run_sb3_baseline.py:_final_eval uses
-# eval_seed = seed + n_envs + 1, then eval_seed + ep*10_000) — eval
-# episodes are not draw-matched across the two CSV families.
-EVAL_SEED_OFFSET = 10_000
-
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 import numpy as np
@@ -57,14 +50,26 @@ import torch
 
 import omnisafe
 
-from omnipiano.utils.info_keys import EpisodeInfoKeys
+# Prefer this checkout over any older editable install before importing
+# OmniPiano modules.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_THIS_DIR)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from omnipiano.configs import BenchmarkProtocolConfig
+from omnipiano.utils.episode_csv import (
+    EPISODE_CSV_HEADER,
+    build_episode_csv_row,
+)
+
+# All backends share one algorithm-independent evaluation stream.
+EVAL_SEED_OFFSET = BenchmarkProtocolConfig().eval_seed_offset
 
 # Import the OmniPianoCMDP adapter via the template — it has the
 # ``@env_register`` side-effect that exposes OmniPiano envs to OmniSafe.
 # Without this import OmniSafe will fail to construct the env at
 # evaluator.load_saved() time.
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.dirname(_THIS_DIR)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "examples"))
 import run_omnisafe_template  # noqa: F401 — triggers @env_register
 
@@ -160,48 +165,6 @@ def _epoch_num(fname: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Per-episode CSV writer (mirrors SafeRecordEpisodeStatistics schema so
-# tools/plot_eval_metrics.py reads it unchanged).
-# ---------------------------------------------------------------------------
-
-_CSV_HEADER = [
-    "env_step_count", "episode", "time_elapsed",
-    "ep_return", "ep_length",
-    "ep_cost", "ep_violations",
-    "ep_f1", "ep_precision", "ep_recall",
-    "ep_sustain_f1", "ep_sustain_precision", "ep_sustain_recall",
-    "energy_reward", "fingering_reward", "ot_fingering_reward",
-    "forearm_reward", "key_press_reward", "sustain_reward",
-]
-# Robust-eval columns (§0.6, decision 11) — schema-locked with
-# SafeRecordEpisodeStatistics. checkpoint_replay is OmniSafe/safety-only (no
-# robust noise), so these are nominal: eval_noise_scale=1.0 (matched training
-# config), ep_noise_*=0.0, and ep_return_true == the received ep_return.
-_ROBUST_EVAL_COLS = [
-    "eval_noise_scale", "ep_return_true",
-    "ep_noise_action_l2", "ep_noise_obs_l2", "ep_noise_reward",
-]
-_CSV_HEADER = _CSV_HEADER + _ROBUST_EVAL_COLS
-
-_INFO_KEY_BY_CSV_COL = {
-    "ep_cost":                EpisodeInfoKeys.EPISODE_SAFETY_COST_TOTAL,
-    "ep_violations":          EpisodeInfoKeys.EPISODE_SAFETY_VIOLATIONS,
-    "ep_f1":                  EpisodeInfoKeys.EPISODE_TASK_F1,
-    "ep_precision":           EpisodeInfoKeys.EPISODE_TASK_KEY_PRECISION,
-    "ep_recall":              EpisodeInfoKeys.EPISODE_TASK_KEY_RECALL,
-    "ep_sustain_f1":          EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_F1,
-    "ep_sustain_precision":   EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_PRECISION,
-    "ep_sustain_recall":      EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_RECALL,
-    "energy_reward":          EpisodeInfoKeys.EPISODE_TASK_ENERGY_REWARD,
-    "fingering_reward":       EpisodeInfoKeys.EPISODE_TASK_FINGERING_REWARD,
-    "ot_fingering_reward":    EpisodeInfoKeys.EPISODE_TASK_OT_FINGERING_REWARD,
-    "forearm_reward":         EpisodeInfoKeys.EPISODE_TASK_FOREARM_REWARD,
-    "key_press_reward":       EpisodeInfoKeys.EPISODE_TASK_KEY_PRESS_REWARD,
-    "sustain_reward":         EpisodeInfoKeys.EPISODE_TASK_SUSTAIN_REWARD,
-}
-
-
-# ---------------------------------------------------------------------------
 # Per-checkpoint deterministic rollout
 # ---------------------------------------------------------------------------
 
@@ -218,8 +181,7 @@ def _replay_one_checkpoint(
     Each episode resets with ``seed = train_seed + eval_seed_offset + ep_i``.
     Using the same anchor seed across all checkpoints in a run means the
     learning curve is not noised by env init drift — only policy evolution
-    can move the eval metric. (See the ``EVAL_SEED_OFFSET`` note at module
-    top: the SB3 templates use a different per-episode scheme.)
+    can move the eval metric. The same stream is used by the SB3 templates.
 
     Returns (returns, costs, lengths, terminal_infos).
     """
@@ -273,6 +235,8 @@ def replay_all_checkpoints(
     steps_per_epoch: int = 20_000,
     eval_seed_offset: int = EVAL_SEED_OFFSET,
 ) -> None:
+    if eval_seed_offset < 0:
+        raise ValueError("eval_seed_offset must be non-negative")
     save_dir = _find_omnisafe_save_dir(log_dir)
     # Fail before any checkpoint is loaded: a robust env cannot be scored
     # correctly on this path (see _assert_no_active_noise).
@@ -308,7 +272,7 @@ def replay_all_checkpoints(
     csv_uuid = uuid.uuid4().hex[:8]
     csv_path = os.path.join(log_dir, f"eval_episode_metrics_{csv_uuid}.csv")
     with open(csv_path, "w", newline="") as f:
-        csv.writer(f).writerow(_CSV_HEADER)
+        csv.writer(f).writerow(EPISODE_CSV_HEADER)
 
     timesteps: List[int] = []
     results_2d: List[List[float]] = []
@@ -339,25 +303,15 @@ def replay_all_checkpoints(
             for ep_i in range(num_eval_eps):
                 cumulative_episode += 1
                 info = terminal_infos[ep_i]
-                row = [
-                    env_step,
-                    cumulative_episode,
-                    round(time_elapsed_s, 2),
-                    returns[ep_i],
-                    lengths[ep_i],
-                ]
-                # info-key columns (ep_cost ... sustain_reward); the last 5 of
-                # _CSV_HEADER are the appended robust-eval cols, handled below.
-                for col_after_length in _CSV_HEADER[5:-len(_ROBUST_EVAL_COLS)]:
-                    info_key = _INFO_KEY_BY_CSV_COL[col_after_length]
-                    row.append(info.get(info_key, ""))
-                # clean/denoised return = sum of the reward-decomposition terms
-                # just appended (the last 6 entries of row); == received return
-                # here since safety tasks carry no reward noise.
-                ep_return_true = sum(float(x) for x in row[-6:] if x != "")
-                # robust-eval cols: safety-only → scale 1.0 (matched), no noise
-                row.extend([1.0, ep_return_true, 0.0, 0.0, 0.0])
-                writer.writerow(row)
+                writer.writerow(build_episode_csv_row(
+                    env_step_count=env_step,
+                    episode=cumulative_episode,
+                    time_elapsed=round(time_elapsed_s, 2),
+                    ep_return=returns[ep_i],
+                    ep_length=lengths[ep_i],
+                    info=info,
+                    eval_noise_scale=1.0,
+                ))
 
         print(f"  [{i+1:3d}/{len(ckpts)}] ckpt {ckpt:>20s} "
               f"env_step={env_step:>8d}  ret={np.mean(returns):8.2f}  "

@@ -364,7 +364,8 @@ def _final_eval(save_dir: str, num_eval_eps: int, train_seed: int) -> Dict[str, 
       1. ``Evaluator.evaluate`` calls ``self._env.reset()`` with no seed
          (omnisafe/evaluator.py:425-426), so the eval RNG depends on
          whatever state the env happens to be in after ``load_saved``.
-         We pass ``seed = train_seed + 10_000 + ep_i`` per episode
+         We pass ``seed = train_seed + protocol.eval_seed_offset + ep_i``
+         per episode
          (matches SB3 ``run_baseline.py:_final_eval`` convention) so the
          eval is reproducible without coupling to training RNG state.
 
@@ -402,14 +403,12 @@ def _final_eval(save_dir: str, num_eval_eps: int, train_seed: int) -> Dict[str, 
     if env is None or actor is None:
         raise RuntimeError(f"Evaluator.load_saved did not initialize env+actor for {pt_files[-1]}")
 
-    # eval seed = train_seed + 10_000 + ep_i. Decouples eval RNG from
+    # Evaluation uses the same algorithm-independent seed stream as SB3:
+    # train_seed + protocol.eval_seed_offset + ep_i. This decouples eval RNG from
     # training RNG state; per-ep offset gives distinct realizations even
     # though OmniPiano's default (`_randomize_hand_positions=False`)
-    # makes init pose deterministic. NOTE: the SB3 templates use a
-    # different scheme (eval_seed = seed + n_envs + 1, then
-    # eval_seed + ep*10_000) — eval episodes are not draw-matched
-    # across the two families.
-    eval_seed_offset = 10_000
+    # makes init pose deterministic.
+    eval_seed_offset = BenchmarkProtocolConfig().eval_seed_offset
 
     returns: List[float] = []
     costs_: List[float] = []
@@ -689,6 +688,8 @@ def main():
     result["total_env_steps"] = int(args.total_steps)
     result["num_eval_eps"] = int(args.num_eval_eps)
     result["protocol_version"] = proto.protocol_version
+    result["metrics_protocol_version"] = proto.metrics_protocol_version
+    result["eval_seed_offset"] = int(proto.eval_seed_offset)
     result["algorithm"] = f"{args.algorithm} (OmniSafe)"
     result["smoke_test"] = args.smoke_test
     hparams = {

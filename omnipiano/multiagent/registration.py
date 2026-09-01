@@ -34,6 +34,7 @@ _RUNTIME_BYPASS_FIELDS = frozenset({
     "record_every",
     "record_resolution",
     "camera_id",
+    "record_sound",
 })
 
 
@@ -43,6 +44,7 @@ _MA_RUNTIME_KWARGS = frozenset({
     "obs_visibility",
     "reward_mode",
     "flatten_obs",
+    "metrics_capture_physics",
     "sustain_owner",  # override the morphology default (e.g. for exception
                       # pieces like Bizet Jeux d'enfants where Primo controls
                       # the pedal); see plan § 4 / § 6, design doc § 4.3.
@@ -126,6 +128,12 @@ def make_parallel(
     obs_visibility = kwargs.pop("obs_visibility", "own_plus_boundary")
     reward_mode = kwargs.pop("reward_mode", "shared")
     flatten_obs = kwargs.pop("flatten_obs", False)
+    metrics_capture_physics = kwargs.pop("metrics_capture_physics", False)
+    if not isinstance(metrics_capture_physics, bool):
+        raise TypeError(
+            "metrics_capture_physics must be a bool; string values such as "
+            "'false' are truthy in Python and are rejected"
+        )
     sustain_owner = kwargs.pop("sustain_owner", None)
 
     seed = kwargs.pop("seed", None)
@@ -133,6 +141,7 @@ def make_parallel(
     record_every = kwargs.pop("record_every", 1)
     record_resolution = kwargs.pop("record_resolution", (480, 640))
     camera_id = kwargs.pop("camera_id", "piano/back")
+    record_sound = kwargs.pop("record_sound", True)
 
     # ---- Build the env_builder closure (mirrors SA's _build_dm_env_chain) ----
     # We reuse SA registration's machinery by reaching in for the TaskSpec
@@ -227,6 +236,13 @@ def make_parallel(
         record_every=record_every,
         record_resolution=record_resolution,
         camera_id=camera_id,
+        record_sound=record_sound,
+        hand_to_agent={
+            hand: agent.name
+            for agent in assignment.agents
+            for hand in agent.hand_names
+        },
+        capture_physics_metrics=metrics_capture_physics,
     )
 
     # Compute precise agent reach (cached). Use ma_clamped_specs so the
@@ -272,6 +288,9 @@ def _make_dm_env_chain_builder(
     record_every: int = 1,
     record_resolution: Tuple[int, int] = (480, 640),
     camera_id: str = "piano/back",
+    record_sound: bool = True,
+    hand_to_agent: Optional[Dict[str, str]] = None,
+    capture_physics_metrics: bool = False,
 ) -> Callable[[Optional[int]], dm_env.Environment]:
     """Return a closure that builds the MA-side dm_env chain (Dict obs preserved).
 
@@ -331,8 +350,13 @@ def _make_dm_env_chain_builder(
         env = EpisodeStatisticsWrapper(env, deque_size=1)
 
         if record_dir is not None:
-            from robopianist.wrappers.sound import PianoSoundVideoWrapper
-            env = PianoSoundVideoWrapper(
+            if record_sound:
+                from robopianist.wrappers.sound import PianoSoundVideoWrapper
+                video_wrapper = PianoSoundVideoWrapper
+            else:
+                from dm_env_wrappers import DmControlVideoWrapper
+                video_wrapper = DmControlVideoWrapper
+            env = video_wrapper(
                 env,
                 record_dir=record_dir,
                 record_every=record_every,
@@ -341,7 +365,12 @@ def _make_dm_env_chain_builder(
                 width=record_resolution[1],
             )
 
-        env = MidiEvaluationWrapper(env, deque_size=1)
+        env = MidiEvaluationWrapper(
+            env,
+            deque_size=1,
+            hand_to_agent=hand_to_agent,
+            capture_physics_metrics=capture_physics_metrics,
+        )
 
         if robust_config.is_channel_active("obs"):
             obs_noise_seed = (
