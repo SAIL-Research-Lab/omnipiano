@@ -64,7 +64,17 @@ _orig_np_array = _np.array
 def _np_array_compat(*args, **kwargs):
     if kwargs.get("copy") is False:
         kwargs.pop("copy")
-        return _np.asarray(*args, **kwargs)
+        # ``np.array`` accepts ``subok`` and ``ndmin``; ``np.asarray`` does
+        # not accept either on NumPy 1.x (the RAIDEN compute image), and
+        # still does not accept ``subok`` on NumPy 2.x. Preserve both
+        # semantics explicitly instead of forwarding incompatible kwargs.
+        subok = bool(kwargs.pop("subok", False))
+        ndmin = int(kwargs.pop("ndmin", 0))
+        converter = _np.asanyarray if subok else _np.asarray
+        result = converter(*args, **kwargs)
+        if result.ndim < ndmin:
+            result = result.reshape((1,) * (ndmin - result.ndim) + result.shape)
+        return result
     return _orig_np_array(*args, **kwargs)
 
 
