@@ -102,6 +102,12 @@ _CONFIG_FIELDS: Dict[str, Dict[str, str]] = {
         "checkpoint_freq": "checkpoint_freq",
         "log_every_iters": "log_every_iters", "smoke_test": "smoke_test",
     },
+    "video": {
+        "enabled": "video_enabled", "freq": "video_freq",
+        "record_final": "video_record_final",
+        "camera_id": "video_camera_id", "height": "video_height",
+        "width": "video_width", "wandb_upload": "video_wandb_upload",
+    },
     "wandb": {
         "mode": "wandb_mode", "entity": "wandb_entity",
         "project": "wandb_project", "group": "wandb_group",
@@ -418,6 +424,27 @@ def build_arg_parser(
                       default=defaults["smoke_test"],
                       help="5k-step ingestion/checkpoint/eval test; not a result.")
 
+    video = p.add_argument_group("evaluation video")
+    video.add_argument("--eval-video", dest="video_enabled",
+                       action=argparse.BooleanOptionalAction,
+                       default=defaults["video_enabled"],
+                       help="Record deterministic evaluation videos during training.")
+    video.add_argument("--video-freq", type=int, default=defaults["video_freq"],
+                       help="Video cadence in lifetime env steps; must be a multiple "
+                            "of --eval-freq.")
+    video.add_argument("--video-record-final", dest="video_record_final",
+                       action=argparse.BooleanOptionalAction,
+                       default=defaults["video_record_final"],
+                       help="Always record the final policy if its step was not already "
+                            "a periodic video target.")
+    video.add_argument("--video-camera-id", default=defaults["video_camera_id"])
+    video.add_argument("--video-height", type=int, default=defaults["video_height"])
+    video.add_argument("--video-width", type=int, default=defaults["video_width"])
+    video.add_argument("--video-wandb-upload", dest="video_wandb_upload",
+                       action=argparse.BooleanOptionalAction,
+                       default=defaults["video_wandb_upload"],
+                       help="Upload each completed periodic video to the active W&B run.")
+
     wb = p.add_argument_group("weights & biases")
     wb.add_argument("--wandb-mode", choices=("online", "offline", "disabled"),
                     default=defaults["wandb_mode"])
@@ -493,8 +520,10 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
     bad = {k: v for k, v in positive.items() if v <= 0}
     if bad:
         raise ValueError(f"these CLI values must be positive: {bad}")
-    if args.num_workers < 0 or args.checkpoint_freq < 0:
-        raise ValueError("num_workers and checkpoint_freq must be non-negative")
+    if args.num_workers < 0 or args.checkpoint_freq < 0 or args.video_freq < 0:
+        raise ValueError(
+            "num_workers, checkpoint_freq and video_freq must be non-negative"
+        )
     if args.num_cpus_per_env_runner <= 0:
         raise ValueError("num_cpus_per_env_runner must be positive")
     if args.ray_num_cpus is not None and args.ray_num_cpus <= 0:
@@ -513,6 +542,18 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
                          "skip multiple protocol evaluation thresholds")
     if 0 < args.checkpoint_freq < args.train_batch_size:
         raise ValueError("checkpoint_freq must be 0 or >= train_batch_size")
+    if args.video_enabled:
+        if args.video_freq <= 0:
+            raise ValueError("video_freq must be positive when eval video is enabled")
+        if args.video_freq % args.eval_freq != 0:
+            raise ValueError(
+                "video_freq must be an integer multiple of eval_freq so recording "
+                "reuses a scheduled deterministic evaluation"
+            )
+        if args.video_height <= 0 or args.video_width <= 0:
+            raise ValueError("video_height and video_width must be positive")
+        if not str(args.video_camera_id).strip():
+            raise ValueError("video_camera_id must be non-empty")
     if not 0.0 <= args.gae_lambda <= 1.0:
         raise ValueError("gae_lambda must be in [0, 1]")
     if not 0.0 < args.clip_param < 1.0:
@@ -641,7 +682,7 @@ def _prepare_run_dir(requested: Optional[str], algo: str, env_id: str, seed: int
     protected = (
         "run_config.json", "progress.jsonl", "periodic_eval.jsonl",
         "eval_summary.json", "checkpoint_path.txt", "final_checkpoint_path.txt",
-        "latest_checkpoint_path.txt", "checkpoints.jsonl",
+        "latest_checkpoint_path.txt", "checkpoints.jsonl", "videos.jsonl", "videos",
     )
     existing = [n for n in protected if (run_dir / n).exists()]
     if existing:
@@ -655,6 +696,19 @@ def _prepare_run_dir(requested: Optional[str], algo: str, env_id: str, seed: int
 def _space_metadata(space: Any) -> Dict[str, Any]:
     return {"type": type(space).__name__, "shape": list(space.shape),
             "dtype": str(space.dtype)}
+
+
+def _completed_eval_videos(
+    video_dir: Path, *, expected_episodes: int
+) -> Sequence[Path]:
+    """Return finished MP4s and fail if recording silently produced the wrong count."""
+    paths = sorted(Path(video_dir).glob("*.mp4"))
+    if len(paths) != int(expected_episodes):
+        raise RuntimeError(
+            f"evaluation video recording in {video_dir} produced {len(paths)} MP4(s); "
+            f"expected {expected_episodes}"
+        )
+    return paths
 
 
 def _git_metadata() -> Dict[str, Any]:
@@ -857,6 +911,14 @@ def _build_run_config(
             "sample_timeout_s": float(args.sample_timeout_s),
             "max_sampling_stalls": int(args.max_sampling_stalls),
             "checkpoint_freq_env_steps": int(args.checkpoint_freq),
+            "evaluation_video": {
+                "enabled": bool(args.video_enabled),
+                "freq_env_steps": int(args.video_freq),
+                "record_final": bool(args.video_record_final),
+                "camera_id": str(args.video_camera_id),
+                "resolution": [int(args.video_height), int(args.video_width)],
+                "wandb_upload": bool(args.video_wandb_upload),
+            },
             "algorithm_seed": int(args.seed),
             "worker_seeding": ("env seed = seed + 1000*worker_index + "
                                "vector_index; torch/module seeding via "
@@ -890,7 +952,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     run_dir = _prepare_run_dir(args.run_dir, spec.name, args.env_id, args.seed)
     run_config = _build_run_config(args, spec, proto, run_dir)
     write_json(run_dir / "run_config.json", run_config)
-    for name in ("progress.jsonl", "periodic_eval.jsonl", "checkpoints.jsonl"):
+    for name in (
+        "progress.jsonl", "periodic_eval.jsonl", "checkpoints.jsonl",
+        "videos.jsonl",
+    ):
         (run_dir / name).touch(exist_ok=False)
 
     tag = spec.name
@@ -900,6 +965,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"[{tag}] env_id={args.env_id}")
     print(f"[{tag}] seed={args.seed}  steps={args.total_steps:,}  "
           f"gamma={args.gamma}  eval_every={args.eval_freq:,} env-steps")
+    if args.video_enabled:
+        print(
+            f"[{tag}] eval_video_every={args.video_freq:,} env-steps  "
+            f"camera={args.video_camera_id}  "
+            f"resolution={args.video_width}x{args.video_height}  "
+            f"wandb_upload={args.video_wandb_upload}"
+        )
+    else:
+        print(f"[{tag}] eval_video=disabled")
     print(f"[{tag}] run_dir={run_dir}")
 
     # ---- W&B: fail fast here, before any GPU hour is spent ----
@@ -1065,8 +1139,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     final_ckpt: Optional[str] = None
     final_ckpt_ref: Optional[str] = None
     interrupted = False
+    last_video_step: Optional[int] = None
+    recorded_videos: list = []
+    pending_final_video_record: Optional[Dict[str, Any]] = None
 
-    def _evaluate() -> Dict[str, Any]:
+    def _evaluate(record_dir: Optional[Path] = None) -> Dict[str, Any]:
         # include_global_state MUST match training: a MAPPO policy expects the
         # wider [global_state | own] vector even though its actor ignores the
         # global block.
@@ -1074,7 +1151,45 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             algo, args.env_id,
             eval_seed=args.seed + args.eval_seed_offset,
             num_episodes=args.num_eval_eps,
+            record_dir=str(record_dir) if record_dir is not None else None,
+            record_resolution=(args.video_height, args.video_width),
+            camera_id=args.video_camera_id,
             include_global_state=bool(spec.needs_global_state),
+        )
+
+    def _finish_video_recording(
+        video_dir: Path,
+        *,
+        scheduled_env_step: Optional[int],
+        actual_env_step: int,
+    ) -> Dict[str, Any]:
+        video_paths = _completed_eval_videos(
+            video_dir, expected_episodes=args.num_eval_eps
+        )
+        record = {
+            "scheduled_env_step": (
+                int(scheduled_env_step)
+                if scheduled_env_step is not None
+                else None
+            ),
+            "actual_env_step": int(actual_env_step),
+            "video_dir": str(video_dir.relative_to(run_dir)),
+            "video_files": [
+                str(path.relative_to(run_dir)) for path in video_paths
+            ],
+            "wandb_upload_requested": bool(args.video_wandb_upload),
+        }
+        append_jsonl(run_dir / "videos.jsonl", record)
+        recorded_videos.append(record)
+        return record
+
+    def _upload_video_record(record: Mapping[str, Any]) -> None:
+        if not args.video_wandb_upload:
+            return
+        wandb_run.log_eval_videos(
+            int(record["actual_env_step"]),
+            [run_dir / path for path in record["video_files"]],
+            scheduled_env_step=record.get("scheduled_env_step"),
         )
 
     try:
@@ -1182,12 +1297,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 raise RuntimeError("one iteration crossed multiple protocol eval "
                                    f"thresholds {crossed}; reduce train_batch_size")
             for scheduled in crossed:
-                evaluation = _evaluate()
+                record_video = bool(
+                    args.video_enabled and scheduled % args.video_freq == 0
+                )
+                video_dir = (
+                    run_dir / "videos" / f"step_{scheduled:09d}"
+                    if record_video else None
+                )
+                if video_dir is not None:
+                    video_dir.mkdir(parents=True, exist_ok=False)
+                evaluation = _evaluate(video_dir)
+                video_record = None
+                if video_dir is not None:
+                    video_record = _finish_video_recording(
+                        video_dir,
+                        scheduled_env_step=scheduled,
+                        actual_env_step=total_steps,
+                    )
+                    last_video_step = total_steps
+                    evaluation["video"] = video_record
                 append_jsonl(run_dir / "periodic_eval.jsonl",
                              {"scheduled_env_step": int(scheduled),
                               "actual_env_step": int(total_steps), **evaluation})
                 wandb_run.log_eval(total_steps, evaluation,
                                    scheduled_env_step=scheduled)
+                if video_record is not None:
+                    _upload_video_record(video_record)
                 periodic_evals.append(evaluation)
                 final_eval = evaluation
                 last_eval_step = total_steps
@@ -1208,8 +1343,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         if final_ckpt is None or final_ckpt_ref is None:
             raise RuntimeError("training completed without a final checkpoint")
-        if last_eval_step != total_steps:
-            final_eval = _evaluate()
+        needs_final_video = bool(
+            args.video_enabled
+            and args.video_record_final
+            and last_video_step != total_steps
+        )
+        if last_eval_step != total_steps or needs_final_video:
+            final_video_dir = (
+                run_dir / "videos" / f"final_step_{total_steps:09d}"
+                if needs_final_video else None
+            )
+            if final_video_dir is not None:
+                final_video_dir.mkdir(parents=True, exist_ok=False)
+            final_eval = _evaluate(final_video_dir)
+            if final_video_dir is not None:
+                final_video_record = _finish_video_recording(
+                    final_video_dir,
+                    scheduled_env_step=None,
+                    actual_env_step=total_steps,
+                )
+                last_video_step = total_steps
+                final_eval["video"] = final_video_record
+                pending_final_video_record = final_video_record
         if final_eval is None:
             raise RuntimeError("training completed without a final evaluation")
 
@@ -1240,6 +1395,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "periodic_eval_count": len(periodic_evals),
             "periodic_checkpoint_file": "checkpoints.jsonl",
             "periodic_checkpoints": periodic_ckpts,
+            "evaluation_video_file": "videos.jsonl",
+            "evaluation_videos": recorded_videos,
             "final_evaluation": final_eval,
             "episodes": final_eval["episodes"],
             "summary": final_eval["summary"],
@@ -1252,9 +1409,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         }
         write_json(run_dir / "eval_summary.json", eval_summary)
         wandb_run.log_final(total_steps, eval_summary)
+        if pending_final_video_record is not None:
+            _upload_video_record(pending_final_video_record)
         if args.wandb_upload_artifacts:
             for name in ("run_config.json", "eval_summary.json", "progress.jsonl",
-                         "periodic_eval.jsonl", "checkpoints.jsonl"):
+                         "periodic_eval.jsonl", "checkpoints.jsonl", "videos.jsonl"):
                 wandb_run.log_artifact_dir(
                     run_dir / name,
                     name=f"{run_dir.name}__{name.replace('.', '_')}")

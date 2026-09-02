@@ -247,6 +247,31 @@ class IPPOInfrastructureTest(unittest.TestCase):
             0.75,
         )
 
+    def test_eval_forwards_video_configuration_only_when_recording(self):
+        env = _TwoStepSharedEnv()
+        received = {}
+
+        def _factory(env_id, **kwargs):
+            self.assertEqual(env_id, "fake-env")
+            received.update(kwargs)
+            return env
+
+        common.evaluate_marl(
+            object(),
+            "fake-env",
+            eval_seed=0,
+            num_episodes=1,
+            record_dir="/tmp/eval-video",
+            record_resolution=(360, 640),
+            camera_id="piano/topdown",
+            env_factory=_factory,
+            action_computer=_zero_action,
+        )
+        self.assertEqual(received["record_dir"], "/tmp/eval-video")
+        self.assertEqual(received["record_every"], 1)
+        self.assertEqual(received["record_resolution"], (360, 640))
+        self.assertEqual(received["camera_id"], "piano/topdown")
+
     def test_eval_fails_when_terminal_f1_is_missing_and_closes_env(self):
         env = _TwoStepSharedEnv(include_metrics=False)
         with self.assertRaisesRegex(RuntimeError, "musical metrics"):

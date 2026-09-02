@@ -21,6 +21,12 @@ def test_canonical_defaults_match_protocol_and_project_convention() -> None:
     assert args.eval_freq == proto.eval_freq_env_steps == 50_000
     assert args.seed == proto.seed == 0
     assert args.checkpoint_freq == 500_000
+    assert args.video_enabled
+    assert args.video_freq == 500_000
+    assert args.video_record_final
+    assert args.video_camera_id == "piano/topdown"
+    assert (args.video_height, args.video_width) == (480, 640)
+    assert args.video_wandb_upload
     assert args.log_every_iters == 5
     assert args.train_batch_size == args.minibatch_size == 4_000
     assert args.num_epochs == 5
@@ -87,6 +93,7 @@ def test_smoke_test_values_also_come_from_json() -> None:
     assert args.num_gpus_per_learner == 0.0
     assert args.ray_num_cpus is None
     assert args.checkpoint_freq == 0
+    assert not args.video_enabled
 
     overridden = train._parse_args(["--smoke-test", "--num-epochs", "3"])
     train._resolve_args(overridden)

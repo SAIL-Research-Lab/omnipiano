@@ -58,6 +58,15 @@
     "log_every_iters": 5,
     "smoke_test": false
   },
+  "video": {
+    "enabled": true,
+    "freq": 500000,
+    "record_final": true,
+    "camera_id": "piano/topdown",
+    "height": 480,
+    "width": 640,
+    "wandb_upload": true
+  },
   "wandb": {
     "mode": "online",
     "entity": "omnipiano",
@@ -78,7 +87,8 @@
     "train_batch_size": 512,
     "minibatch_size": 512,
     "num_epochs": 2,
-    "checkpoint_freq": 0
+    "checkpoint_freq": 0,
+    "video_enabled": false
   },
   "algorithm_overrides": {
     "ippo": {},

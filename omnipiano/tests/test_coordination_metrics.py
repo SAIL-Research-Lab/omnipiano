@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -202,6 +203,40 @@ class CoordinationMetricsTest(unittest.TestCase):
         self.assertEqual(
             row["eval/coordination/inter_agent_collision_step_rate"], 0.1
         )
+
+    def test_wandb_eval_video_is_logged_immediately_at_env_step(self):
+        class _CaptureRun:
+            def __init__(self):
+                self.rows = []
+
+            def log(self, row, step):
+                self.rows.append((dict(row), step))
+
+        class _FakeWandb:
+            @staticmethod
+            def Video(path, *, format, caption):
+                return {"path": path, "format": format, "caption": caption}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            video = Path(tmp) / "00000.mp4"
+            video.write_bytes(b"fake-mp4")
+            capture = _CaptureRun()
+            run = wandb_helpers.WandbRun.__new__(wandb_helpers.WandbRun)
+            run._run = capture
+            run._wandb = _FakeWandb()
+            run._degraded = False
+            run._last_step = -1
+
+            run.log_eval_videos(
+                504_000, [video], scheduled_env_step=500_000
+            )
+
+            self.assertEqual(len(capture.rows), 1)
+            row, step = capture.rows[0]
+            self.assertEqual(step, 504_000)
+            self.assertEqual(row["env_steps"], 504_000)
+            self.assertEqual(row["eval/video"]["path"], str(video))
+            self.assertIn("500,000", row["eval/video"]["caption"])
 
 
 if __name__ == "__main__":

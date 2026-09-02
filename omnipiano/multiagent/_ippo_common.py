@@ -426,6 +426,8 @@ def evaluate_marl(
     eval_seed: int,
     num_episodes: int,
     record_dir: Optional[str] = None,
+    record_resolution: Tuple[int, int] = (480, 640),
+    camera_id: str = "piano/back",
     max_episode_steps: int = 1_000_000,
     env_factory: Optional[Callable[..., Any]] = None,
     action_computer: Optional[Callable[[str, Any, Any], np.ndarray]] = None,
@@ -436,6 +438,10 @@ def evaluate_marl(
         raise ValueError("num_episodes must be positive")
     if max_episode_steps <= 0:
         raise ValueError("max_episode_steps must be positive")
+    if len(record_resolution) != 2 or any(int(v) <= 0 for v in record_resolution):
+        raise ValueError("record_resolution must contain two positive integers")
+    if not str(camera_id).strip():
+        raise ValueError("camera_id must be non-empty")
     if env_factory is None:
         from omnipiano.multiagent import make_parallel
 
@@ -450,7 +456,12 @@ def evaluate_marl(
         # ignores the global block but the observation SHAPE must still match.
         env_kwargs["include_global_state"] = True
     if record_dir is not None:
-        env_kwargs.update(record_dir=record_dir, record_every=1)
+        env_kwargs.update(
+            record_dir=record_dir,
+            record_every=1,
+            record_resolution=(int(record_resolution[0]), int(record_resolution[1])),
+            camera_id=str(camera_id),
+        )
     env = env_factory(env_id, **env_kwargs)
 
     episodes: List[Dict[str, Any]] = []

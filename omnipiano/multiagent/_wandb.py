@@ -244,6 +244,46 @@ class WandbRun:
             payload["eval/scheduled_env_step"] = int(scheduled_env_step)
         self._log(payload, env_steps)
 
+    def log_eval_videos(
+        self,
+        env_steps: int,
+        video_paths: Sequence[Path],
+        *,
+        scheduled_env_step: Optional[int] = None,
+    ) -> None:
+        """Upload completed evaluation MP4s immediately as W&B media.
+
+        This is intentionally separate from the optional end-of-run artifact
+        upload: videos become visible while a long training run is still active.
+        """
+        if not self.active:
+            return
+        paths = [Path(path) for path in video_paths]
+        missing = [str(path) for path in paths if not path.is_file()]
+        if missing:
+            raise FileNotFoundError(
+                f"cannot upload missing evaluation video(s): {missing}"
+            )
+        if not paths:
+            raise ValueError("cannot upload an empty evaluation video list")
+        label = (
+            int(scheduled_env_step)
+            if scheduled_env_step is not None
+            else int(env_steps)
+        )
+        payload: Dict[str, Any] = {}
+        for index, path in enumerate(paths):
+            key = "eval/video" if index == 0 else f"eval/video_episode_{index}"
+            payload[key] = self._wandb.Video(
+                str(path),
+                format="mp4",
+                caption=(
+                    f"deterministic evaluation at scheduled env step {label:,}; "
+                    f"{path.name}"
+                ),
+            )
+        self._log(payload, env_steps)
+
     def log_final(self, env_steps: int, eval_summary: Mapping[str, Any]) -> None:
         """Also write scalar summary fields (these become Runs-table columns)."""
         if not self.active:
