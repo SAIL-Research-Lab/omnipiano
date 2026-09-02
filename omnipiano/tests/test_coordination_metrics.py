@@ -167,6 +167,34 @@ class CoordinationMetricsTest(unittest.TestCase):
         self.assertEqual(key_agents, {42: {"left"}})
         self.assertFalse(collision)
 
+    def test_inter_agent_collision_penalty_is_binary_and_applied_once(self):
+        shaped, penalty = metrics.apply_inter_agent_collision_penalty(
+            1.25, inter_agent_collision=True, coefficient=0.1
+        )
+        self.assertAlmostEqual(shaped, 1.15)
+        self.assertAlmostEqual(penalty, -0.1)
+
+        # No cross-agent contact (including an intra-agent contact classified
+        # above) leaves the original RoboPianist reward bit-for-bit unchanged.
+        shaped, penalty = metrics.apply_inter_agent_collision_penalty(
+            1.25, inter_agent_collision=False, coefficient=0.1
+        )
+        self.assertEqual(shaped, 1.25)
+        self.assertEqual(penalty, 0.0)
+
+        # Coefficient zero is the explicit backward-compatible ablation.
+        shaped, penalty = metrics.apply_inter_agent_collision_penalty(
+            1.25, inter_agent_collision=True, coefficient=0.0
+        )
+        self.assertEqual(shaped, 1.25)
+        self.assertEqual(penalty, 0.0)
+
+        for invalid in (-0.1, float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                metrics.apply_inter_agent_collision_penalty(
+                    1.25, inter_agent_collision=True, coefficient=invalid
+                )
+
     def test_wandb_eval_logs_all_three_headline_rates(self):
         class _CaptureRun:
             def __init__(self):
@@ -188,6 +216,10 @@ class CoordinationMetricsTest(unittest.TestCase):
                     "episode_coordination/common_area_success_rate_mean": 0.8,
                     "episode_coordination/common_area_duplicate_press_rate_mean": 0.2,
                     "episode_coordination/inter_agent_collision_step_rate_mean": 0.1,
+                    "episode_reward/base_team_return_mean": 80.0,
+                    "episode_reward/inter_agent_collision_penalty_return_mean": -1.5,
+                    "episode_reward/shaped_team_return_mean": 78.5,
+                    "episode_reward/inter_agent_collision_penalty_coef_mean": 0.1,
                 }
             },
         )
@@ -202,6 +234,14 @@ class CoordinationMetricsTest(unittest.TestCase):
         )
         self.assertEqual(
             row["eval/coordination/inter_agent_collision_step_rate"], 0.1
+        )
+        self.assertEqual(row["eval/reward/base_team_return"], 80.0)
+        self.assertEqual(
+            row["eval/reward/inter_agent_collision_penalty_return"], -1.5
+        )
+        self.assertEqual(row["eval/reward/shaped_team_return"], 78.5)
+        self.assertEqual(
+            row["eval/reward/inter_agent_collision_penalty_coef"], 0.1
         )
 
     def test_wandb_eval_video_is_logged_immediately_at_env_step(self):

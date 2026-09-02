@@ -432,6 +432,7 @@ def evaluate_marl(
     env_factory: Optional[Callable[..., Any]] = None,
     action_computer: Optional[Callable[[str, Any, Any], np.ndarray]] = None,
     include_global_state: bool = False,
+    inter_agent_collision_penalty_coef: float = 0.0,
 ) -> Dict[str, Any]:
     """Run deterministic PettingZoo episodes and collect authoritative metrics."""
     if num_episodes <= 0:
@@ -442,6 +443,11 @@ def evaluate_marl(
         raise ValueError("record_resolution must contain two positive integers")
     if not str(camera_id).strip():
         raise ValueError("camera_id must be non-empty")
+    if (not math.isfinite(inter_agent_collision_penalty_coef)
+            or inter_agent_collision_penalty_coef < 0.0):
+        raise ValueError(
+            "inter_agent_collision_penalty_coef must be finite and non-negative"
+        )
     if env_factory is None:
         from omnipiano.multiagent import make_parallel
 
@@ -450,6 +456,9 @@ def evaluate_marl(
     env_kwargs: Dict[str, Any] = {
         "seed": int(eval_seed),
         "flatten_obs": True,
+        "inter_agent_collision_penalty_coef": float(
+            inter_agent_collision_penalty_coef
+        ),
     }
     if include_global_state:
         # MAPPO checkpoints were trained on [global_state | own]; the actor

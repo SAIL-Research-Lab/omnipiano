@@ -239,6 +239,18 @@ class WandbRun:
             "eval/coordination/inter_agent_collision_step_rate_std": summary.get(
                 "episode_coordination/inter_agent_collision_step_rate_std"
             ),
+            "eval/reward/base_team_return": summary.get(
+                "episode_reward/base_team_return_mean"
+            ),
+            "eval/reward/inter_agent_collision_penalty_return": summary.get(
+                "episode_reward/inter_agent_collision_penalty_return_mean"
+            ),
+            "eval/reward/shaped_team_return": summary.get(
+                "episode_reward/shaped_team_return_mean"
+            ),
+            "eval/reward/inter_agent_collision_penalty_coef": summary.get(
+                "episode_reward/inter_agent_collision_penalty_coef_mean"
+            ),
         }
         if scheduled_env_step is not None:
             payload["eval/scheduled_env_step"] = int(scheduled_env_step)

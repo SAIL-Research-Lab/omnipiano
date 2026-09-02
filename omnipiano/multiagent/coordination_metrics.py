@@ -1,8 +1,10 @@
 """Agent-aware coordination metrics for multi-hand piano environments.
 
-The metrics in this module are deliberately observational: they read the
+The metric tracker in this module is deliberately observational: it reads the
 ground-truth task trajectory, piano activation state, and MuJoCo contacts, but
-never modify observations, rewards, actions, or episode termination.
+never modifies observations, actions, or episode termination.  A separate
+pure helper converts the exact tracked collision indicator into optional MARL
+reward shaping; the environment wrapper decides whether to apply it.
 
 The headline metrics are:
 
@@ -52,6 +54,44 @@ INTER_AGENT_COLLISION_STEP_COUNT = (
     "episode_coordination/inter_agent_collision_step_count"
 )
 OBSERVED_STEP_COUNT = "episode_coordination/observed_step_count"
+
+# Episode reward-accounting fields emitted by the MARL wrapper when the
+# optional cross-agent collision penalty is active.  They are kept separate
+# from the observational coordination rates so the shaped team return can be
+# reconstructed exactly from an evaluation artifact.
+BASE_TEAM_RETURN = "episode_reward/base_team_return"
+INTER_AGENT_COLLISION_PENALTY_RETURN = (
+    "episode_reward/inter_agent_collision_penalty_return"
+)
+SHAPED_TEAM_RETURN = "episode_reward/shaped_team_return"
+INTER_AGENT_COLLISION_PENALTY_COEF = (
+    "episode_reward/inter_agent_collision_penalty_coef"
+)
+
+
+def apply_inter_agent_collision_penalty(
+    base_reward: float,
+    *,
+    inter_agent_collision: bool,
+    coefficient: float,
+) -> Tuple[float, float]:
+    """Apply ``-coefficient * 1[cross-agent contact]`` exactly once.
+
+    Returns ``(shaped_reward, penalty_term)`` where ``penalty_term`` is zero
+    or negative.  Keeping this operation pure makes the reward/metric
+    alignment independently testable without MuJoCo.
+    """
+    base = float(base_reward)
+    coef = float(coefficient)
+    if not np.isfinite(base):
+        raise ValueError(f"base_reward must be finite, got {base_reward!r}")
+    if not np.isfinite(coef) or coef < 0.0:
+        raise ValueError(
+            "inter-agent collision penalty coefficient must be finite and "
+            f"non-negative, got {coefficient!r}"
+        )
+    penalty = -coef if bool(inter_agent_collision) else 0.0
+    return base + penalty, penalty
 
 
 def compute_common_keys(
@@ -369,7 +409,8 @@ class CoordinationMetricsTracker:
         )
         self._initialized = True
 
-    def observe_step(self, physics: Any, task: Any) -> None:
+    def observe_step(self, physics: Any, task: Any) -> bool:
+        """Observe one frame and return the exact collision indicator logged."""
         if not self._initialized:
             raise RuntimeError("coordination tracker must be reset before use")
         key_contact_agents, inter_agent_collision = classify_contacts(
@@ -384,6 +425,7 @@ class CoordinationMetricsTracker:
             key_contact_agents,
             inter_agent_collision=inter_agent_collision,
         )
+        return inter_agent_collision
 
     def finalize(self) -> Dict[str, Optional[float]]:
         if not self._initialized:

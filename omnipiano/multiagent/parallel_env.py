@@ -9,7 +9,8 @@ minus ``ConcatObservationWrapper`` — see ``ma_territorial_impl_plan.md``
     + optional prev_action/prev_reward slices from OAR)
   * reassembles per-agent canonical [-1, 1] action dicts into the flat
     SA action vector expected by ``CanonicalSpecWrapper`` → ``before_step``
-  * broadcasts a single global scalar reward to all agents (``shared`` mode)
+  * optionally subtracts one binary inter-agent collision penalty, then
+    broadcasts the resulting global scalar reward (``shared`` mode)
   * synchronizes terminations / truncations across agents
 
 Phase 1 supports ``obs_visibility="own_plus_boundary"`` + ``reward_mode="shared"``
@@ -31,7 +32,14 @@ from omnipiano.multiagent.assignment import (
     compute_boundary_hands,
     compute_inter_agent_boundaries,
 )
-from omnipiano.multiagent.coordination_metrics import CoordinationMetricsTracker
+from omnipiano.multiagent.coordination_metrics import (
+    BASE_TEAM_RETURN,
+    INTER_AGENT_COLLISION_PENALTY_COEF,
+    INTER_AGENT_COLLISION_PENALTY_RETURN,
+    SHAPED_TEAM_RETURN,
+    CoordinationMetricsTracker,
+    apply_inter_agent_collision_penalty,
+)
 
 
 # Phase 1 supported modes.
@@ -61,6 +69,9 @@ class OmniPianoParallelEnv(ParallelEnv):
         seed: initial seed.
         obs_visibility: Phase 1 supports only "own_plus_boundary".
         reward_mode: Phase 1 supports only "shared".
+        inter_agent_collision_penalty_coef: Per-control-step shared penalty for
+            any physical contact between collision geoms owned by different
+            agents. Zero preserves the original reward exactly.
         flatten_obs: if True, each agent's observation_space and obs values
             are flattened to a single Box via gymnasium.spaces.utils.flatten.
             Default False (Dict preserved).
@@ -81,6 +92,7 @@ class OmniPianoParallelEnv(ParallelEnv):
         flatten_obs: bool = False,
         sustain_owner: Optional[str] = None,
         include_global_state: bool = False,
+        inter_agent_collision_penalty_coef: float = 0.0,
     ) -> None:
         if obs_visibility not in _SUPPORTED_OBS_MODES:
             raise NotImplementedError(
@@ -100,6 +112,13 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._obs_visibility = obs_visibility
         self._reward_mode = reward_mode
         self._flatten_obs = flatten_obs
+        penalty_coef = float(inter_agent_collision_penalty_coef)
+        if not np.isfinite(penalty_coef) or penalty_coef < 0.0:
+            raise ValueError(
+                "inter_agent_collision_penalty_coef must be finite and "
+                f"non-negative, got {inter_agent_collision_penalty_coef!r}"
+            )
+        self._inter_agent_collision_penalty_coef = penalty_coef
         # CTDE: when True, every agent additionally receives the *centralized*
         # state s used by MAPPO's critic.  The actor must never read it -- see
         # ``_ctde_module.CtdePPOTorchRLModule`` which enforces that by slicing.
@@ -183,6 +202,8 @@ class OmniPianoParallelEnv(ParallelEnv):
             assignment, self._agent_reaches
         )
         self._coordination_task = None
+        self._episode_base_team_return = 0.0
+        self._episode_collision_penalty_return = 0.0
 
         # Build per-agent action spaces first (needed for obs space construction
         # when OAR adds a prev_action slice).
@@ -238,6 +259,8 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._coordination_tracker.reset(
             self._env.physics, self._coordination_task
         )
+        self._episode_base_team_return = 0.0
+        self._episode_collision_penalty_return = 0.0
         obs = self._split_observation(ts.observation)
         infos = self._build_per_agent_infos()
         return obs, infos
@@ -256,14 +279,31 @@ class OmniPianoParallelEnv(ParallelEnv):
 
         if self._coordination_task is None:
             raise RuntimeError("multi-agent environment must be reset before step")
-        self._coordination_tracker.observe_step(
+        inter_agent_collision = self._coordination_tracker.observe_step(
             self._env.physics, self._coordination_task
         )
 
-        obs = self._split_observation(ts.observation)
+        # Apply the MARL-only collision shaping after the underlying RoboPianist
+        # reward is computed, using the exact same binary indicator accumulated
+        # by the evaluation metric.  The term is applied once to the shared team
+        # reward, then broadcast (never once per agent).
+        base_reward_scalar = float(ts.reward) if ts.reward is not None else 0.0
+        reward_scalar, collision_penalty = apply_inter_agent_collision_penalty(
+            base_reward_scalar,
+            inter_agent_collision=inter_agent_collision,
+            coefficient=self._inter_agent_collision_penalty_coef,
+        )
+        self._episode_base_team_return += base_reward_scalar
+        self._episode_collision_penalty_return += collision_penalty
+
+        # OAR is enabled by the benchmark configuration.  Its dm_env observation
+        # contains the unshaped base reward, so override prev_reward with the
+        # actual shared reward returned to the agents.
+        obs = self._split_observation(
+            ts.observation, previous_reward_override=reward_scalar
+        )
 
         # shared reward: broadcast scalar to all agents.
-        reward_scalar = float(ts.reward) if ts.reward is not None else 0.0
         rewards = {a: reward_scalar for a in self.agents}
 
         # dm_env -> PettingZoo termination semantics:
@@ -283,6 +323,13 @@ class OmniPianoParallelEnv(ParallelEnv):
         truncations = {a: truncated for a in self.agents}
 
         infos = self._build_per_agent_infos()
+        for agent_info in infos.values():
+            agent_info["step_coordination/inter_agent_collision"] = bool(
+                inter_agent_collision
+            )
+            agent_info["step_reward/inter_agent_collision_penalty"] = float(
+                collision_penalty
+            )
         # On episode-end, attach env-level musical metrics under "_global_"
         # (PettingZoo permits underscore-prefixed keys for env-level info;
         # see plan § 8). MidiEvaluationWrapper computes these at last() and
@@ -295,6 +342,19 @@ class OmniPianoParallelEnv(ParallelEnv):
                 for key, value in self._coordination_tracker.finalize().items()
                 if value is not None
             }
+            global_metrics.update({
+                BASE_TEAM_RETURN: float(self._episode_base_team_return),
+                INTER_AGENT_COLLISION_PENALTY_RETURN: float(
+                    self._episode_collision_penalty_return
+                ),
+                SHAPED_TEAM_RETURN: float(
+                    self._episode_base_team_return
+                    + self._episode_collision_penalty_return
+                ),
+                INTER_AGENT_COLLISION_PENALTY_COEF: float(
+                    self._inter_agent_collision_penalty_coef
+                ),
+            })
             try:
                 midi_eval = _find_wrapper(self._env, self._midi_eval_wrapper_cls)
                 metrics = midi_eval.get_musical_metrics()
@@ -519,7 +579,10 @@ class OmniPianoParallelEnv(ParallelEnv):
         return spaces
 
     def _split_observation(
-        self, dm_obs: Mapping[str, np.ndarray]
+        self,
+        dm_obs: Mapping[str, np.ndarray],
+        *,
+        previous_reward_override: Optional[float] = None,
     ) -> Dict[str, Any]:
         """dm_env Dict obs → per-agent obs (Dict or flat)."""
         # Reshape goal: (lookahead+1, 89). Last column = sustain.
@@ -572,8 +635,13 @@ class OmniPianoParallelEnv(ParallelEnv):
                     slices.append(prev_action_flat[self._sustain_idx : self._sustain_idx + 1])
                 agent_obs["prev_action"] = np.concatenate(slices).astype(np.float32)
                 # prev_reward is a global scalar.
+                prev_reward_source = (
+                    dm_obs["reward"]
+                    if previous_reward_override is None
+                    else previous_reward_override
+                )
                 prev_reward = np.asarray(
-                    dm_obs["reward"], dtype=np.float32
+                    prev_reward_source, dtype=np.float32
                 ).reshape(1)
                 agent_obs["prev_reward"] = prev_reward
 
@@ -585,7 +653,11 @@ class OmniPianoParallelEnv(ParallelEnv):
                 # Pre-flattening ``own`` would violate the declared Dict space.
                 outer_space = self._dict_observation_spaces[agent.name]
                 agent_obs = {
-                    "global_state": self._build_global_state(dm_obs, agent.name),
+                    "global_state": self._build_global_state(
+                        dm_obs,
+                        agent.name,
+                        previous_reward_override=previous_reward_override,
+                    ),
                     "own": agent_obs,
                 }
                 agent_obs = gym.spaces.utils.flatten(outer_space, agent_obs)
@@ -638,7 +710,11 @@ class OmniPianoParallelEnv(ParallelEnv):
         return sum(dim for _, dim in self._global_state_components())
 
     def _build_global_state(
-        self, dm_obs: Mapping[str, np.ndarray], agent_name: str
+        self,
+        dm_obs: Mapping[str, np.ndarray],
+        agent_name: str,
+        *,
+        previous_reward_override: Optional[float] = None,
     ) -> np.ndarray:
         parts = [
             np.asarray(dm_obs[f"{hand}_shadow_hand/joints_pos"], dtype=np.float32)
@@ -651,7 +727,14 @@ class OmniPianoParallelEnv(ParallelEnv):
         parts.append(np.asarray(dm_obs["goal"], dtype=np.float32).ravel())
         if self._has_oar:
             parts.append(np.asarray(dm_obs["action"], dtype=np.float32).ravel())
-            parts.append(np.asarray(dm_obs["reward"], dtype=np.float32).reshape(1))
+            previous_reward_source = (
+                dm_obs["reward"]
+                if previous_reward_override is None
+                else previous_reward_override
+            )
+            parts.append(
+                np.asarray(previous_reward_source, dtype=np.float32).reshape(1)
+            )
         onehot = np.zeros(len(self._assignment.agents), dtype=np.float32)
         onehot[self._agent_index[agent_name]] = 1.0
         parts.append(onehot)

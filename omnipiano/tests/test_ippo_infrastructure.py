@@ -264,6 +264,7 @@ class IPPOInfrastructureTest(unittest.TestCase):
             record_dir="/tmp/eval-video",
             record_resolution=(360, 640),
             camera_id="piano/topdown",
+            inter_agent_collision_penalty_coef=0.25,
             env_factory=_factory,
             action_computer=_zero_action,
         )
@@ -271,6 +272,20 @@ class IPPOInfrastructureTest(unittest.TestCase):
         self.assertEqual(received["record_every"], 1)
         self.assertEqual(received["record_resolution"], (360, 640))
         self.assertEqual(received["camera_id"], "piano/topdown")
+        self.assertEqual(received["inter_agent_collision_penalty_coef"], 0.25)
+
+    def test_eval_rejects_invalid_inter_agent_collision_penalty(self):
+        for invalid in (-0.1, float("nan"), float("inf")):
+            with self.assertRaisesRegex(ValueError, "finite and non-negative"):
+                common.evaluate_marl(
+                    object(),
+                    "fake-env",
+                    eval_seed=0,
+                    num_episodes=1,
+                    inter_agent_collision_penalty_coef=invalid,
+                    env_factory=lambda env_id, **kwargs: _TwoStepSharedEnv(),
+                    action_computer=_zero_action,
+                )
 
     def test_eval_fails_when_terminal_f1_is_missing_and_closes_env(self):
         env = _TwoStepSharedEnv(include_metrics=False)

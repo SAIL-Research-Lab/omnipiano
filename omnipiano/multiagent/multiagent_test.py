@@ -20,11 +20,15 @@ from omnipiano.multiagent import (
     make_parallel,
 )
 from omnipiano.multiagent.coordination_metrics import (
+    BASE_TEAM_RETURN,
     COMMON_AREA_DUPLICATE_PRESS_RATE,
     COMMON_AREA_SUCCESS_RATE,
     COMMON_AREA_TARGET_COUNT,
+    INTER_AGENT_COLLISION_PENALTY_COEF,
+    INTER_AGENT_COLLISION_PENALTY_RETURN,
     INTER_AGENT_COLLISION_STEP_RATE,
     OBSERVED_STEP_COUNT,
+    SHAPED_TEAM_RETURN,
 )
 
 
@@ -454,6 +458,77 @@ class TestPlanInvariant:
                 f"agent_key_range missing from step infos[{agent}]"
             )
 
+    def test_collision_penalty_is_shared_once_and_updates_actor_oar(self) -> None:
+        env = make_parallel(
+            self.env_id,
+            seed=0,
+            inter_agent_collision_penalty_coef=0.25,
+        )
+        try:
+            env.reset(seed=0)
+            # Isolate reward plumbing from the physics contact state.  The
+            # pure classifier has separate coverage for inter vs intra-agent
+            # contacts; this forces one positive indicator on this step.
+            env._coordination_tracker.observe_step = lambda physics, task: True
+            actions = {
+                agent: np.zeros(env.action_space(agent).shape, dtype=np.float32)
+                for agent in env.agents
+            }
+            observations, rewards, _, _, infos = env.step(actions)
+
+            expected = env._episode_base_team_return - 0.25
+            assert env._episode_collision_penalty_return == pytest.approx(-0.25)
+            assert all(
+                reward == pytest.approx(expected) for reward in rewards.values()
+            )
+            for agent in rewards:
+                assert infos[agent][
+                    "step_coordination/inter_agent_collision"
+                ] is True
+                assert infos[agent][
+                    "step_reward/inter_agent_collision_penalty"
+                ] == pytest.approx(-0.25)
+                assert observations[agent]["prev_reward"][0] == pytest.approx(
+                    expected
+                )
+        finally:
+            env.close()
+
+    def test_collision_penalty_updates_mappo_global_oar(self) -> None:
+        env = make_parallel(
+            self.env_id,
+            seed=0,
+            flatten_obs=True,
+            include_global_state=True,
+            inter_agent_collision_penalty_coef=0.25,
+        )
+        try:
+            env.reset(seed=0)
+            env._coordination_tracker.observe_step = lambda physics, task: True
+            actions = {
+                agent: np.zeros(env.action_space(agent).shape, dtype=np.float32)
+                for agent in env.agents
+            }
+            observations, rewards, _, _, _ = env.step(actions)
+            expected = next(iter(rewards.values()))
+
+            component_offset = 0
+            previous_reward_offset = None
+            for name, width in env._global_state_components():
+                if name == "prev_reward":
+                    previous_reward_offset = component_offset
+                    break
+                component_offset += width
+            assert previous_reward_offset is not None
+
+            for agent, observation in observations.items():
+                global_start, _ = env.obs_layout(agent)["global_state"]
+                assert observation[
+                    global_start + previous_reward_offset
+                ] == pytest.approx(expected)
+        finally:
+            env.close()
+
     # --- Plan § 8: infos["_global_"]["episode_task/musical_f1"] ---
 
     def test_global_evaluation_metrics_present_at_episode_end(self) -> None:
@@ -495,6 +570,11 @@ class TestPlanInvariant:
                 f"coordination metric out of range: {key}={global_metrics[key]}"
             )
         assert global_metrics[OBSERVED_STEP_COUNT] > 0
+        assert global_metrics[INTER_AGENT_COLLISION_PENALTY_COEF] == 0.0
+        assert global_metrics[INTER_AGENT_COLLISION_PENALTY_RETURN] == 0.0
+        assert global_metrics[SHAPED_TEAM_RETURN] == pytest.approx(
+            global_metrics[BASE_TEAM_RETURN]
+        )
 
     # --- Plan § 6: sustain_owner override actually takes effect ---
 

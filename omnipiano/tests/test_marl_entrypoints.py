@@ -19,6 +19,7 @@ def test_canonical_defaults_match_protocol_and_project_convention() -> None:
     assert args.total_steps == proto.total_env_steps == 5_000_000
     assert args.gamma == proto.gamma == 0.8
     assert args.eval_freq == proto.eval_freq_env_steps == 50_000
+    assert args.inter_agent_collision_penalty_coef == 0.1
     assert args.seed == proto.seed == 0
     assert args.checkpoint_freq == 500_000
     assert args.video_enabled
@@ -61,6 +62,7 @@ def test_canonical_defaults_match_protocol_and_project_convention() -> None:
 def test_json_algorithm_defaults_then_cli_overrides(tmp_path: Path) -> None:
     config = json.loads(train.DEFAULT_TRAIN_CONFIG_PATH.read_text())
     config["ppo"]["entropy_coeff"] = 0.0001
+    config["reward"]["inter_agent_collision_penalty_coef"] = 0.25
     config["algorithm_overrides"]["mappo"] = {
         "ppo": {"num_epochs": 7}
     }
@@ -69,11 +71,37 @@ def test_json_algorithm_defaults_then_cli_overrides(tmp_path: Path) -> None:
 
     args = train._parse_args([
         "--config", str(path), "--algo", "mappo", "--num-epochs", "9",
+        "--inter-agent-collision-penalty-coef", "0.4",
     ])
     assert args.algo == "mappo"
     assert args.entropy_coeff == 0.0001  # JSON shared default.
     assert args.num_epochs == 9  # CLI wins over algorithm JSON override (7).
+    assert args.inter_agent_collision_penalty_coef == 0.4
     assert args._training_config_path == str(path.resolve())
+
+
+def test_legacy_json_without_reward_section_preserves_original_reward(
+    tmp_path: Path,
+) -> None:
+    config = json.loads(train.DEFAULT_TRAIN_CONFIG_PATH.read_text())
+    del config["reward"]
+    path = tmp_path / "legacy.json"
+    path.write_text(json.dumps(config))
+
+    args = train._parse_args(["--config", str(path)])
+    assert args.inter_agent_collision_penalty_coef == 0.0
+
+
+def test_inter_agent_collision_penalty_validation() -> None:
+    args = train._parse_args([
+        "--inter-agent-collision-penalty-coef", "-0.1"
+    ])
+    try:
+        train._resolve_args(args)
+    except ValueError as exc:
+        assert "finite and non-negative" in str(exc)
+    else:
+        raise AssertionError("negative collision penalty coefficient was accepted")
 
 
 def test_rllib_debug_anchor_has_explicit_stock_value_loss_override() -> None:

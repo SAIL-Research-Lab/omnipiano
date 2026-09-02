@@ -14,6 +14,9 @@
     "num_eval_eps": 1,
     "eval_seed_offset": 10000
   },
+  "reward": {
+    "inter_agent_collision_penalty_coef": 0.1
+  },
   "ppo": {
     "train_batch_size": 4000,
     "minibatch_size": 4000,

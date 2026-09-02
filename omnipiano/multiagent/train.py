@@ -68,6 +68,11 @@ _CONFIG_FIELDS: Dict[str, Dict[str, str]] = {
         "eval_freq": "eval_freq", "num_eval_eps": "num_eval_eps",
         "eval_seed_offset": "eval_seed_offset",
     },
+    "reward": {
+        "inter_agent_collision_penalty_coef": (
+            "inter_agent_collision_penalty_coef"
+        ),
+    },
     "ppo": {
         "train_batch_size": "train_batch_size",
         "minibatch_size": "minibatch_size", "num_epochs": "num_epochs",
@@ -192,6 +197,15 @@ def _load_train_config(
     base_sections: Dict[str, Any] = {}
     for section in _CONFIG_FIELDS:
         if section not in raw:
+            # Reward shaping was added as an optional extension to schema v1.
+            # Old experiment JSON files must remain reproducible, so absence
+            # means the exact historical reward (coefficient zero), not the
+            # new canonical config's enabled value.
+            if section == "reward":
+                base_sections[section] = {
+                    "inter_agent_collision_penalty_coef": 0.0,
+                }
+                continue
             raise ValueError(f"{config_path}: missing required section {section!r}")
         base_sections[section] = raw[section]
     _merge_sections(base_sections, label="defaults")
@@ -320,6 +334,17 @@ def build_arg_parser(
                          default=defaults["num_eval_eps"])
     proto_g.add_argument("--eval-seed-offset", type=int,
                          default=defaults["eval_seed_offset"])
+
+    reward = p.add_argument_group("multi-agent reward shaping")
+    reward.add_argument(
+        "--inter-agent-collision-penalty-coef",
+        type=float,
+        default=defaults["inter_agent_collision_penalty_coef"],
+        help=(
+            "Subtract coef once per control step when any active collision "
+            "geoms owned by different agents touch; 0 disables the term."
+        ),
+    )
 
     ppo = p.add_argument_group("ppo (RLlib defaults corrected for this benchmark)")
     ppo.add_argument("--train-batch-size", type=int,
@@ -530,6 +555,11 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
         raise ValueError("ray_num_cpus must be null or positive")
     if not math.isfinite(args.gamma) or not 0.0 <= args.gamma <= 1.0:
         raise ValueError("gamma must be in [0, 1]")
+    if (not math.isfinite(args.inter_agent_collision_penalty_coef)
+            or args.inter_agent_collision_penalty_coef < 0.0):
+        raise ValueError(
+            "inter_agent_collision_penalty_coef must be finite and non-negative"
+        )
     if (not math.isfinite(args.lr) or args.lr <= 0.0
             or not math.isfinite(args.critic_lr) or args.critic_lr <= 0.0):
         raise ValueError("lr and critic_lr must be positive")
@@ -626,6 +656,9 @@ def make_env_for_rllib(env_config: Mapping[str, Any]) -> Any:
         seed=base_seed + 1_000 * worker_index + vector_index,
         flatten_obs=True,
         include_global_state=bool(env_config.get("include_global_state", False)),
+        inter_agent_collision_penalty_coef=float(
+            env_config.get("inter_agent_collision_penalty_coef", 0.0)
+        ),
     )
     # RLlib permits only ``__common__`` as a non-agent info key; the native
     # PettingZoo env emits ``_global_``. Translate at this adapter boundary.
@@ -857,6 +890,22 @@ def _build_run_config(
             "gamma": float(args.gamma),
             "eval_freq_env_steps": int(args.eval_freq),
             "count_steps_by": "env_steps",
+            "inter_agent_collision_penalty": {
+                "coefficient": float(
+                    args.inter_agent_collision_penalty_coef
+                ),
+                "form": "-coefficient * 1[any cross-agent hand-geom contact]",
+                "scope": "all active collision geoms owned by different agents",
+                "frequency": "once per control step before shared-reward broadcast",
+                "aligned_metric": (
+                    "episode_coordination/inter_agent_collision_step_rate"
+                ),
+            },
+            # Scalar alias retained for simple checkpoint re-evaluation and
+            # command-line audit code.
+            "inter_agent_collision_penalty_coef": float(
+                args.inter_agent_collision_penalty_coef
+            ),
             # --- ppo ---
             "train_batch_size": int(args.train_batch_size),
             "minibatch_size": int(args.minibatch_size),
@@ -965,6 +1014,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"[{tag}] env_id={args.env_id}")
     print(f"[{tag}] seed={args.seed}  steps={args.total_steps:,}  "
           f"gamma={args.gamma}  eval_every={args.eval_freq:,} env-steps")
+    print(
+        f"[{tag}] inter_agent_collision_penalty="
+        f"-{args.inter_agent_collision_penalty_coef:g} per collision step"
+    )
     if args.video_enabled:
         print(
             f"[{tag}] eval_video_every={args.video_freq:,} env-steps  "
@@ -979,7 +1032,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # ---- W&B: fail fast here, before any GPU hour is spent ----
     from omnipiano.multiagent._wandb import WandbRun
 
-    group = args.wandb_group or f"{spec.name}__{_env_token(args.env_id)}"
+    penalty_token = format(
+        float(args.inter_agent_collision_penalty_coef), ".8g"
+    ).replace("-", "m").replace(".", "p")
+    default_group = f"{spec.name}__{_env_token(args.env_id)}"
+    if args.inter_agent_collision_penalty_coef > 0.0:
+        default_group += f"__inter_collision_{penalty_token}"
+    group = args.wandb_group or default_group
     tags = sorted({t.strip() for t in args.wandb_tags.split(",") if t.strip()} | {
         spec.name,
         f"critic-{spec.critic_input}",
@@ -987,6 +1046,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         f"seed{args.seed}",
         (f"{args.total_steps // 1_000_000}M" if args.total_steps >= 1_000_000
          else f"{args.total_steps // 1_000}k"),
+        f"inter-collision-penalty-{penalty_token}",
         *(["smoke-test"] if args.smoke_test else []),
     })
     wandb_run = WandbRun(
@@ -1053,6 +1113,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         .environment(RLLIB_ENV_NAME, env_config={
             "env_id": args.env_id, "seed": args.seed,
             "include_global_state": bool(spec.needs_global_state),
+            "inter_agent_collision_penalty_coef": float(
+                args.inter_agent_collision_penalty_coef
+            ),
         })
         .framework("torch")
         .env_runners(num_env_runners=args.num_workers,
@@ -1155,6 +1218,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             record_resolution=(args.video_height, args.video_width),
             camera_id=args.video_camera_id,
             include_global_state=bool(spec.needs_global_state),
+            inter_agent_collision_penalty_coef=float(
+                args.inter_agent_collision_penalty_coef
+            ),
         )
 
     def _finish_video_recording(

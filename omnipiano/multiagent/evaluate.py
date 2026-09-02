@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from datetime import datetime
@@ -98,6 +99,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         bool(effective.get("include_global_state", False))
         if args.include_global_state is None else bool(args.include_global_state)
     )
+    reward_config = effective.get("inter_agent_collision_penalty", {})
+    nested_penalty_coef = (
+        reward_config.get("coefficient", 0.0)
+        if isinstance(reward_config, Mapping)
+        else 0.0
+    )
+    inter_agent_collision_penalty_coef = float(
+        effective.get(
+            "inter_agent_collision_penalty_coef", nested_penalty_coef
+        )
+    )
+    if (not math.isfinite(inter_agent_collision_penalty_coef)
+            or inter_agent_collision_penalty_coef < 0.0):
+        raise ValueError(
+            "recorded inter_agent_collision_penalty_coef must be finite and "
+            "non-negative"
+        )
     algo_name = run_config.get("algo") or (
         "mappo" if run_config.get("is_centralized_critic") else "ippo")
 
@@ -118,6 +136,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"[eval] checkpoint={checkpoint}")
     print(f"[eval] eval_seed={eval_seed} episodes={args.num_eval_eps} "
           f"include_global_state={include_global_state}")
+    print(
+        "[eval] inter_agent_collision_penalty="
+        f"-{inter_agent_collision_penalty_coef:g} per collision step"
+    )
     print(f"[eval] output_dir={output_dir}")
 
     try:
@@ -145,6 +167,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             algo, env_id, eval_seed=eval_seed, num_episodes=args.num_eval_eps,
             record_dir=None if args.no_video else str(output_dir / "videos"),
             include_global_state=include_global_state,
+            inter_agent_collision_penalty_coef=(
+                inter_agent_collision_penalty_coef
+            ),
         )
         write_json(output_path, {
             "schema_version": 2,

@@ -37,11 +37,13 @@ _RUNTIME_BYPASS_FIELDS = frozenset({
 })
 
 
-# Runtime knobs the MA user can pass to make_parallel (don't change the
-# experiment identity / not part of the registered TaskSpec).
+# Wrapper-level knobs the MA user can pass to make_parallel.  They are not
+# fields on the registered TaskSpec; trajectory-affecting values (notably the
+# reward-shaping coefficient) must therefore be recorded by the trainer.
 _MA_RUNTIME_KWARGS = frozenset({
     "obs_visibility",
     "reward_mode",
+    "inter_agent_collision_penalty_coef",
     "flatten_obs",
     "sustain_owner",
     "include_global_state",   # MAPPO: expose the CTDE centralized-critic state
@@ -87,8 +89,9 @@ def make_parallel(
     Args:
         env_id: MA env id (must contain ``-MA-``). Looked up in the MA registry.
         **kwargs: a small set of runtime knobs (``seed``, ``record_*``, plus
-            MA-specific: ``obs_visibility``, ``reward_mode``, ``flatten_obs``).
-            Anything else raises ValueError.
+            MA-specific: ``obs_visibility``, ``reward_mode``,
+            ``inter_agent_collision_penalty_coef``, ``flatten_obs``, and
+            ``include_global_state``). Anything else raises ValueError.
 
     Returns:
         ``OmniPianoParallelEnv`` instance.
@@ -124,6 +127,9 @@ def make_parallel(
     # MA runtime knobs (with defaults).
     obs_visibility = kwargs.pop("obs_visibility", "own_plus_boundary")
     reward_mode = kwargs.pop("reward_mode", "shared")
+    inter_agent_collision_penalty_coef = kwargs.pop(
+        "inter_agent_collision_penalty_coef", 0.0
+    )
     flatten_obs = kwargs.pop("flatten_obs", False)
     sustain_owner = kwargs.pop("sustain_owner", None)
 
@@ -281,6 +287,7 @@ def make_parallel(
         seed=seed,
         obs_visibility=obs_visibility,
         reward_mode=reward_mode,
+        inter_agent_collision_penalty_coef=inter_agent_collision_penalty_coef,
         flatten_obs=flatten_obs,
         sustain_owner=sustain_owner,
         include_global_state=include_global_state,
