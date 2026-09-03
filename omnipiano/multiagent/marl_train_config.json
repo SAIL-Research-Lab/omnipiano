@@ -8,7 +8,7 @@
     "run_dir": null
   },
   "protocol": {
-    "total_steps": 5000000,
+    "total_steps": 10000000,
     "gamma": 0.8,
     "eval_freq": 50000,
     "num_eval_eps": 1,
