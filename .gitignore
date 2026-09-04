@@ -28,6 +28,7 @@
 # local run artifacts, not source). Subfolder tracking is opt-in per request.
 !/examples/
 /examples/*/
+!/scripts/
 
 # Python bytecode cache (any __pycache__/ anywhere in the tree)
 __pycache__/
