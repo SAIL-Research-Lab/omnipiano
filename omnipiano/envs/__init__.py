@@ -1543,6 +1543,23 @@ def _register_clairdelune_environment_robustness() -> None:
 _register_clairdelune_environment_robustness()
 
 
+# Phase 3: ForElise three-hand PPO under action Uniform noise.  Reuse the
+# canonical action levels so future sweep changes require one edit only.
+def _register_phase3_forelise_three_hand() -> None:
+    for _level in _ROBUST_CHANNEL_LEVELS["action"]:
+        register(
+            id=(f"OmniPiano-ForElise-ThreeHand-A-Uniform-"
+                f"P{int(round(_level * 100)):02d}-v0"),
+            base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+            robust_config=_robust_cfg_for_task("action", "uniform", _level),
+            env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+            hand_specs=default_three_hand_specs(),
+        )
+
+
+_register_phase3_forelise_three_hand()
+
+
 # ===========================================================================
 # Multi-agent (PettingZoo ParallelEnv) registrations.
 # Side-effect import: triggers register_parallel() calls in multiagent_envs.py.
