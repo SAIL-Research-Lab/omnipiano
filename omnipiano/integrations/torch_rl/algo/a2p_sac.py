@@ -242,18 +242,23 @@ def train_a2p_sac(
             if env_steps >= config.learning_starts and len(replay) >= config.batch_size:
                 for _ in range(collected * config.utd):
                     sample = replay.sample().to(config.device)
-                    losses = loss_module(sample)
-                    sac_loss = losses["loss_actor"] + losses["loss_qvalue"] + losses["loss_alpha"]
-                    sac_optimizer.zero_grad()
-                    sac_loss.backward()
-                    sac_optimizer.step()
-                    if update_steps % config.adversary_update_frequency == 0:
+                    adversary_step = (
+                        (update_steps + 1) % config.adversary_update_frequency == 0
+                    )
+                    if adversary_step:
                         adversary_loss = loss_module.adversary_loss(sample)
                         adversary_optimizer.zero_grad()
                         adversary_loss.backward()
                         adversary_optimizer.step()
                         latest["loss_adversary"] = float(adversary_loss.detach())
-                    target_updater.step()
+                        losses = {}
+                    else:
+                        losses = loss_module(sample)
+                        sac_loss = losses["loss_actor"] + losses["loss_qvalue"] + losses["loss_alpha"]
+                        sac_optimizer.zero_grad()
+                        sac_loss.backward()
+                        sac_optimizer.step()
+                        target_updater.step()
                     update_steps += 1
                     latest.update({key: float(value.detach().mean()) for key, value in losses.items()})
                 collector.update_policy_weights_()
@@ -267,6 +272,7 @@ def train_a2p_sac(
             }
             eval_stats = {
                 "eval/mean_reward": float("nan"),
+                "eval/mean_f1": float("nan"),
                 "eval/mean_ep_length": float("nan"),
             }
             did_eval = False
@@ -280,6 +286,7 @@ def train_a2p_sac(
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
                 eval_stats.update({
                     "eval/mean_reward": result["summary"]["return_mean"],
+                    "eval/mean_f1": float(sum(ep["metrics"].get("episode_task/f1", float("nan")) for ep in result["episodes"]) / len(result["episodes"])),
                     "eval/mean_ep_length": result["summary"]["length_mean"],
                 })
                 did_eval = True

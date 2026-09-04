@@ -26,7 +26,7 @@ class OMPOActorParams(nn.Module):
     def forward(self, observation):
         hidden = torch.tanh(self.layer_norm(self.linear1(observation)))
         hidden = torch.nn.functional.elu(self.linear2(hidden))
-        return self.mean(hidden), self.log_std(hidden).clamp(-20.0, 2.0).exp()
+        return self.mean(hidden), self.log_std(hidden).clamp(-20.0, 2.0).exp().clamp_min(1e-4)
 
 
 def build_ompo_actor(observation_dim, action_dim, action_spec, hidden_sizes=(256, 256)):

@@ -22,9 +22,7 @@ class MetricsWrapper(gym.Wrapper):
         
     def reset(self, **kwargs):
         self.ep_reward_terms = {}
-        obs, info = self.env.reset(**kwargs)
-        info[InfoKeys.TASK_TRUE_REWARD] = 0.0
-        return obs, info
+        return self.env.reset(**kwargs)
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
@@ -49,7 +47,7 @@ class MetricsWrapper(gym.Wrapper):
                 "MetricsWrapper expects task.reward_fn for reward term extraction."
             )
         reward_terms = composer_env.task.reward_fn.reward_terms
-        info[InfoKeys.TASK_TRUE_REWARD] = float(sum(reward_terms.values()))
+        info[InfoKeys.TASK_TRUE_REWARD] = float(reward)
         for term_name, term_val in reward_terms.items():
             attr_name = f"TASK_{term_name.upper()}"
             if not hasattr(InfoKeys, attr_name):

@@ -102,6 +102,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "'{algo}_baseline_{env_short}_seed{seed}'.",
     )
     p.add_argument(
+        "--logs",
+        default=None,
+        help="Output root. Default: examples/logs/.",
+    )
+    p.add_argument(
         "--seed",
         type=int,
         default=proto.seed,
@@ -402,7 +407,10 @@ def main():
         args.eval_freq = 10_000
         args.num_eval_eps = 1
 
-    logs_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    logs_root = args.logs or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "logs"
+    )
+    logs_root = os.path.abspath(os.path.expanduser(logs_root))
     os.makedirs(logs_root, exist_ok=True)
     # Fallback experiment name carries the ``sb3_baseline`` marker so log dirs
     # are self-documenting about which entry script produced them (the

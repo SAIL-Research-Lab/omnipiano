@@ -117,7 +117,7 @@ def _update_agent(
     alpha = log_alpha.exp().detach()
     with torch.no_grad():
         occupancy_logit = discriminator(batch)
-        corrected_reward = reward - config.correction_coefficient * occupancy_logit
+        corrected_reward = reward.log() - config.correction_coefficient * occupancy_logit
         next_action, next_log_prob = _sample_actor(actor, next_observation)
         target_q1, target_q2 = target_critic(next_observation, next_action)
         target_min = torch.minimum(target_q1, target_q2)
@@ -130,7 +130,7 @@ def _update_agent(
         target2 = corrected_reward + config.gamma * (1.0 - terminated) * (
             mixed_q2 - alpha * next_log_prob
         )
-        nominal_target = reward + config.gamma * (1.0 - terminated) * (
+        nominal_target = reward.log() + config.gamma * (1.0 - terminated) * (
             mixed_q1 - alpha * next_log_prob
         )
 
@@ -148,6 +148,7 @@ def _update_agent(
     ).mean()
     critic_optimizer.zero_grad()
     critic_loss.backward()
+    torch.nn.utils.clip_grad_norm_(critic.parameters(), 1.0)
     critic_optimizer.step()
 
     actor_loss_value = float("nan")
@@ -179,6 +180,7 @@ def _update_agent(
         ).mean()
         actor_optimizer.zero_grad()
         actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(actor.parameters(), 1.0)
         actor_optimizer.step()
         for parameter in critic.parameters():
             parameter.requires_grad = True
@@ -188,6 +190,7 @@ def _update_agent(
         alpha_loss = -(log_alpha * (log_prob + target_entropy).detach()).mean()
         alpha_optimizer.zero_grad()
         alpha_loss.backward()
+        torch.nn.utils.clip_grad_norm_([log_alpha], 1.0)
         alpha_optimizer.step()
         _soft_update(target_critic, critic, config.tau)
         actor_loss_value = float(actor_loss.detach())
@@ -253,6 +256,15 @@ def train_ompo(
     next_eval = protocol.eval_freq_env_steps
     checkpoint_index = 0
     checkpoint_steps = sorted(checkpoint_steps)
+    last_discriminator_metrics = {
+        "discriminator_loss": float("nan"),
+        "discriminator_accuracy": float("nan"),
+    }
+    last_agent_metrics = {
+        "loss_critic": float("nan"), "loss_actor": float("nan"),
+        "loss_alpha": float("nan"), "alpha": float("nan"),
+        "corrected_target_delta": float("nan"),
+    }
     try:
         for batch in collector:
             collected = batch_env_steps(batch)
@@ -260,28 +272,21 @@ def train_ompo(
             rollout_stats = episode_tracker.update(batch)
             flat = batch.reshape(-1).cpu()
             flat["sample_step"] = torch.full(flat.batch_size, env_steps, dtype=torch.int64)
-            global_buffer.extend(flat)
             local_buffer.extend(flat)
             initial_mask = flat["is_init"].squeeze(-1)
             if initial_mask.any():
                 initial_buffer.extend(flat[initial_mask].select("observation"))
 
-            discriminator_metrics = {
-                "discriminator_loss": float("nan"),
-                "discriminator_accuracy": float("nan"),
-            }
+            discriminator_metrics = dict(last_discriminator_metrics)
             if (
                 env_steps >= config.learning_starts
-                and len(local_buffer) == config.local_buffer_size
+                and len(local_buffer) >= config.local_buffer_size
+                and len(global_buffer) >= config.discriminator_batch_size
             ):
                 for _ in range(config.discriminator_rounds):
-                    historical = make_replay_buffer(
-                        config.local_buffer_size, config.discriminator_batch_size
-                    )
-                    historical.extend(global_buffer.sample(config.local_buffer_size))
                     for _ in range(config.discriminator_updates):
                         local_sample = local_buffer.sample().to(config.device)
-                        global_sample = historical.sample().to(config.device)
+                        global_sample = global_buffer.sample().to(config.device)
                         loss, accuracy = discriminator_loss(
                             discriminator, local_sample, global_sample
                         )
@@ -292,13 +297,8 @@ def train_ompo(
                             "discriminator_loss": float(loss.detach()),
                             "discriminator_accuracy": float(accuracy.detach()),
                         }
-                local_buffer.empty()
-
-            agent_metrics = {
-                "loss_critic": float("nan"), "loss_actor": float("nan"),
-                "loss_alpha": float("nan"), "alpha": float("nan"),
-                "corrected_target_delta": float("nan"),
-            }
+                last_discriminator_metrics = dict(discriminator_metrics)
+            agent_metrics = dict(last_agent_metrics)
             if (
                 env_steps >= config.learning_starts
                 and len(global_buffer) >= config.batch_size
@@ -313,7 +313,12 @@ def train_ompo(
                         alpha_optimizer, log_alpha, config, update_steps,
                     )
                     update_steps += 1
+                last_agent_metrics = dict(agent_metrics)
                 collector.update_policy_weights_()
+
+            if len(local_buffer):
+                global_buffer.extend(local_buffer.sample(len(local_buffer)))
+            local_buffer.empty()
 
             diagnostic_sample = global_buffer.sample(
                 min(config.batch_size, len(global_buffer))
@@ -337,6 +342,7 @@ def train_ompo(
             }
             eval_stats = {
                 "eval/mean_reward": float("nan"),
+                "eval/mean_f1": float("nan"),
                 "eval/mean_ep_length": float("nan"),
             }
             did_eval = False
@@ -350,6 +356,7 @@ def train_ompo(
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
                 eval_stats.update({
                     "eval/mean_reward": result["summary"]["return_mean"],
+                    "eval/mean_f1": float(sum(ep["metrics"].get("episode_task/f1", float("nan")) for ep in result["episodes"]) / len(result["episodes"])),
                     "eval/mean_ep_length": result["summary"]["length_mean"],
                 })
                 did_eval = True

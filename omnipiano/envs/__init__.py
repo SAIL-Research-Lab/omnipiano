@@ -1210,7 +1210,7 @@ _ROBUST_CHANNEL_LETTERS = {"action": "A", "obs": "O", "reward": "R"}
 # scalar magnitude ~2-3 needs larger sigmas to perturb, as in RG).
 _ROBUST_CHANNEL_LEVELS = {
     "action": (0.05, 0.10, 0.15),
-    "obs":    (0.05, 0.10, 0.15),
+    "obs":    (0.10, 0.20, 0.30),
     "reward": (0.10, 0.30, 0.50),
 }
 _ROBUST_DISTS = (("Gauss", "gaussian"), ("Uniform", "uniform"), ("Shift", "shift"))
@@ -1371,8 +1371,8 @@ register(  # Obs + Reward, both constant shift — per-channel: O -0.15, R -0.50
 # CF = fingertip-key sliding-contact friction additive noise
 # HP = independent per-hand initial Y/Z offsets (labels are millimetres)
 # ===========================================================================
-_ENV_GRAVITY_LEVELS = (0.50, 1.00, 1.50)
-_ENV_FRICTION_LEVELS = (0.05, 0.10, 0.15)
+_ENV_GRAVITY_LEVELS = (2.00, 3.00, 4.00)
+_ENV_FRICTION_LEVELS = (0.20, 0.30, 0.40)
 _ENV_HAND_POSITION_LEVELS = (
     (0.010, 0.005),
     (0.025, 0.010),

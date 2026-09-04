@@ -99,7 +99,26 @@ class ProgressLogger:
         ):
             return
 
+        if force:
+            self._print_progress(self._pending_row)
         self._write_pending_row()
+
+    @staticmethod
+    def _print_progress(row: dict) -> None:
+        values = [
+            ("timesteps", f'{row["time/total_timesteps"]:,}'),
+            ("fps", str(row["time/fps"])),
+            *((key.removeprefix("train/"), f"{value:.4g}")
+              for key, value in row.items()
+              if key.startswith("train/") and "loss" in key),
+            ("eval reward", f'{row["eval/mean_reward"]:.4g}'),
+        ]
+        width = max(len(name) for name, _ in values)
+        border = "-" * (width + 19)
+        print(border)
+        for name, value in values:
+            print(f"| {name:<{width}} | {value:>14} |")
+        print(border, flush=True)
 
     def _to_sb3_schema(self, row: dict) -> dict:
         env_steps = int(row["env_steps"])

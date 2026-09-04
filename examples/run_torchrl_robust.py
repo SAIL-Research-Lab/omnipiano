@@ -170,7 +170,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--experiment-name", default=None,
-        help="Log-dir prefix under examples/logs/. Default includes algo, env, and seed.",
+        help="Log-dir prefix under --logs. Default includes algo, env, and seed.",
+    )
+    parser.add_argument(
+        "--logs", default=None,
+        help="Output root. Default: examples/logs/.",
     )
     parser.add_argument(
         "--smoke-test", action="store_true",
@@ -215,8 +219,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     # --- EPPO settings ---
     parser.add_argument("--eppo-mode", choices=["cor", "ind", "mean"], default="cor")
-    parser.add_argument("--kappa", type=float, default=0.01)
-    parser.add_argument("--evidential-reg", type=float, default=0.01)
+    parser.add_argument("--kappa", type=float, default=0.05)
+    parser.add_argument("--evidential-reg", type=float, default=0.001)
 
     # --- A2P-SAC settings ---
     parser.add_argument(
@@ -272,8 +276,11 @@ def main() -> None:
     checkpoint_steps = tuple(
         int(value) for value in args.checkpoint_at.split(",") if value.strip()
     )
-    logs_root = Path(__file__).resolve().parent / "logs"
-    logs_root.mkdir(exist_ok=True)
+    logs_root = (
+        Path(args.logs).expanduser().resolve()
+        if args.logs else Path(__file__).resolve().parent / "logs"
+    )
+    logs_root.mkdir(parents=True, exist_ok=True)
     physical_tokens = _physical_environment_tokens(args.env)
     if args.experiment_name is not None and physical_tokens:
         experiment_name = "_".join((

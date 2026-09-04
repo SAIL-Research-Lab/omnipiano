@@ -67,7 +67,10 @@ class SCPOLoss(torch.nn.Module):
         if self.state_noise == 0:
             return torch.zeros_like(q)
         gradient = torch.autograd.grad(q.sum(), observation, create_graph=create_graph)[0]
-        norm = gradient.index_select(-1, self.state_indices).abs().sum(-1)
+        selected = observation.index_select(-1, self.state_indices)
+        scale = selected.detach().std(dim=0, unbiased=False).clamp_min(1e-6)
+        # Convert dQ/d(raw observation) to dQ/d(standardized observation).
+        norm = (gradient.index_select(-1, self.state_indices).abs() * scale).sum(-1)
         self.last_gradient_l1 = norm.detach().mean()
         penalty = self.state_noise * norm
         self.last_penalty = penalty.detach().mean()
@@ -98,16 +101,28 @@ class SCPOLoss(torch.nn.Module):
         from torchrl.envs.utils import ExplorationType, set_exploration_type
         from torchrl.objectives.sac import compute_log_prob
 
-        with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM), self.loss.actor_network_params.to_module(
+        actor_parameters = list(self.loss.actor_network.parameters())
+        actor_requires_grad = [parameter.requires_grad for parameter in actor_parameters]
+        for parameter in actor_parameters:
+            parameter.requires_grad_(False)
+        with set_exploration_type(ExplorationType.RANDOM), self.loss.actor_network_params.to_module(
             self.loss.actor_network, preserve_module_state=False
         ):
             dist = self.loss.actor_network.get_dist(next_td)
             next_action = dist.rsample()
             log_prob = compute_log_prob(dist, next_action, self.loss.tensor_keys.log_prob)
+        for parameter, requires_grad in zip(actor_parameters, actor_requires_grad):
+            parameter.requires_grad_(requires_grad)
+        # The entire bootstrap target is constant for this optimization step.
+        next_action = next_action.detach()
+        log_prob = log_prob.detach()
         next_td[self.loss.tensor_keys.action] = next_action
         with torch.enable_grad():
             next_q = self._q(next_td, self.loss.target_qvalue_network_params)
             next_q = next_q - self._penalty(next_q, next_observation, create_graph=False)
+            # The target branch must not backpropagate into the online update.
+            # _penalty(..., create_graph=False) already consumed next_q's graph.
+            next_q = next_q.detach()
         reward = td["next", "reward"].squeeze(-1)
         terminated = td["next", "terminated"].squeeze(-1).to(reward.dtype)
         target = reward + self.gamma * (1.0 - terminated) * (next_q - self.loss._alpha.detach() * log_prob)
@@ -160,9 +175,10 @@ def train_scpo(env_id, seed, run_dir, protocol, config: SCPOConfig,
                 update_steps += 1
                 latest = {key: float(value.detach().mean()) for key, value in losses.items()}
             collector.update_policy_weights_()
-        eval_stats = {
-            "eval/mean_reward": float("nan"),
-            "eval/mean_ep_length": float("nan"),
+            eval_stats = {
+                "eval/mean_reward": float("nan"),
+                "eval/mean_f1": float("nan"),
+                "eval/mean_ep_length": float("nan"),
         }
         did_eval = False
         if env_steps >= next_eval:
@@ -170,6 +186,7 @@ def train_scpo(env_id, seed, run_dir, protocol, config: SCPOConfig,
             result["training_step"] = env_steps; write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
             eval_stats.update({
                 "eval/mean_reward": result["summary"]["return_mean"],
+                "eval/mean_f1": float(sum(ep["metrics"].get("episode_task/f1", float("nan")) for ep in result["episodes"]) / len(result["episodes"])),
                 "eval/mean_ep_length": result["summary"]["length_mean"],
             })
             did_eval = True

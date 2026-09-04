@@ -135,6 +135,8 @@ class DmEnvToGymnasium(gym.Env):
         #    training use seed=None), so this never fires a second time
         #    in the training loop.
         if seed is not None:
+            old_env, self._env = self._env, None
+            old_env.close()
             self._env = self._builder(seed)
 
         ts = self._env.reset()
@@ -157,6 +159,6 @@ class DmEnvToGymnasium(gym.Env):
         return obs, reward, terminated, truncated, {}
 
     def close(self):
-        # dm_env's composer.Environment doesn't require explicit teardown
-        # for the MuJoCo physics; sub-process exit handles it.
-        pass
+        if self._env is not None:
+            self._env.close()
+            self._env = None

@@ -208,7 +208,7 @@ def train_eppo(
             latest = {}
             updates_per_epoch = max(len(minibatches) // config.batch_size, 1)
             for _ in range(config.n_epochs * updates_per_epoch):
-                sample = minibatches.sample()
+                sample = minibatches.sample().to(config.device)
                 ppo_terms = ppo_loss(sample)
                 actor_loss = ppo_terms["loss_objective"] + ppo_terms["loss_entropy"]
                 actor_optimizer.zero_grad()
@@ -229,10 +229,11 @@ def train_eppo(
                     "value_nll": float(value_nll.detach()),
                     "evidential_regularizer": float(regularizer.detach()),
                 }
-            update_steps += config.n_epochs
+            update_steps += config.n_epochs * updates_per_epoch
             collector.update_policy_weights_()
             eval_stats = {
                 "eval/mean_reward": float("nan"),
+                "eval/mean_f1": float("nan"),
                 "eval/mean_ep_length": float("nan"),
             }
             did_eval = False
@@ -246,6 +247,7 @@ def train_eppo(
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
                 eval_stats.update({
                     "eval/mean_reward": result["summary"]["return_mean"],
+                    "eval/mean_f1": float(sum(ep["metrics"].get("episode_task/f1", float("nan")) for ep in result["episodes"]) / len(result["episodes"])),
                     "eval/mean_ep_length": result["summary"]["length_mean"],
                 })
                 did_eval = True

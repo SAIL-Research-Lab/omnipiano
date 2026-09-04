@@ -5,6 +5,21 @@ from __future__ import annotations
 from functools import partial
 from typing import Literal
 
+import numpy as np
+from torchrl.envs import default_info_dict_reader
+
+from omnipiano.utils.info_keys import InfoKeys
+
+
+class _TrueRewardReader(default_info_dict_reader):
+    def __call__(self, info, tensordict):
+        info = dict(info)
+        if InfoKeys.TASK_TRUE_REWARD in info:
+            info[InfoKeys.TASK_TRUE_REWARD] = np.asarray(
+                info[InfoKeys.TASK_TRUE_REWARD], dtype=np.float32
+            )
+        return super().__call__(info, tensordict)
+
 
 def make_env(
     env_id: str,
@@ -23,15 +38,16 @@ def make_env(
 
     import omnipiano
     from torchrl.envs import GymWrapper
-    from omnipiano.utils.info_keys import InfoKeys
 
     kwargs = {"seed": seed, "mode": mode, "log_dir": log_dir}
     if mode == "eval":
         kwargs["eval_noise_scale"] = (
             1.0 if eval_noise_scale is None else eval_noise_scale
         )
-    gym_env = omnipiano.make(env_id, **kwargs)
-    return GymWrapper(gym_env, info_keys=[InfoKeys.TASK_TRUE_REWARD],)
+    env = GymWrapper(omnipiano.make(env_id, **kwargs))
+    return env.set_info_dict_reader(
+        _TrueRewardReader([InfoKeys.TASK_TRUE_REWARD])
+    )
 
 
 def make_parallel_env(env_id: str, seed: int, n_envs: int):
