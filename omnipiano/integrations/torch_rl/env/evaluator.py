@@ -30,19 +30,21 @@ def evaluate_policy(
             for key, value in terminal_info.items()
             if key.startswith("episode_") and np.isscalar(value)
         }
+        ep_f1 = float(metrics.get("episode_task/f1", float("nan")))
         episodes.append(
-            {"episode_index": index, "episode_return": total,
-             "episode_length": length, "metrics": metrics}
+            {"episode_index": index, "ep_return": total,
+             "ep_length": length, "ep_f1": ep_f1}
         )
-    returns = [item["episode_return"] for item in episodes]
+    returns = [item["ep_return"] for item in episodes]
     result = {
         "env_id": env_id,
         "eval_seed": seed,
         "episodes": episodes,
         "summary": {
-            "return_mean": float(np.mean(returns)),
-            "return_std": float(np.std(returns)),
-            "length_mean": float(np.mean([x["episode_length"] for x in episodes])),
+            "ep_return": float(np.mean(returns)),
+            "ep_return_std": float(np.std(returns)),
+            "ep_length": float(np.mean([x["ep_length"] for x in episodes])),
+            "ep_f1": float(np.nanmean([x["ep_f1"] for x in episodes])),
         },
     }
     return result

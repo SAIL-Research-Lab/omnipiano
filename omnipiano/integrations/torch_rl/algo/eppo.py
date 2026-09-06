@@ -246,9 +246,9 @@ def train_eppo(
                 result["training_step"] = env_steps
                 write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
                 eval_stats.update({
-                    "eval/mean_reward": result["summary"]["return_mean"],
-                    "eval/mean_f1": float(sum(ep["metrics"].get("episode_task/f1", float("nan")) for ep in result["episodes"]) / len(result["episodes"])),
-                    "eval/mean_ep_length": result["summary"]["length_mean"],
+                    "eval/mean_reward": result["summary"]["ep_return"],
+                    "eval/mean_f1": result["summary"]["ep_f1"],
+                    "eval/mean_ep_length": result["summary"]["ep_length"],
                 })
                 did_eval = True
                 while next_eval <= env_steps:

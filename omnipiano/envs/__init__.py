@@ -1560,6 +1560,58 @@ def _register_phase3_forelise_three_hand() -> None:
 _register_phase3_forelise_three_hand()
 
 
+# Phase 4 / Fig. 5: cumulative Gaussian perturbations on the same ForElise
+# three-hand task.  Every magnitude is the middle value from the canonical
+# sweep tables; only the set of active channels changes between stages.
+def _register_phase4_composability() -> None:
+    register(
+        id="OmniPiano-ForElise-ThreeHand-Clean-v0",
+        base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+        robust_config=RobustConfig(),
+        env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+        hand_specs=default_three_hand_specs(),
+    )
+
+    action = _ROBUST_CHANNEL_LEVELS["action"][1]
+    obs = _ROBUST_CHANNEL_LEVELS["obs"][1]
+    reward = _ROBUST_CHANNEL_LEVELS["reward"][1]
+    gravity = _ENV_GRAVITY_LEVELS[1]
+    hand_y, hand_z = _ENV_HAND_POSITION_LEVELS[1]
+    stages = (
+        ("O-Gauss-P20", {"obs"}),
+        ("OR-Gauss-O20-R30", {"obs", "reward"}),
+        ("ORA-Gauss-O20-R30-A10", {"obs", "reward", "action"}),
+        ("ORAG-Gauss-O20-R30-A10-G300", {"obs", "reward", "action", "gravity"}),
+        ("ORAGHP-Gauss-O20-R30-A10-G300-Y25-Z10", {"obs", "reward", "action", "gravity", "hand"}),
+    )
+    for label, channels in stages:
+        register(
+            id=f"OmniPiano-ForElise-ThreeHand-{label}-v0",
+            base_env_name="RoboPianist-repertoire-150-ForElise-v0",
+            robust_config=RobustConfig(
+                noise_dist="gaussian",
+                action_noise_std=action if "action" in channels else 0.0,
+                obs_noise_std=obs if "obs" in channels else 0.0,
+                reward_noise_std=reward if "reward" in channels else 0.0,
+                environment_noise=RobustEnvConfig(
+                    gravity_noise_std=gravity if "gravity" in channels else 0.0,
+                    contact_friction_noise_std=0.0,
+                    hand_position_y_noise_std=(
+                        hand_y if "hand" in channels else 0.0
+                    ),
+                    hand_position_z_noise_std=(
+                        hand_z if "hand" in channels else 0.0
+                    ),
+                ),
+            ),
+            env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
+            hand_specs=default_three_hand_specs(),
+        )
+
+
+_register_phase4_composability()
+
+
 # ===========================================================================
 # Multi-agent (PettingZoo ParallelEnv) registrations.
 # Side-effect import: triggers register_parallel() calls in multiagent_envs.py.
