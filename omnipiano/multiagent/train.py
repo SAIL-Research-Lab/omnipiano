@@ -484,6 +484,12 @@ def build_arg_parser(
     wb.add_argument("--wandb-upload-artifacts",
                     action=argparse.BooleanOptionalAction,
                     default=defaults["wandb_upload_artifacts"])
+    
+    parser.add_argument(
+        "--allow-experimental", action="store_true",
+        help="permit running an algorithm whose AlgoSpec.status is 'experimental'. "
+            "Their numbers are not paper-ready until their validation gate passes.")
+
     return p
 
 
@@ -512,6 +518,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
     """Apply algorithm-dependent and smoke-test defaults, then validate."""
     spec = get_algo(args.algo)
+    spec.assert_launchable(allow_experimental=args.allow_experimental)
 
     if args.smoke_test:
         for destination, value in args._smoke_test_overrides.items():
@@ -1060,6 +1067,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "project": args.wandb_project, "group": group,
         "run_id": wandb_run.run_id, "url": wandb_run.url, "tags": tags,
     }
+    run_config["algo_spec"] = spec.metadata()
     write_json(run_dir / "run_config.json", run_config)
 
     try:
@@ -1140,6 +1148,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         .debugging(seed=args.seed)
     )
+    if spec.num_agents_override is not None:
+        env_config["num_agents"] = spec.num_agents_override
+    if spec.training_overrides:
+        config = config.training(**dict(spec.training_overrides))
+    learner_cls = spec.resolve_learner_class()
+    if learner_cls is not None:
+        config = config.training(learner_class=learner_cls)
     if spec.rl_module == "ctde":
         from omnipiano.multiagent._ctde_module import (
             build_ctde_module_spec, build_multi_module_spec,
