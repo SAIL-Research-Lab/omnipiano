@@ -39,3 +39,27 @@ register_algo(
               "filter) is silently in the pipeline.",
     )
 )
+
+register_algo(
+    AlgoSpec(
+        name="mappo-noshuffle",
+        display_name="MAPPO with minibatch shuffling disabled (the fair control "
+                     "for happo, which cannot shuffle)",
+        critic_input="global",
+        needs_global_state=True,
+        rl_module="ctde",
+        status="experimental",
+        blocking=("Exists only to make the happo comparison attributable; it is "
+                  "not an independent baseline."),
+        training_overrides={"shuffle_batch_per_epoch": False},
+        reference=_REF,
+        notes=("HAPPO forces shuffle_batch_per_epoch=False because the compound "
+               "factor pairs agent A's row t with agent B's row t. Comparing it "
+               "against the shuffled `mappo` runs would confound the update rule "
+               "with the minibatch ordering, so this control removes that second "
+               "variable. With the benchmark's full-batch setting "
+               "(minibatch_size == train_batch_size) there is one minibatch per "
+               "epoch and shuffling should be a no-op -- if this diverges from "
+               "`mappo`, that assumption is false and is itself a finding."),
+    )
+)

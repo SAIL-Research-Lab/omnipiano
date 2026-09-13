@@ -30,6 +30,9 @@
 /examples/*/
 !/scripts/
 
+# Third-party upstream algorithm clones (local build dependency, not our source)
+omnipiano/multiagent/external/_upstream/
+
 # Python bytecode cache (any __pycache__/ anywhere in the tree)
 __pycache__/
 

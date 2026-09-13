@@ -22,7 +22,8 @@ from omnipiano.multiagent.algos._mat_module import MATDecoder, MATEncoder
 def test_expected_algorithms_are_registered():
     assert set(list_algos()) == {
         "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic",
-        "happo", "mat", "facmac", "masac", "ppo-monolithic"}
+        "mappo-noshuffle", "happo", "happo-m1-control",
+        "mat", "facmac", "masac", "ppo-monolithic"}
 
 
 def test_only_validated_algorithms_are_supported():
@@ -34,13 +35,14 @@ def test_only_validated_algorithms_are_supported():
 
 
 def test_unimplemented_algorithms_refuse_to_launch():
-    for name in ("mat", "facmac", "masac"):
+    # ppo-monolithic joins this set: num_agents is not an env_config knob here.
+    for name in ("mat", "facmac", "masac", "ppo-monolithic"):
         with pytest.raises(ValueError, match="NOT IMPLEMENTED"):
             get_algo(name).assert_launchable(allow_experimental=True)
 
 
 def test_experimental_algorithms_need_an_explicit_flag():
-    for name in ("happo", "ppo-monolithic"):
+    for name in ("happo", "happo-m1-control", "mappo-noshuffle"):
         with pytest.raises(ValueError, match="EXPERIMENTAL"):
             get_algo(name).assert_launchable()
         get_algo(name).assert_launchable(allow_experimental=True)
@@ -75,6 +77,34 @@ def test_nondecentralized_execution_must_be_documented():
         spec = get_algo(name)
         assert spec.execution != "decentralized"
         assert len(spec.notes) > 80, f"{name}: caveat too short to be a warning"
+
+
+def test_happo_control_is_only_a_control():
+    """It must never be mistaken for a reportable baseline."""
+    spec = get_algo("happo-m1-control")
+    assert spec.status == "experimental"
+    assert "must never appear in a results table" in spec.blocking
+    assert dict(spec.training_overrides) == dict(
+        get_algo("mappo-noshuffle").training_overrides), (
+        "the control and its comparison partner must share the shuffle setting")
+
+
+def test_happo_learner_inherits_the_ctde_learner():
+    """Guards the failure mode where HAPPO silently loses MAPPO's learner.
+
+    Skipped without ray/torch so the registry tests stay import-light, but it
+    runs in CI and before any launch, which is when it matters.
+    """
+    ray = pytest.importorskip("ray")            # noqa: F841
+    from omnipiano.multiagent._ppo_learner import OmniPianoPPOTorchLearner
+    for name in ("happo", "happo-m1-control"):
+        cls = get_algo(name).resolve_learner_class()
+        assert cls is not None, f"{name}: learner_class did not resolve"
+        assert issubclass(cls, OmniPianoPPOTorchLearner), (
+            f"{name}: {cls.__name__} must subclass OmniPianoPPOTorchLearner, or "
+            f"it silently drops the separate actor/critic optimizers, critic_lr, "
+            f"adam_epsilon, value normalisation and prediction-delta vf clipping "
+            f"-- five extra variables in a one-variable ablation")    
 
 
 def test_algo_table_renders():

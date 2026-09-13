@@ -1,125 +1,181 @@
-cat > scripts/marl_algos.sh <<'EOF'
 #!/usr/bin/env bash
-# Algorithm-comparison stage on the OmniPiano 4-hand MA Territorial suite.
-# Penalty for cross-agent duplicate presses is ON by default this round.
+# Launch MARL algorithm runs. Self-contained: no tmux, no screen, no helper
+# script. Jobs are nohup'd into examples/logs/ with a PID file each, so an SSH
+# drop cannot kill them and `status`/`stop` work from any new shell.
 #
-#   bash scripts/marl_algos.sh algos                    # what is launchable
-#   bash scripts/marl_algos.sh smoke happo              # 5k steps, in-process
-#   bash scripts/marl_algos.sh pilot happo              # 100k, production topology
-#   bash scripts/marl_algos.sh run happo ppo-monolithic # 4 jobs x 10M (~7-9 h)
-#   bash scripts/marl_algos.sh status | gate | stop
+#   bash scripts/marl_algos.sh flags                  # what CLI flags exist
+#   DRY=1 bash scripts/marl_algos.sh smoke happo      # print commands, run none
+#   bash scripts/marl_algos.sh smoke happo
+#   PIECES=WinterWind bash scripts/marl_algos.sh pilot happo happo-m1-control \
+#                                                mappo-noshuffle mappo
+#   PIECES="WinterWind PicturesGreatKiev" bash scripts/marl_algos.sh run happo
+#   bash scripts/marl_algos.sh status
+#   bash scripts/marl_algos.sh stop
 #
-# Off-policy (facmac/masac) is refused until implemented; see AlgoSpec.blocking.
+# DELIBERATELY DOES NOT PASS A REWARD-PENALTY FLAG.
+# The coefficient lives in marl_train_config.json, which is what the completed
+# IPPO/MAPPO 10M runs used. Passing it on the command line would let HAPPO drift
+# from its own baselines, and then a HAPPO-vs-MAPPO difference would be a
+# difference in the reward function rather than in the update rule -- the one
+# confound that would invalidate the whole comparison. `provenance` checks it.
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-PIECES=${PIECES:-"WinterWind PicturesGreatKiev"}
+MODE=${1:-help}; shift 2>/dev/null || true
+ALGOS=("$@")
+
+PY=${PY:-python}
+MODULE=${MODULE:-omnipiano.multiagent.train}
+CFG=${CFG:-omnipiano/multiagent/marl_train_config.json}
+LOGROOT=${LOGROOT:-examples/logs}
+JOBDIR=${JOBDIR:-.marl_jobs}
+PIECES=${PIECES:-WinterWind}
 SEED=${SEED:-0}
-STEPS=${STEPS:-10000000}
-EVAL_FREQ=${EVAL_FREQ:-50000}
-SAMPLE_TIMEOUT=${SAMPLE_TIMEOUT:-1800}
-# Locked to the topology of the completed IPPO/MAPPO runs so that a cross-algo
-# difference cannot be blamed on the sampling layout. Costs idle cores when
-# fewer than 4 jobs run; that is the price of a controlled comparison.
-NW=${NUM_WORKERS:-9}
-PENALTY=${PENALTY:-1}
-WANDB_PROJECT=${WANDB_PROJECT:-multiagent}
-WANDB_MODE=${WANDB_MODE:-online}
+NUM_WORKERS=${NUM_WORKERS:-9}
+MAX_CONCURRENT=${MAX_CONCURRENT:-4}
+DRY=${DRY:-0}
+ENV_TEMPLATE=${ENV_TEMPLATE:-OmniPiano-%s-FourHand-MA-Duet-Territorial-v0}
+export MUJOCO_GL=${MUJOCO_GL:-egl}
 
-LOGS=examples/logs; PIDS=$LOGS/.pids; mkdir -p "$PIDS"
-PROC='omnipiano.multiagent.train'
-NGPU=$(nvidia-smi -L 2>/dev/null | wc -l); (( NGPU < 1 )) && NGPU=1
-env_id () { echo "OmniPiano-$1-FourHand-MA-Duet-Territorial-v0"; }
-tag_of  () { tr -dc 'A-Z' <<<"$1" | tr 'A-Z' 'a-z'; }
+# Flag names, all overridable. If your --help disagrees, `flags` says so and
+# tells you which variable to set -- rather than aborting on one bad guess the
+# way the previous version did.
+F_ALGO=${F_ALGO:---algo}
+F_ENV=${F_ENV:---env-id}
+F_SEED=${F_SEED:---seed}
+F_STEPS=${F_STEPS:---total-steps}
+F_WORKERS=${F_WORKERS:---num-workers}
+F_CONFIG=${F_CONFIG:---config}
+F_EXP=${F_EXP:---allow-experimental}
 
-# Never guess a CLI flag name. Discover it, or stop.
-penalty_flag () {
-  [[ "$PENALTY" == "1" ]] || { echo ""; return 0; }
-  local help f
-  help=$(MUJOCO_GL=egl python -m "$PROC" --help 2>/dev/null)
-  for f in --duplicate-press-penalty --dup-press-penalty --penalty-duplicate-press \
-           --coordination-penalty --enable-penalty; do
-    grep -q -- "$f" <<<"$help" && { echo "$f"; return 0; }
-  done
-  echo "[abort] PENALTY=1 but no penalty flag found in --help. Candidates checked:" >&2
-  echo "        --duplicate-press-penalty --dup-press-penalty ..." >&2
-  echo "        Find the real one:  python -m $PROC --help | grep -i penal" >&2
-  echo "        Then set PENALTY_FLAG=--your-flag, or PENALTY=0 to disable." >&2
+case "$MODE" in smoke) STEPS=${STEPS:-4000};;
+                pilot) STEPS=${STEPS:-100000};;
+                run)   STEPS=${STEPS:-10000000};;
+                *)     STEPS=${STEPS:-0};; esac
+
+HELPCACHE=$(mktemp); trap 'rm -f "$HELPCACHE"' EXIT
+_help () { $PY -m "$MODULE" --help >"$HELPCACHE" 2>&1 || true; }
+
+_needs_experimental () {  # keep in sync with AlgoSpec.status
+  case "$1" in happo|happo-m1-control|mappo-noshuffle|happo-*) return 0;; esac
   return 1
 }
 
-launch () {
-  local algo=$1 piece=$2 idx=$3 gpu ptag run
-  gpu=$(( idx % NGPU )); ptag=$(tag_of "$piece")
-  run=$LOGS/${algo//-/_}_$(tr 'A-Z' 'a-z' <<<"$piece")_seed${SEED}_$(date +%Y%m%d-%H%M%S)
-  mkdir -p "$run"
-  echo "[launch] gpu=$gpu $algo $piece workers=$NW penalty='${PFLAG:-off}' -> $run"
-  CUDA_VISIBLE_DEVICES=$gpu MUJOCO_GL=egl MUJOCO_EGL_DEVICE_ID=$gpu \
-  OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-  RAY_TMPDIR=/tmp/rl_${gpu}_${ptag}_$$ WANDB_MODE=$WANDB_MODE \
-  nohup python -m "$PROC" \
-      --algo "$algo" --env-id "$(env_id "$piece")" --seed "$SEED" \
-      --run-dir "$run" --total-steps "$STEPS" --eval-freq "$EVAL_FREQ" \
-      --num-workers "$NW" --ray-num-cpus $((NW+2)) --num-gpus-per-learner 1.0 \
-      --sample-timeout-s "$SAMPLE_TIMEOUT" --allow-experimental ${PFLAG:-} \
-      --wandb-mode "$WANDB_MODE" --wandb-project "$WANDB_PROJECT" \
-      >"$run/train.log" 2>&1 &
-  echo $! > "$PIDS/${algo//-/_}_${ptag}_seed${SEED}.pid"
+_check_flags () {
+  _help
+  local missing=()
+  for pair in "$F_ALGO:F_ALGO" "$F_ENV:F_ENV" "$F_SEED:F_SEED" \
+              "$F_STEPS:F_STEPS" "$F_WORKERS:F_WORKERS" "$F_EXP:F_EXP"; do
+    local flag=${pair%%:*} var=${pair##*:}
+    grep -q -- "$flag" "$HELPCACHE" || missing+=("  $flag   -> set $var=--real-flag")
+  done
+  if ((${#missing[@]})); then
+    echo "[abort] these flags are not in --help:"
+    printf '%s\n' "${missing[@]}"
+    echo
+    echo "Discover the real names with:"
+    echo "  $PY -m $MODULE --help | grep -E 'algo|env-id|seed|step|runner|worker|experimental'"
+    return 1
+  fi
 }
 
-CMD=${1:-algos}; shift || true
-ALGOS=${*:-${ALGOS:-happo}}
+case "$MODE" in
 
-case $CMD in
-algos)
-  MUJOCO_GL=egl python -m "$PROC" --list-algos ;;
+flags)
+  _help
+  echo "== flags this script relies on =="
+  grep -E -- '--(algo|env-id|seed|total|step|num-env-runner|num-worker|config|allow-experimental)' \
+    "$HELPCACHE" || echo "(none matched -- paste --help output)"
+  echo
+  echo "== reward / penalty flags (NOT passed by this script, JSON owns them) =="
+  grep -i -- 'penal\|collision' "$HELPCACHE" || echo "(none)"
+  ;;
 
-smoke)
-  PFLAG=${PENALTY_FLAG:-$(penalty_flag)} || exit 1
-  MUJOCO_GL=egl python -m "$PROC" --algo "$(awk '{print $1}' <<<"$ALGOS")" \
-    --env-id "$(env_id "$(awk '{print $1}' <<<"$PIECES")")" --smoke-test \
-    --num-workers 0 --allow-experimental ${PFLAG:-} \
-    --wandb-mode disabled --ray-log-to-driver \
-    --run-dir "$LOGS/smoke_$(date +%Y%m%d-%H%M%S)" ;;
+provenance)
+  # The single check that decides whether a HAPPO run is comparable at all.
+  echo "== reward section of $CFG =="
+  jq '.reward // "NO reward SECTION"' "$CFG"
+  echo
+  echo "== what the completed runs actually used =="
+  for f in "$LOGROOT"/*/run_config.json; do
+    jq -r '[.algo,
+            (.effective_config.inter_agent_collision_penalty_coef // "absent"),
+            (.effective_config.learner_class // "?")] | @tsv' "$f" 2>/dev/null
+  done | sort -u | column -t
+  echo
+  echo "The penalty column MUST be identical across algos, or the comparison"
+  echo "measures the reward function rather than the update rule."
+  ;;
 
-pilot)
-  STEPS=100000 EVAL_FREQ=50000 bash "$0" run $ALGOS ;;
+smoke|pilot|run)
+  ((${#ALGOS[@]})) || { echo "[abort] no algos given"; exit 1; }
+  _check_flags || exit 1
+  mkdir -p "$JOBDIR" "$LOGROOT"
 
-run)
-  pgrep -f "$PROC" >/dev/null && { echo "[abort] training already alive; 'stop' first."; exit 1; }
-  PFLAG=${PENALTY_FLAG:-$(penalty_flag)} || exit 1
-  export PFLAG
-  # Refuse a not-implemented algo BEFORE burning a GPU-day on it.
-  for a in $ALGOS; do
-    MUJOCO_GL=egl python - "$a" <<'PY' || exit 1
-import sys
-from omnipiano.multiagent.algos import get_algo
-spec = get_algo(sys.argv[1])
-try:
-    spec.assert_launchable(allow_experimental=True)
-except ValueError as e:
-    print(f"[abort] {e}"); sys.exit(1)
-print(f"[ok] {spec.name}: status={spec.status} family={spec.family} "
-      f"execution={spec.execution} learner={spec.learner_class}")
-PY
+  launched=0
+  for piece in $PIECES; do
+    for algo in "${ALGOS[@]}"; do
+      env_id=$(printf "$ENV_TEMPLATE" "$piece")
+      tag="${MODE}_${algo//[^a-zA-Z0-9]/_}_${piece}_seed${SEED}"
+      log="$LOGROOT/${tag}.console.log"
+      pidf="$JOBDIR/${tag}.pid"
+
+      cmd=($PY -m "$MODULE" "$F_ALGO" "$algo" "$F_ENV" "$env_id"
+           "$F_SEED" "$SEED" "$F_STEPS" "$STEPS" "$F_WORKERS" "$NUM_WORKERS")
+      [[ -f "$CFG" ]] && grep -q -- "$F_CONFIG" "$HELPCACHE" && cmd+=("$F_CONFIG" "$CFG")
+      _needs_experimental "$algo" && cmd+=("$F_EXP")
+
+      if [[ "$DRY" == "1" ]]; then
+        echo "[dry] ${cmd[*]}"; continue
+      fi
+
+      # Throttle: this box has ~36 usable cores and each job takes
+      # NUM_WORKERS+1 processes, so oversubscribing makes every job slower
+      # without finishing any sooner.
+      while (( $(ls "$JOBDIR"/*.pid 2>/dev/null | while read -r p; do
+                   kill -0 "$(cat "$p")" 2>/dev/null && echo x; done | wc -l)
+               >= MAX_CONCURRENT )); do sleep 30; done
+
+      echo "[launch] $tag  -> $log"
+      nohup "${cmd[@]}" >"$log" 2>&1 &
+      echo $! > "$pidf"
+      launched=$((launched+1))
+      sleep 5   # stagger Ray head startup; simultaneous inits race on ports
+    done
   done
-  MUJOCO_GL=egl python -m "$PROC" --list-envs 2>/dev/null > /tmp/_ma_envs.txt
-  for p in $PIECES; do
-    grep -qx "$(env_id "$p")" /tmp/_ma_envs.txt \
-      || { echo "[abort] NOT registered: $(env_id "$p")"; exit 1; }
+  echo "[ok] launched $launched job(s). Detach freely -- nohup survives SSH drop."
+  echo "     bash scripts/marl_algos.sh status"
+  ;;
+
+status)
+  shopt -s nullglob
+  found=0
+  for pidf in "$JOBDIR"/*.pid; do
+    found=1
+    tag=$(basename "$pidf" .pid); pid=$(cat "$pidf")
+    if kill -0 "$pid" 2>/dev/null; then state="RUNNING pid=$pid"; else state="EXITED"; fi
+    printf '%-52s %s\n' "$tag" "$state"
+    log="$LOGROOT/${tag}.console.log"
+    [[ -f "$log" ]] && tail -n 2 "$log" | sed 's/^/      | /'
+    # Proof-of-life that the custom learner is really in the loop. Absent =>
+    # you are looking at MAPPO numbers under a HAPPO label.
+    for p in "$LOGROOT"/*/progress.jsonl; do
+      [[ "$p" == *"${tag#*_}"* ]] || continue
+      n=$(grep -c 'compound_factor\|num_agents_in_permutation' "$p" 2>/dev/null || echo 0)
+      echo "      | happo metrics rows: $n"
+    done
   done
-  n=$(( $(wc -w <<<"$PIECES") * $(wc -w <<<"$ALGOS") ))
-  echo "[plan] algos='$ALGOS' jobs=$n gpus=$NGPU workers/job=$NW cores=$(nproc) steps=$STEPS"
-  i=0
-  for a in $ALGOS; do for p in $PIECES; do launch "$a" "$p" "$i"; i=$((i+1)); sleep 8; done; done
-  echo "[ok] W&B -> https://wandb.ai/omnipiano/$WANDB_PROJECT"
-  echo "[ok] run inside tmux so an SSH drop cannot kill it" ;;
+  ((found)) || echo "no jobs in $JOBDIR"
+  ;;
 
-status|gate|stop)
-  # Identical bookkeeping to marl10m.sh -- reuse it rather than duplicate it.
-  STEPS=$STEPS SEED=$SEED bash scripts/marl10m.sh "$CMD" ;;
+stop)
+  shopt -s nullglob
+  for pidf in "$JOBDIR"/*.pid; do
+    pid=$(cat "$pidf")
+    kill -0 "$pid" 2>/dev/null && { echo "[kill] $(basename "$pidf" .pid) pid=$pid"; kill "$pid"; }
+    rm -f "$pidf"
+  done
+  ;;
 
-*) echo "usage: $0 {algos|smoke|pilot|run|status|gate|stop} [algo ...]"; exit 1 ;;
+*) sed -n '2,30p' "$0"; exit 1;;
 esac
-EOF
-chmod +x scripts/marl_algos.sh

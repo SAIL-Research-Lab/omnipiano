@@ -485,10 +485,12 @@ def build_arg_parser(
                     action=argparse.BooleanOptionalAction,
                     default=defaults["wandb_upload_artifacts"])
     
-    parser.add_argument(
+    gate = p.add_argument_group("safety gates")
+    gate.add_argument(
         "--allow-experimental", action="store_true",
-        help="permit running an algorithm whose AlgoSpec.status is 'experimental'. "
-            "Their numbers are not paper-ready until their validation gate passes.")
+        help="Permit an algorithm whose AlgoSpec.status is 'experimental'. "
+             "Deliberately CLI-only and NOT settable from JSON: a config file "
+             "must never be able to silently promote an unvalidated algorithm.")
 
     return p
 
@@ -518,7 +520,8 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
     """Apply algorithm-dependent and smoke-test defaults, then validate."""
     spec = get_algo(args.algo)
-    spec.assert_launchable(allow_experimental=args.allow_experimental)
+    spec.assert_launchable(
+        allow_experimental=bool(getattr(args, "allow_experimental", False)))
 
     if args.smoke_test:
         for destination, value in args._smoke_test_overrides.items():
@@ -844,6 +847,8 @@ def _build_run_config(
     return {
         "schema_version": 2,
         "algo": spec.name,
+        "algo_spec": spec.metadata(),
+        "allow_experimental": bool(getattr(args, "allow_experimental", False)),
         "algorithm": spec.display_name,
         "algorithm_reference": spec.reference,
         "algorithm_notes": spec.notes,
@@ -873,9 +878,9 @@ def _build_run_config(
             "critic_input": spec.critic_input,
             "rl_module": spec.rl_module,
             "learner_class": (
-                "OmniPianoPPOTorchLearner"
-                if spec.rl_module == "ctde"
-                else "RLlib default PPOTorchLearner"
+                # Placeholder: overwritten in main() with the class actually
+                # installed, once spec.learner_class has been resolved.
+                "unresolved"
             ),
             "include_global_state": bool(spec.needs_global_state),
             "hidden_sizes": list(args.hidden_sizes_parsed),
@@ -1067,7 +1072,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "project": args.wandb_project, "group": group,
         "run_id": wandb_run.run_id, "url": wandb_run.url, "tags": tags,
     }
-    run_config["algo_spec"] = spec.metadata()
     write_json(run_dir / "run_config.json", run_config)
 
     try:
@@ -1144,26 +1148,53 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             vf_clip_param=args.vf_clip_param, vf_loss_coeff=args.vf_loss_coeff,
             entropy_coeff=args.entropy_coeff, use_kl_loss=args.use_kl_loss,
             grad_clip=args.grad_clip, grad_clip_by=args.grad_clip_by,
-            **dict(spec.training_overrides),
         )
         .debugging(seed=args.seed)
     )
-    if spec.num_agents_override is not None:
-        env_config["num_agents"] = spec.num_agents_override
+    # An algorithm's declared overrides are applied in a SEPARATE .training()
+    # call, never as **kwargs inside the call above: an override that names an
+    # explicit kwarg there (e.g. clip_param) would raise
+    # "got multiple values for keyword argument". A second call cannot collide
+    # and always wins, because AlgorithmConfig.training() only writes the keys
+    # it is given.
     if spec.training_overrides:
         config = config.training(**dict(spec.training_overrides))
-    learner_cls = spec.resolve_learner_class()
-    if learner_cls is not None:
-        config = config.training(learner_class=learner_cls)
+
+    # num_agents is NOT an env_config knob in this codebase; see
+    # ppo_monolithic.py. Refuse loudly rather than write a label we did not honour.
+    if spec.num_agents_override is not None:
+        raise NotImplementedError(
+            f"--algo {spec.name} declares num_agents_override="
+            f"{spec.num_agents_override}, but make_env_for_rllib / "
+            f"probe_agent_spaces / make_parallel / evaluate_marl do not thread it. "
+            f"Setting env_config['num_agents'] would be a SILENT NO-OP and the "
+            f"artifacts would misstate the agent count."
+        )
+
+    # ---- the learner class has exactly ONE resolution site ----
+    # Getting this wrong is the single failure mode that produces plausible but
+    # mislabelled curves, so the choice is made once and recorded.
     if spec.rl_module == "ctde":
         from omnipiano.multiagent._ctde_module import (
             build_ctde_module_spec, build_multi_module_spec,
         )
         from omnipiano.multiagent._ppo_learner import OmniPianoPPOTorchLearner
 
+        learner_cls = spec.resolve_learner_class() or OmniPianoPPOTorchLearner
+        # A CTDE algorithm that does NOT inherit our learner would silently lose
+        # the separate actor/critic Adam optimizers, critic_lr, adam_epsilon,
+        # value normalisation and prediction-delta vf clipping -- i.e. it would
+        # differ from MAPPO in five ways instead of one, and the ablation would
+        # be meaningless.
+        if not issubclass(learner_cls, OmniPianoPPOTorchLearner):
+            raise TypeError(
+                f"--algo {spec.name}: learner_class {learner_cls.__name__} must "
+                f"subclass OmniPianoPPOTorchLearner for rl_module='ctde', or the "
+                f"comparison against ippo/mappo is not architecturally matched."
+            )
         config = (
             config.learners(
-                learner_class=OmniPianoPPOTorchLearner,
+                learner_class=learner_cls,
                 learner_config_dict={
                     "critic_lr": float(args.critic_lr),
                     "adam_epsilon": float(args.adam_epsilon),
@@ -1191,16 +1222,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 ) for a in agents
             }))
         )
+    else:
+        learner_cls = spec.resolve_learner_class()
+        if learner_cls is not None:
+            config = config.learners(learner_class=learner_cls)
 
-    resolved_batch = getattr(config, "total_train_batch_size", None)
-    if resolved_batch is None:
-        raise RuntimeError("PPOConfig exposes no total_train_batch_size; install "
-                           f"the pinned extra (ray[rllib]=={RLLIB_TARGET_VERSION})")
-    if int(resolved_batch) != args.train_batch_size:
-        raise RuntimeError("RLlib resolved a different total train batch size: "
-                           f"requested={args.train_batch_size}, got={resolved_batch}")
-    run_config["effective_config"]["resolved_total_train_batch_size"] = int(resolved_batch)
-    run_config["effective_config"]["rllib_resolved"] = _resolved_ppo_config(config)
+    # Record what was ACTUALLY installed, not what the branch implies.
+    run_config["effective_config"]["learner_class"] = (
+        learner_cls.__name__ if learner_cls is not None
+        else "RLlib default PPOTorchLearner"
+    )
+    run_config["effective_config"]["learner_class_module"] = (
+        learner_cls.__module__ if learner_cls is not None else "ray.rllib"
+    )
+    print(f"[{tag}] learner_class={run_config['effective_config']['learner_class']}")
     write_json(run_dir / "run_config.json", run_config)
 
     algo = None

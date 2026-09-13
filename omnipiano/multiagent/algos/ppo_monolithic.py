@@ -27,10 +27,14 @@ register_algo(
         rl_module="ctde",
         execution="centralized",
         num_agents_override=1,
-        status="experimental",
-        blocking=("Requires the MA registration to accept num_agents=1. Verify "
-                  "with the 30-second check in the launch workflow; if it fails, "
-                  "register a dedicated 1-agent env id instead."),
+        status="planned",                      # was "experimental"
+        blocking=("num_agents is NOT an env_config knob: make_env_for_rllib, "
+                  "probe_agent_spaces, make_parallel and evaluate_marl would all "
+                  "have to thread it, and the env id encodes 'Duet' so the hand "
+                  "partition is baked into registration. Setting "
+                  "env_config['num_agents'] is a SILENT NO-OP -- you would train "
+                  "2 agents and label the artifact 1. Implement as a separate "
+                  "registered 1-agent env id instead."),
         reference="Schulman et al. (2017), Proximal policy optimization, "
                   "arXiv:1707.06347",
         notes=("Execution is centralized BY CONSTRUCTION -- one policy sees every "

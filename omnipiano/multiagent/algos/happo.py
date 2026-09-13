@@ -45,3 +45,34 @@ register_algo(
                "(see the canonical-form analysis literature)."),
     )
 )
+
+register_algo(
+    AlgoSpec(
+        name="happo-m1-control",
+        display_name="HAPPO validation control: the entire HAPPO code path with "
+                     "the compound factor forced to M=1 (must reproduce "
+                     "mappo-noshuffle)",
+        family="on_policy_ppo",          # M == 1 => no sequencing whatsoever
+        critic_input="global",
+        critic_head="v",
+        needs_global_state=True,
+        rl_module="ctde",
+        execution="decentralized",
+        learner_class=(
+            "omnipiano.multiagent.algos._happo_learner:"
+            "HAPPOCompoundDisabledLearner"),
+        status="experimental",
+        blocking=("Validation-only. It exists to be COMPARED, not reported; it "
+                  "must never appear in a results table."),
+        training_overrides={"shuffle_batch_per_epoch": False},
+        reference=_REF,
+        notes=("Runs the permutation, the per-module bookkeeping and the extra "
+               "forward pass, but with exp(0)=1 as the advantage weight, so the "
+               "mathematics collapses to MAPPO's. Because no network sees a "
+               "different number, this MUST track mappo-noshuffle. It is the only "
+               "decisive test that the surrogate-delta trick in "
+               "HAPPOTorchLearner.compute_loss_for_module did not corrupt the "
+               "loss -- the M=1 identity inside happo_surrogate holds by "
+               "construction and therefore proves nothing about the delta."),
+    )
+)
