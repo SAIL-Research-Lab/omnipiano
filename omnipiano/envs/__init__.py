@@ -30,6 +30,7 @@ from omnipiano.safety.constraints import (
 )
 from omnipiano.tasks.hand_spec import (
     HandSpec,
+    default_two_hand_specs,
     default_three_hand_specs,
     default_four_hand_specs,
     default_five_hand_specs,
@@ -1089,6 +1090,27 @@ def _four_hand_partition_specs():
     )
 
 
+def _five_hand_partition_specs():
+    """Inline 5-hand partition specs (18/18/17/18/17 keys)."""
+    return (
+        HandSpec(name="lh_b", side=HandSide.LEFT,
+                 position=(0.4, -0.4817, 0.13), key_range=(0, 17),
+                 group="bass"),
+        HandSpec(name="rh_b", side=HandSide.RIGHT,
+                 position=(0.4, -0.2345, 0.13), key_range=(18, 35),
+                 group="low_mid"),
+        HandSpec(name="rh_c", side=HandSide.RIGHT,
+                 position=(0.4, 0.0061, 0.13), key_range=(36, 52),
+                 group="middle"),
+        HandSpec(name="lh_t", side=HandSide.LEFT,
+                 position=(0.4, 0.2468, 0.13), key_range=(53, 70),
+                 group="high_mid"),
+        HandSpec(name="rh_t", side=HandSide.RIGHT,
+                 position=(0.4, 0.4879, 0.13), key_range=(71, 87),
+                 group="treble"),
+    )
+
+
 # WinterWind 4-hand StaticPartition — morphology-ladder anchor (314 steps,
 # min_bkt=8.5%, geq3=19.1%); see Task 11 WinterWind comment.
 register(
@@ -1206,8 +1228,8 @@ register(
 _CLAIRDELUNE_BASE = "RoboPianist-repertoire-150-ClairDeLune-v0"
 _ROBUST_CHANNEL_LETTERS = {"action": "A", "obs": "O", "reward": "R"}
 # Channel-specific sweep values, matched to Robust-Gymnasium paper figures
-# (§5.1.4): action/obs {0.05,0.10,0.15}; reward {0.10,0.30,0.50} (reward's
-# scalar magnitude ~2-3 needs larger sigmas to perturb, as in RG).
+# (§5.1.4): action {0.05,0.10,0.15}, observation {0.10,0.20,0.30}, and
+# reward {0.10,0.30,0.50}; channel scales differ with their raw magnitudes.
 _ROBUST_CHANNEL_LEVELS = {
     "action": (0.05, 0.10, 0.15),
     "obs":    (0.10, 0.20, 0.30),
@@ -1610,6 +1632,74 @@ def _register_phase4_composability() -> None:
 
 
 _register_phase4_composability()
+
+
+# General-RL ForElise hand-count ladder: clean task, OT fingering reward,
+# and static partition enabled for all morphologies with at least three hands.
+def _register_general_rl_forelise() -> None:
+    base = "RoboPianist-repertoire-150-ForElise-v0"
+    config = BenchmarkEnvConfig(disable_fingering_reward=True)
+    register(
+        id="OmniPiano-ForElise-OneHand-GeneralRL-v0",
+        base_env_name=base, env_config=config,
+        hand_specs=default_two_hand_specs()[:1],
+    )
+    register(
+        id="OmniPiano-ForElise-TwoHand-GeneralRL-v0",
+        base_env_name=base, env_config=config,
+        hand_specs=default_two_hand_specs(),
+    )
+    for hands, specs in (
+        ("Three", _three_hand_partition_specs()),
+        ("Four", _four_hand_partition_specs()),
+        ("Five", _five_hand_partition_specs()),
+    ):
+        register(
+            id=f"OmniPiano-ForElise-{hands}Hand-StaticPartition-GeneralRL-v0",
+            base_env_name=base, env_config=config, hand_specs=specs,
+        )
+
+
+_register_general_rl_forelise()
+
+
+def _register_general_rl_song_ladder(song, base_env):
+    """Register the eight clean hand/layout variants for one song."""
+    config = BenchmarkEnvConfig(disable_fingering_reward=True)
+    prefix = f"OmniPiano-{song}-"
+    register(
+        id=f"{prefix}OneHand-GeneralRL-v0", base_env_name=base_env,
+        env_config=config, hand_specs=default_two_hand_specs()[:1],
+    )
+    register(
+        id=f"{prefix}TwoHand-GeneralRL-v0", base_env_name=base_env,
+        env_config=config, hand_specs=default_two_hand_specs(),
+    )
+    for name, prototype, partition in (
+        ("ThreeHand", default_three_hand_specs(), _three_hand_partition_specs()),
+        ("FourHand", default_four_hand_specs(), _four_hand_partition_specs()),
+        ("FiveHand", default_five_hand_specs(), _five_hand_partition_specs()),
+    ):
+        register(
+            id=f"{prefix}{name}Prototype-GeneralRL-v0",
+            base_env_name=base_env, env_config=config, hand_specs=prototype,
+        )
+        register(
+            id=f"{prefix}{name}-StaticPartition-GeneralRL-v0",
+            base_env_name=base_env, env_config=config, hand_specs=partition,
+        )
+
+
+_register_general_rl_song_ladder(
+    "TwinkleTwinkleLittleStar", "RoboPianist-debug-TwinkleTwinkleLittleStar-v0"
+)
+_register_general_rl_song_ladder(
+    "WinterWind", "RoboPianist-repertoire-150-EtudeOp25No11-v0"
+)
+_register_general_rl_song_ladder(
+    "PicturesGreatKiev",
+    "RoboPianist-repertoire-150-PicturesAtAnExhibitionGreatKiev-v0",
+)
 
 
 # ===========================================================================

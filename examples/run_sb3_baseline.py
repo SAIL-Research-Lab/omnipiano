@@ -1,6 +1,6 @@
 """Unified SB3 baseline trainer for the OmniPiano benchmark.
 
-ONE script for PPO / SAC / TQC at **library-default hyperparameters**. This is
+ONE script for PPO / SAC / TD3 / CrossQ / TQC at **library-default hyperparameters**. This is
 the "out-of-the-box" baseline used to populate the benchmark's main results
 table; per-algorithm tuning is intentionally NOT applied here.
 
@@ -8,7 +8,8 @@ Usage
 -----
     python examples/run_sb3_baseline.py --algo sac --seed 0
     python examples/run_sb3_baseline.py --algo ppo --seed 1
-    python examples/run_sb3_baseline.py --algo tqc --seed 2
+    python examples/run_sb3_baseline.py --algo td3 --seed 2
+    python examples/run_sb3_baseline.py --algo crossq --seed 0
 
 What is held identical across algos
 -----------------------------------
@@ -20,8 +21,8 @@ What differs per algo (deliberately — these are the library defaults)
 - PPO: on-policy, defaults to ``n_envs=16`` on this host (= physical core
   count of the 16C/32T box; PPO needs parallel envs for diverse advantage
   estimates; HT-doubled n_envs=32 is slower due to cache contention).
-- SAC: off-policy, ``n_envs=24`` (2026-06-12 calibration, see registry
-  comment); TQC: off-policy, default ``n_envs=1`` (replay-buffer based).
+- SAC/TD3/CrossQ/TQC: off-policy with ``n_envs=24`` and
+  ``gradient_steps=-1`` so the update-to-data ratio remains one.
 - All other hparams (lr, gamma, batch_size, net_arch, ent_coef, ...) are
   whatever the installed sb3 / sb3-contrib version ships as defaults.
 
@@ -39,13 +40,13 @@ from typing import Any, Dict, List, Tuple, Type
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 import numpy as np
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO, SAC, TD3
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList, EvalCallback
 from stable_baselines3.common.logger import configure as sb3_configure_logger
 from stable_baselines3.common.utils import get_latest_run_id
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from sb3_contrib import TQC
+from sb3_contrib import CrossQ, TQC
 
 import stable_baselines3
 import sb3_contrib
@@ -72,13 +73,14 @@ from omnipiano.utils.info_keys import InfoKeys
 #   gradient_steps=-1 paired so UTD = gradient_steps / (train_freq*n_envs)
 #   stays at 1.0 (matches SAC paper / RoboPianist convention).
 #
-# TQC: n_envs left at SB3 default 1 pending calibration (TQC's pessimistic
-#   Q targets are expected to be more robust at higher n_envs than SAC's
-#   auto-α, but unverified empirically).
+# TD3/CrossQ/TQC follow the same vectorized off-policy collection convention:
+# n_envs=24 with gradient_steps=-1 preserves UTD=1.
 ALGO_REGISTRY: Dict[str, Tuple[Type[BaseAlgorithm], str, int, Dict[str, Any]]] = {
+    "crossq": (CrossQ, "MlpPolicy", 24, {"gradient_steps": -1}),
     "ppo": (PPO, "MlpPolicy", 16, {}),
     "sac": (SAC, "MlpPolicy", 24, {"gradient_steps": -1}),
-    "tqc": (TQC, "MlpPolicy", 1, {}),
+    "td3": (TD3, "MlpPolicy", 24, {"gradient_steps": -1}),
+    "tqc": (TQC, "MlpPolicy", 24, {"gradient_steps": -1}),
 }
 
 
@@ -145,7 +147,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--n-envs",
         type=int,
         default=None,
-        help="Override library-default n_envs (PPO=16, SAC=24, TQC=1). "
+        help="Override benchmark n_envs (PPO=16, SAC/TD3/CrossQ/TQC=24). "
         "Off-policy algos: changing this affects sample efficiency "
         "interpretation.",
     )
@@ -159,7 +161,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--gradient-steps",
         type=int,
         default=None,
-        help="SAC/TQC only: gradient_steps per train_freq. ``-1`` = match "
+        help="SAC/TD3/CrossQ/TQC only: gradient_steps per train_freq. ``-1`` = match "
         "transitions collected per vec-step (preserves UTD=1.0 when scaling "
         "n_envs). Library default = 1 (UTD = 1/n_envs). Ignored for PPO.",
     )
@@ -167,7 +169,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--learning-starts",
         type=int,
         default=None,
-        help="SAC/TQC only: number of warmup transitions to collect with a "
+        help="SAC/TD3/CrossQ/TQC only: number of warmup transitions to collect with a "
         "uniform random policy before any gradient update. SB3 default = 100; "
         "RoboPianist paper / robopianist-rl uses 5000. Critical for SAC "
         "auto-α stability — too small a warmup leaves the critic learning from "
@@ -301,7 +303,8 @@ def _record_default_hparams(model: BaseAlgorithm) -> Dict[str, Any]:
         "gamma", "learning_rate", "batch_size", "n_steps", "n_epochs",
         "gae_lambda", "clip_range", "ent_coef", "vf_coef",
         "buffer_size", "learning_starts", "tau", "train_freq", "gradient_steps",
-        "target_entropy", "target_update_interval", "use_sde",
+        "target_entropy", "target_update_interval", "policy_delay",
+        "target_policy_noise", "target_noise_clip", "action_noise", "use_sde",
     ):
         if not hasattr(model, key):
             continue
@@ -465,12 +468,12 @@ def main():
     )
 
     extra_hparams: Dict[str, Any] = dict(default_extras)
-    if args.algo in ("sac", "tqc") and args.gradient_steps is not None:
+    if args.algo in ("crossq", "sac", "td3", "tqc") and args.gradient_steps is not None:
         # CLI overrides the algo-default gradient_steps in ALGO_REGISTRY.
         extra_hparams["gradient_steps"] = args.gradient_steps
-    if args.algo in ("sac", "tqc") and args.learning_starts is not None:
+    if args.algo in ("crossq", "sac", "td3", "tqc") and args.learning_starts is not None:
         extra_hparams["learning_starts"] = args.learning_starts
-    if args.algo in ("sac", "tqc") and args.ent_coef is not None:
+    if args.algo in ("crossq", "sac", "tqc") and args.ent_coef is not None:
         # Accept "auto" or float string.
         try:
             extra_hparams["ent_coef"] = float(args.ent_coef)

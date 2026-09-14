@@ -12,16 +12,18 @@ WAV per episode), runs one deterministic episode, prints terminal metrics.
 Algorithm auto-detection
 ------------------------
 The script identifies the algorithm class by parsing the ``data`` JSON
-embedded inside the SB3 zip (key: ``policy_class``). This handles three
+embedded inside the SB3 zip (key: ``policy_class``). This handles five
 distinct algorithms:
 
 * **PPO** — `stable_baselines3.PPO`
 * **SAC** — `stable_baselines3.SAC`
+* **TD3** — `stable_baselines3.TD3`
+* **CrossQ** — `sb3_contrib.CrossQ`
 * **TQC** — `sb3_contrib.TQC`  (requires ``pip install sb3-contrib``)
 
 Falling back to filename heuristics (older approach: detecting
 ``policy.optimizer.pth`` vs ``actor.optimizer.pth``) cannot distinguish
-SAC from TQC because TQC ships the same files as SAC. The
+SAC, TD3, CrossQ, and TQC reliably. The
 ``policy_class`` JSON path is the reliable disambiguator.
 
 If TQC is detected but ``sb3_contrib`` is not importable in the current
@@ -49,7 +51,7 @@ from typing import Optional, Type
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 import numpy as np
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO, SAC, TD3
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from omnipiano import make
@@ -60,8 +62,8 @@ from omnipiano import make
 # imported (and PPO/SAC checkpoints rendered) when sb3-contrib is missing.
 # ---------------------------------------------------------------------------
 
-_BUILTIN_ALGOS: dict[str, Type[BaseAlgorithm]] = {"PPO": PPO, "SAC": SAC}
-_VALID_ALGO_CHOICES = ("PPO", "SAC", "TQC")
+_BUILTIN_ALGOS: dict[str, Type[BaseAlgorithm]] = {"PPO": PPO, "SAC": SAC, "TD3": TD3}
+_VALID_ALGO_CHOICES = ("PPO", "SAC", "TD3", "CROSSQ", "TQC")
 
 
 def _resolve_algo_class(name: str) -> Type[BaseAlgorithm]:
@@ -72,12 +74,12 @@ def _resolve_algo_class(name: str) -> Type[BaseAlgorithm]:
     """
     if name in _BUILTIN_ALGOS:
         return _BUILTIN_ALGOS[name]
-    if name == "TQC":
+    if name in ("CROSSQ", "TQC"):
         try:
-            from sb3_contrib import TQC  # noqa: WPS433 (intentional lazy import)
+            from sb3_contrib import CrossQ, TQC  # noqa: WPS433 (intentional lazy import)
         except ImportError as e:  # pragma: no cover (rendered at runtime)
             raise SystemExit(
-                "TQC checkpoint detected but `sb3_contrib` is not installed in "
+                f"{name} checkpoint detected but `sb3_contrib` is not installed in "
                 "the current Python environment.\n"
                 f"  Active interpreter: {os.path.realpath(os.sys.executable)}\n"
                 f"  Install with:       pip install sb3-contrib\n"
@@ -85,7 +87,7 @@ def _resolve_algo_class(name: str) -> Type[BaseAlgorithm]:
                 f"pianist`) and re-run this script.\n"
                 f"  Original ImportError: {e}"
             )
-        return TQC
+        return {"CROSSQ": CrossQ, "TQC": TQC}[name]
     raise SystemExit(f"Unknown algorithm name: {name!r}; expected one of {_VALID_ALGO_CHOICES}")
 
 
@@ -104,7 +106,7 @@ def _detect_algo(ckpt_path: str) -> Optional[str]:
     reliable than filename heuristics because TQC ships the same
     ``actor.optimizer.pth`` / ``ent_coef_optimizer.pth`` files as SAC.
 
-    Returns one of ``"PPO"``, ``"SAC"``, ``"TQC"``, or ``None`` if the
+    Returns one of ``"PPO"``, ``"SAC"``, ``"TD3"``, ``"CROSSQ"``, ``"TQC"``, or ``None`` if the
     zip does not match a recognized SB3 layout.
     """
     try:
@@ -133,6 +135,10 @@ def _detect_algo(ckpt_path: str) -> Optional[str]:
         sl = s.lower()
         if "sb3_contrib.tqc" in sl or "tqcpolicy" in sl:
             return "TQC"
+        if "sb3_contrib.crossq" in sl or "crossqpolicy" in sl:
+            return "CROSSQ"
+        if "stable_baselines3.td3" in sl or "td3policy" in sl:
+            return "TD3"
         if "stable_baselines3.sac" in sl or "sacpolicy" in sl:
             return "SAC"
         if "stable_baselines3.ppo" in sl or "actorcriticpolicy" in sl:
@@ -145,8 +151,8 @@ def _detect_algo(ckpt_path: str) -> Optional[str]:
     except zipfile.BadZipFile:
         return None
     if "actor.optimizer.pth" in names or "ent_coef_optimizer.pth" in names:
-        # Cannot disambiguate SAC vs TQC from filenames alone — return SAC
-        # as the safer default; user can override via --algo TQC.
+        # Cannot disambiguate SAC/TD3/CrossQ/TQC from filenames alone — return SAC
+        # as the safer default; user can override via --algo.
         return "SAC"
     if "policy.optimizer.pth" in names:
         return "PPO"
@@ -161,10 +167,10 @@ def main():
         "--algo",
         default=None,
         choices=list(_VALID_ALGO_CHOICES),
-        help="Algorithm class (PPO/SAC/TQC). Auto-detected from the "
+        help="Algorithm class (PPO/SAC/TD3/CROSSQ/TQC). Auto-detected from the "
         "checkpoint's `data` JSON (`policy_class` field) when omitted; "
         "pass explicitly to override (useful when filename heuristics "
-        "must disambiguate SAC vs TQC and JSON detection is inconclusive).",
+        "must disambiguate SAC/TD3/CrossQ/TQC and JSON detection is inconclusive).",
     )
     parser.add_argument("--seed", type=int, default=67, help="Eval seed (default 67)")
     parser.add_argument(
