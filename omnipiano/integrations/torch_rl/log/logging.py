@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import csv
+import math
 import time
 from collections import deque
 from pathlib import Path
+
+from torch.utils.tensorboard import SummaryWriter
 
 from omnipiano.utils.info_keys import InfoKeys
 
@@ -84,6 +87,7 @@ class ProgressLogger:
         self._pending_row = None
         self._stream = None
         self._writer = None
+        self._tensorboard = SummaryWriter(log_dir=str(self.path.parent))
         self._start_time = time.perf_counter()
         self._iterations = 0
 
@@ -158,6 +162,9 @@ class ProgressLogger:
         self._writer.writerow(row)
         self._stream.flush()
         self._last_written_step = int(row["time/total_timesteps"])
+        for key, value in row.items():
+            if isinstance(value, (int, float)) and math.isfinite(value):
+                self._tensorboard.add_scalar(key, value, self._last_written_step)
         self._pending_row = None
 
     def close(self) -> None:
@@ -168,3 +175,4 @@ class ProgressLogger:
             self._stream.close()
             self._stream = None
             self._writer = None
+        self._tensorboard.close()

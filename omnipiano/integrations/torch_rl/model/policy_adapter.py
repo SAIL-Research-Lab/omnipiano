@@ -23,7 +23,7 @@ class TorchRLPolicyAdapter:
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
-        self.actor = actor.to(self.device).eval()
+        self.actor = actor.to(self.device)
         self.model_spec = model_spec
 
     def predict(self, obs: np.ndarray, deterministic: bool = True) -> np.ndarray:
@@ -33,8 +33,13 @@ class TorchRLPolicyAdapter:
         observation = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
         td = TensorDict({"observation": observation}, batch_size=observation.shape[:-1])
         exploration = ExplorationType.DETERMINISTIC if deterministic else ExplorationType.RANDOM
-        with torch.no_grad(), set_exploration_type(exploration):
-            action = self.actor(td)["action"]
+        was_training = self.actor.training
+        self.actor.eval()
+        try:
+            with torch.no_grad(), set_exploration_type(exploration):
+                action = self.actor(td)["action"]
+        finally:
+            self.actor.train(was_training)
         return action.detach().cpu().numpy()
 
     def save(self, path: Path) -> None:

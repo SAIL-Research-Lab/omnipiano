@@ -10,9 +10,9 @@ import torch
 
 from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
-from ..env.evaluator import evaluate_policy, write_eval_summary
 from ..env.observation import observation_indices
 from ..log.checkpoint import save_checkpoint
+from omnipiano.integrations.eval_callback import EvalCallback
 from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.ompo.occupancy import (
     TransitionDiscriminator,
@@ -253,7 +253,11 @@ def train_ompo(
     }
     env_steps = 0
     update_steps = 0
-    next_eval = protocol.eval_freq_env_steps
+    eval_callback = EvalCallback(
+        env_id, periodic_eval_env, run_dir, seed + 10_000, protocol,
+        policy_factory=lambda: TorchRLPolicyAdapter(actor, model_spec, config.device),
+        save_best_fn=lambda path: save_checkpoint(path, actor=actor, model_spec=model_spec),
+    )
     checkpoint_index = 0
     checkpoint_steps = sorted(checkpoint_steps)
     last_discriminator_metrics = {
@@ -340,28 +344,7 @@ def train_ompo(
                 "global_buffer_age": float(ages.mean()),
                 "local_buffer_age": float(local_age),
             }
-            eval_stats = {
-                "eval/mean_reward": float("nan"),
-                "eval/mean_f1": float("nan"),
-                "eval/mean_ep_length": float("nan"),
-            }
-            did_eval = False
-            if env_steps >= next_eval:
-                adapter = TorchRLPolicyAdapter(actor, model_spec, config.device)
-                result = evaluate_policy(
-                    adapter, env_id, periodic_eval_env, seed + 10_000,
-                    protocol.num_eval_eps,
-                )
-                result["training_step"] = env_steps
-                write_eval_summary(result, run_dir / "periodic_eval" / f"step_{env_steps}.json")
-                eval_stats.update({
-                    "eval/mean_reward": result["summary"]["ep_return"],
-                    "eval/mean_f1": result["summary"]["ep_f1"],
-                    "eval/mean_ep_length": result["summary"]["ep_length"],
-                })
-                did_eval = True
-                while next_eval <= env_steps:
-                    next_eval += protocol.eval_freq_env_steps
+            eval_stats, did_eval = eval_callback.on_step(env_steps)
             logger.write(
                 {"env_steps": env_steps, "global_buffer_size": len(global_buffer),
                  **rollout_stats, "local_buffer_size": len(local_buffer), **agent_metrics,

@@ -7,6 +7,7 @@ does not import or reuse their training helpers.
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import os
 import re
@@ -24,8 +25,9 @@ if str(_REPO_ROOT) not in sys.path:
 
 from omnipiano.configs import BenchmarkProtocolConfig  # noqa: E402
 from omnipiano.envs.registration import _registry  # noqa: E402
-from omnipiano.integrations.torch_rl.env.evaluator import (  # noqa: E402
+from omnipiano.integrations.eval_callback import (  # noqa: E402
     evaluate_policy,
+    postprocess_eval_csv,
     write_eval_summary,
 )
 from omnipiano.integrations.torch_rl.env.factory import (  # noqa: E402
@@ -316,10 +318,20 @@ def main() -> None:
         train_env, periodic_eval_env, hidden_sizes, checkpoint_steps,
     )
     periodic_eval_env.close()
+    postprocess_eval_csv(run_dir)
     print("Running final benchmark eval...")
-    final_eval_env = make_eval_env(args.env, eval_seed, str(run_dir), record_dir=str(run_dir))
-    result = evaluate_policy(policy, args.env, final_eval_env, eval_seed, args.num_eval_eps)
-    final_eval_env.close()
+    video_dir = run_dir / "videos"
+    video_dir.mkdir(exist_ok=True)
+    final_eval_env = make_eval_env(
+        args.env, eval_seed, str(run_dir), record_dir=str(video_dir),
+    )
+    try:
+        result = evaluate_policy(
+            policy, args.env, final_eval_env, eval_seed, args.num_eval_eps,
+        )
+    finally:
+        final_eval_env.close()
+    effective_hparams = {**vars(config), "net_arch": list(hidden_sizes)}
     result.update(
         {
             "framework": "torchrl",
@@ -328,7 +340,13 @@ def main() -> None:
             "total_env_steps": args.total_steps,
             "protocol_version": protocol.protocol_version,
             "smoke_test": args.smoke_test,
-            "hparams": {**vars(config), "net_arch": list(hidden_sizes)},
+            "effective_config": {
+                "n_envs": config.n_envs,
+                "eval_freq_env_steps": protocol.eval_freq_env_steps,
+                "default_hparams": effective_hparams,
+                "overrides": {},
+                "vec_normalize": False,
+            },
         }
     )
     out_path = run_dir / "eval_summary.json"
