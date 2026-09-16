@@ -11,7 +11,7 @@ import numpy as np
 
 import omnipiano
 from omnipiano.configs import BenchmarkProtocolConfig
-from omnipiano.multiagent import evaluate, train
+from omnipiano.multiagent import train
 from omnipiano.multiagent.training.tracking import WandbRun
 from omnipiano.multiagent.algos import get_algo
 
@@ -156,12 +156,6 @@ def test_smoke_test_values_also_come_from_json() -> None:
     overridden = train._parse_args(["--smoke-test", "--num-epochs", "3"])
     train._resolve_args(overridden)
     assert overridden.num_epochs == 3  # Explicit CLI remains highest priority.
-
-
-def test_canonical_evaluator_uses_protocol_episode_default() -> None:
-    proto = BenchmarkProtocolConfig()
-    args = evaluate.build_arg_parser().parse_args(["--checkpoint", "somewhere"])
-    assert args.num_eval_eps == proto.num_eval_eps
 
 
 def test_ippo_and_mappo_are_a_single_factor_critic_ablation() -> None:

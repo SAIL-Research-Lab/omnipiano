@@ -1,2 +1,1 @@
-"""Shared runtime, tracking, and path utilities for MARL entry points."""
-
+"""Configuration, RLlib assembly, and runtime support for MARL entry points."""

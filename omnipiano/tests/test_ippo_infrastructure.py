@@ -13,7 +13,7 @@ import numpy as np
 _COMMON_PATH = (
     Path(__file__).resolve().parents[1]
     / "multiagent"
-    / "compile"
+    / "training"
     / "runtime.py"
 )
 _SPEC = importlib.util.spec_from_file_location("omnipiano_ippo_common_test", _COMMON_PATH)
@@ -221,7 +221,7 @@ class IPPOInfrastructureTest(unittest.TestCase):
 
     def test_eval_counts_shared_reward_once_and_collects_terminal_f1(self):
         env = _TwoStepSharedEnv()
-        result = common.evaluate_ippo(
+        result = common.evaluate_marl(
             object(),
             "fake-env",
             eval_seed=10_000,
@@ -293,7 +293,7 @@ class IPPOInfrastructureTest(unittest.TestCase):
     def test_eval_fails_when_terminal_f1_is_missing_and_closes_env(self):
         env = _TwoStepSharedEnv(include_metrics=False)
         with self.assertRaisesRegex(RuntimeError, "musical metrics"):
-            common.evaluate_ippo(
+            common.evaluate_marl(
                 object(),
                 "fake-env",
                 eval_seed=0,
@@ -312,7 +312,7 @@ class IPPOInfrastructureTest(unittest.TestCase):
     def test_eval_rejects_non_shared_rewards(self):
         env = _TwoStepSharedEnv(unequal_rewards=True)
         with self.assertRaisesRegex(RuntimeError, "different rewards"):
-            common.evaluate_ippo(
+            common.evaluate_marl(
                 object(),
                 "fake-env",
                 eval_seed=0,
@@ -332,7 +332,7 @@ class IPPOInfrastructureTest(unittest.TestCase):
         with self.assertRaisesRegex(
             RuntimeError, "episode=0, step=0, agent='left'"
         ) as caught:
-            common.evaluate_ippo(
+            common.evaluate_marl(
                 object(),
                 "fake-env",
                 eval_seed=0,
@@ -364,30 +364,14 @@ class IPPOInfrastructureTest(unittest.TestCase):
         action = computer("left", np.zeros(2, dtype=np.float32), _Box())
         np.testing.assert_allclose(action, np.array([0.75], dtype=np.float32))
 
-    def test_checkpoint_sidecar_is_validated(self):
+    def test_checkpoint_reference_is_portable(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             checkpoint = root / "checkpoint"
             checkpoint.mkdir()
-            (checkpoint / "metadata.json").write_text("{}\n", encoding="utf-8")
-            (checkpoint / "algorithm_state.pkl").write_bytes(b"fake")
-            run_dir = root / "run"
-            run_dir.mkdir()
-            (run_dir / "checkpoint_path.txt").write_text(
-                "../checkpoint\n", encoding="utf-8"
-            )
-            self.assertEqual(
-                common.resolve_checkpoint_path(run_dir), checkpoint.resolve()
-            )
             self.assertEqual(
                 common.checkpoint_reference(checkpoint, root), "checkpoint"
             )
-
-            (checkpoint / "metadata.json").unlink()
-            (checkpoint / "algorithm_state.pkl").unlink()
-            checkpoint.rmdir()
-            with self.assertRaisesRegex(FileNotFoundError, "missing checkpoint"):
-                common.resolve_checkpoint_path(run_dir)
 
     def test_checkpoint_save_requires_a_real_rllib_checkpoint(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -400,25 +384,6 @@ class IPPOInfrastructureTest(unittest.TestCase):
                 common.save_algorithm_checkpoint(
                     _FakeCheckpointAlgorithm(valid=False), root / "invalid"
                 )
-
-    def test_arbitrary_directory_is_not_a_checkpoint(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp) / "not-a-checkpoint"
-            directory.mkdir()
-            with self.assertRaisesRegex(FileNotFoundError, "Algorithm state"):
-                common.resolve_checkpoint_path(directory)
-
-    def test_rlmodule_metadata_is_not_an_algorithm_checkpoint(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            module_checkpoint = Path(tmp) / "module"
-            module_checkpoint.mkdir()
-            (module_checkpoint / "metadata.json").write_text(
-                "{}\n", encoding="utf-8"
-            )
-            (module_checkpoint / "state.pkl").write_bytes(b"fake")
-            with self.assertRaisesRegex(FileNotFoundError, "Algorithm state"):
-                common.resolve_checkpoint_path(module_checkpoint)
-
 
 if __name__ == "__main__":
     unittest.main()

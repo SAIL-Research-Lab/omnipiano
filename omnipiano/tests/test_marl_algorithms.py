@@ -97,12 +97,6 @@ def test_happo_learner_inherits_the_ctde_learner():
     """
     ray = pytest.importorskip("ray")            # noqa: F841
     from omnipiano.multiagent.algos.ppo_learner import OmniPianoPPOTorchLearner
-    from omnipiano.multiagent import _ppo_learner as legacy_ppo_learner
-
-    assert (
-        legacy_ppo_learner.OmniPianoPPOTorchLearner
-        is OmniPianoPPOTorchLearner
-    )
     for name in ("happo", "happo-m1-control"):
         cls = get_algo(name).resolve_learner_class()
         assert cls is not None, f"{name}: learner_class did not resolve"

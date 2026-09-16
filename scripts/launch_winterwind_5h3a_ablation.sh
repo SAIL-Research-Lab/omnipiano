@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 2x2 factorial ablation on ONE GPU: {ippo,mappo} x {collision 0.1, 0.0}.
-# Config knobs (num_workers/gpu/entity) come from marl_train_config.json untouched;
+# Config knobs come from configs/marl_train_config_default.json untouched;
 # we override ONLY algo, the ablated penalty, and an explicit run-dir (anti-collision).
 set -euo pipefail
 

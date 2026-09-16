@@ -21,15 +21,6 @@ OWN_SLICE = slice(GLOBAL_DIM, OBS_DIM)
 GS_SLICE = slice(0, GLOBAL_DIM)
 
 
-def test_legacy_module_imports_alias_canonical_implementation() -> None:
-    from omnipiano.multiagent import _ctde_module as legacy
-    from omnipiano.multiagent.algos import ppo_module as canonical
-
-    assert legacy.CtdePPOTorchRLModule is canonical.CtdePPOTorchRLModule
-    assert legacy.RunningValueNorm is canonical.RunningValueNorm
-    assert legacy.build_ctde_module_spec is canonical.build_ctde_module_spec
-
-
 def _module(critic_input: str) -> CtdePPOTorchRLModule:
     return CtdePPOTorchRLModule(
         observation_space=gym.spaces.Box(-np.inf, np.inf, (OBS_DIM,), np.float32),

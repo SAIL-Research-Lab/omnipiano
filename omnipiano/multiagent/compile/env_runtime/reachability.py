@@ -131,7 +131,7 @@ def _build_probe_env(
     Defaults are chosen to align with `BenchmarkEnvConfig` runtime defaults
     so probe-via-default-args is automatically runtime-aligned. Callers
     that override `BenchmarkEnvConfig` should pass the same overrides
-    here (see `make_parallel` in `registration.py`).
+    here (see `make_parallel` in `compile/environment.py`).
 
     Probe does not need MIDI scoring / lookahead / reward / colorization,
     so those task kwargs are hardcoded to the cheapest values.
@@ -266,7 +266,8 @@ def probe_agent_reach(
     Caller is expected to pass `hand_specs` whose `key_range` reflects the
     actual physical clamp at runtime — typically the per-agent territory
     (= union of bucket key_ranges) for the MA Territorial path. See
-    `omnipiano.multiagent.registration.make_parallel` for the override site.
+    `omnipiano.multiagent.compile.environment.make_parallel` for the override
+    site.
     """
     env = _build_probe_env(
         hand_specs,

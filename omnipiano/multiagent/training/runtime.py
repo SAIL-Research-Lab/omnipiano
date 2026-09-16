@@ -568,10 +568,6 @@ def evaluate_marl(
     return result
 
 
-# Backward-compatible name used by existing scripts and external launchers.
-evaluate_ippo = evaluate_marl
-
-
 def _checkpoint_result_path(result: Any) -> str:
     if isinstance(result, (str, Path)):
         return str(result)
@@ -646,25 +642,3 @@ def _validate_checkpoint_path(path: Path) -> Path:
             f"{CHECKPOINT_METADATA_MARKERS}: {path}"
         )
     return path
-
-
-def resolve_checkpoint_path(path: Path) -> Path:
-    """Resolve a run directory or a direct checkpoint path."""
-    path = Path(path).expanduser().resolve()
-    if path.is_dir():
-        for sidecar_name in (
-            "final_checkpoint_path.txt",
-            "latest_checkpoint_path.txt",
-            "checkpoint_path.txt",
-        ):
-            sidecar = path / sidecar_name
-            if sidecar.is_file():
-                target = Path(sidecar.read_text(encoding="utf-8").strip()).expanduser()
-                if not target.is_absolute():
-                    target = (path / target).resolve()
-                if not target.exists():
-                    raise FileNotFoundError(
-                        f"{sidecar} points to missing checkpoint {target}"
-                    )
-                return _validate_checkpoint_path(target)
-    return _validate_checkpoint_path(path)

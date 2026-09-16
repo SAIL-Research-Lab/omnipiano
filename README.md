@@ -389,11 +389,7 @@ per seed. Each run writes `run_config.json`, `progress.jsonl`,
 `periodic_eval.jsonl` (F1, one-copy shared team return, and MARL coordination
 metrics), recoverable
 checkpoints every 500k steps, a final RLlib checkpoint, and
-`eval_summary.json`. Standalone deterministic checkpoint evaluation is:
-
-```bash
-MUJOCO_GL=egl python -m omnipiano.multiagent.evaluate --checkpoint <run-dir>
-```
+`eval_summary.json`.
 
 The MARL terminal/evaluation metrics include
 `common_area_success_rate`, `common_area_duplicate_press_rate`, and
@@ -405,8 +401,8 @@ agents. These metrics are observational and do not change the task reward.
 
 `MUJOCO_GL` must be set before Python starts because importing the top-level
 package initializes the MuJoCo-backed environment registry. The supported
-MARL entrypoints are the canonical `omnipiano.multiagent.train` and
-`omnipiano.multiagent.evaluate` modules; select IPPO or MAPPO with `--algo`.
+MARL entrypoint is `omnipiano.multiagent.train`; select IPPO or MAPPO with
+`--algo`.
 
 ## Current Package Layout
 
@@ -435,15 +431,10 @@ omnipiano/
 ├── multiagent/                 # PettingZoo ParallelEnv layer + RLlib MARL baselines
 │   ├── algos/                  # AlgoSpec registry + shared algorithm modules
 │   ├── compile/                # JSON → ResolvedTask → environment factory
-│   │   └── env_runtime/        # topology, PettingZoo adapter, reach and metrics
-│   ├── training/               # shared runtime, W&B tracking and path utilities
-│   ├── train.py                # THE trainer (--algo selects the baseline)
-│   ├── evaluate.py             # deterministic checkpoint evaluation
-│   ├── wandb_sync.py           # backfill finished run dirs into W&B
-│   ├── registration.py         # public named-environment registry adapter
-│   ├── _ctde_module.py         # backward-compatible checkpoint import shim
-│   ├── _ppo_learner.py         # backward-compatible checkpoint import shim
-│   └── HYPERPARAMS.md          # single source of truth for MARL hparams
+│   │   └── env_runtime/        # registry, topology, PettingZoo adapter and metrics
+│   ├── training/               # config, RLlib assembly, runner and shared utilities
+│   ├── train.py                # thin public CLI (--algo selects the baseline)
+│   └── configs/                # default MARL config and task example
 ├── safety/
 │   └── constraints.py          # BaseConstraint + concrete safety rules
 ├── wrappers/

@@ -20,7 +20,7 @@ setup(
     description="A Safety and Robustness Benchmark for Robot Piano Playing",
     packages=omni_pkgs + rp_pkgs,
     package_dir=pkg_dir,
-    package_data={"omnipiano.multiagent": ["*.json"]},
+    package_data={"omnipiano.multiagent": ["configs/*.json"]},
     include_package_data=True,
     python_requires=">=3.10",
     install_requires=[

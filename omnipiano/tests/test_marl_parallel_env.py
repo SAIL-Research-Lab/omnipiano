@@ -683,7 +683,7 @@ class TestPlanInvariant:
 # SA envs remain allowed (DmEnvObsNoiseWrapper is dm_env-layer).
 # ---------------------------------------------------------------------------
 def test_make_parallel_rejects_safety_sa_env():
-    from omnipiano.multiagent import registration as ma_reg
+    from omnipiano.multiagent.compile.env_runtime import registry as ma_reg
 
     ma_id = "OmniPianoTest-MA-GuardSafety-v0"
     if ma_id not in ma_reg._ma_registry:
@@ -700,7 +700,7 @@ def test_make_parallel_rejects_safety_sa_env():
 
 
 def test_make_parallel_rejects_action_robust_sa_env():
-    from omnipiano.multiagent import registration as ma_reg
+    from omnipiano.multiagent.compile.env_runtime import registry as ma_reg
 
     ma_id = "OmniPianoTest-MA-GuardRobustA-v0"
     if ma_id not in ma_reg._ma_registry:

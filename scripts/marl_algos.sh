@@ -13,7 +13,7 @@
 #   bash scripts/marl_algos.sh stop
 #
 # DELIBERATELY DOES NOT PASS A REWARD-PENALTY FLAG.
-# The coefficient lives in marl_train_config.json, which is what the completed
+# The coefficient lives in configs/marl_train_config_default.json, which is what the completed
 # IPPO/MAPPO 10M runs used. Passing it on the command line would let HAPPO drift
 # from its own baselines, and then a HAPPO-vs-MAPPO difference would be a
 # difference in the reward function rather than in the update rule -- the one
@@ -26,7 +26,7 @@ ALGOS=("$@")
 
 PY=${PY:-python}
 MODULE=${MODULE:-omnipiano.multiagent.train}
-CFG=${CFG:-omnipiano/multiagent/marl_train_config.json}
+CFG=${CFG:-omnipiano/multiagent/configs/marl_train_config_default.json}
 LOGROOT=${LOGROOT:-examples/logs}
 JOBDIR=${JOBDIR:-.marl_jobs}
 PIECES=${PIECES:-WinterWind}

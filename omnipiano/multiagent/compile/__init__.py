@@ -10,6 +10,7 @@ from omnipiano.multiagent.compile.compiler import (
     resolve_train_config_path,
 )
 from omnipiano.multiagent.compile.environment import (
+    make_parallel,
     make_parallel_from_task,
     prepare_task,
     resolve_registered_task,
@@ -37,6 +38,7 @@ __all__ = [
     "TRAIN_CONFIG_SCHEMA_VERSION",
     "compile_experiment",
     "compile_task",
+    "make_parallel",
     "make_parallel_from_task",
     "prepare_task",
     "resolve_registered_task",

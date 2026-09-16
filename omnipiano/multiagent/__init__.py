@@ -20,12 +20,14 @@ from omnipiano.multiagent.compile.env_runtime.topology import (
     compute_boundary_hands,
     compute_inter_agent_boundaries,
 )
-from omnipiano.multiagent.registration import (
+from omnipiano.multiagent.compile.env_runtime.registry import (
     list_parallel_envs,
-    make_parallel,
     register_parallel,
 )
-from omnipiano.multiagent.compile.environment import make_parallel_from_task
+from omnipiano.multiagent.compile.environment import (
+    make_parallel,
+    make_parallel_from_task,
+)
 
 __all__ = [
     "AGENT_ASSIGNMENTS",

@@ -28,7 +28,7 @@ def _compile(path: Path, *, algo: str | None = None):
 
 
 def test_canonical_config_compiles_without_changing_any_default() -> None:
-    path = Path(__file__).resolve().parents[1] / "multiagent" / "marl_train_config.json"
+    path = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
     raw = json.loads(path.read_text(encoding="utf-8"))
     compiled = _compile(path)
 
@@ -44,7 +44,7 @@ def test_canonical_config_compiles_without_changing_any_default() -> None:
 def test_selected_algorithm_override_precedes_shared_defaults(
     tmp_path: Path,
 ) -> None:
-    source = Path(__file__).resolve().parents[1] / "multiagent" / "marl_train_config.json"
+    source = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
     raw = json.loads(source.read_text(encoding="utf-8"))
     raw["ppo"]["num_epochs"] = 5
     raw["algorithm_overrides"]["mappo"] = {
@@ -62,7 +62,7 @@ def test_selected_algorithm_override_precedes_shared_defaults(
 
 
 def test_legacy_config_without_reward_keeps_zero_penalty(tmp_path: Path) -> None:
-    source = Path(__file__).resolve().parents[1] / "multiagent" / "marl_train_config.json"
+    source = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
     raw = json.loads(source.read_text(encoding="utf-8"))
     del raw["reward"]
     path = tmp_path / "legacy.json"
@@ -75,7 +75,7 @@ def test_legacy_config_without_reward_keeps_zero_penalty(tmp_path: Path) -> None
 
 
 def test_unknown_field_fails_before_runtime_initialization(tmp_path: Path) -> None:
-    source = Path(__file__).resolve().parents[1] / "multiagent" / "marl_train_config.json"
+    source = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
     raw = json.loads(source.read_text(encoding="utf-8"))
     raw["ppo"]["typo_num_epoch"] = 5
     path = tmp_path / "invalid.json"
@@ -86,7 +86,7 @@ def test_unknown_field_fails_before_runtime_initialization(tmp_path: Path) -> No
 
 
 def test_resolved_experiment_is_json_serializable_and_snapshot_isolated() -> None:
-    path = Path(__file__).resolve().parents[1] / "multiagent" / "marl_train_config.json"
+    path = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
     compiled = _compile(path)
 
     serialized = json.loads(json.dumps(compiled.to_dict()))
@@ -99,7 +99,7 @@ def test_resolved_experiment_is_json_serializable_and_snapshot_isolated() -> Non
 
 
 def test_v2_task_inherits_training_defaults_and_resolves_ranges() -> None:
-    path = Path(__file__).resolve().parents[1] / "multiagent" / "marl_task_example.json"
+    path = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_task_example.json"
     compiled = _compile(path)
 
     assert compiled.request.schema_version == 2

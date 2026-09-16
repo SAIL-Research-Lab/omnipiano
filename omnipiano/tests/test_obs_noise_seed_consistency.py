@@ -38,7 +38,7 @@ def test_offset_value():
 
 def test_no_hardcoded_offset_in_registration_sources():
     import omnipiano.envs.registration as sa
-    import omnipiano.multiagent.registration as ma
+    import omnipiano.multiagent.compile.environment as ma
     for mod in (sa, ma):
         with open(mod.__file__) as f:
             src = f.read()

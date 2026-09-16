@@ -14,7 +14,12 @@ ALGOS = ("ippo", "ippo-rllib-module", "mappo", "mappo-own-critic")
 
 
 def test_prepared_task_snapshot_contains_physics_inputs() -> None:
-    path = Path(__file__).resolve().parents[1] / "multiagent" / "marl_task_example.json"
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent"
+        / "configs"
+        / "marl_task_example.json"
+    )
     compiled = compile_experiment(path, registered_algorithms=ALGOS)
     prepared = prepare_task(compiled.task)
     restored = ResolvedTask.from_dict(prepared.to_dict())

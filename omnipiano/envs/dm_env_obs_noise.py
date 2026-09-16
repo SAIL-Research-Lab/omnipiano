@@ -34,7 +34,8 @@ from dm_env_wrappers import EnvironmentWrapper
 # Offset added to the master seed to derive the obs-noise RNG seed, so the
 # obs-noise stream is independent of the task's internal random_state (episode
 # init). SINGLE SOURCE OF TRUTH — imported by both the single-agent
-# (envs/registration.py) and multi-agent (multiagent/registration.py) factories
+# (envs/registration.py) and multi-agent (multiagent/compile/environment.py)
+# factories
 # so they can never drift to different offsets (the §0.5 dedup: this was
 # previously hardcoded as +31415 in two places). Value chosen 20000.
 OBS_NOISE_SEED_OFFSET = 20000

@@ -20,11 +20,16 @@ schema.py + presets.py → compiler.py → ResolvedExperiment + ResolvedTask
   `env_runtime/topology.py` materializes runtime topology objects and calculations.
 - `environment.py` snapshots physics settings, adapts old registered
   `env_id`s to `ResolvedTask`, and builds the dm_env chain.
+- `env_runtime/registry.py` stores named MA task references; the public
+  `register_parallel` and `list_parallel_envs` APIs are re-exported by
+  `omnipiano.multiagent`.
 - `env_runtime/parallel_env.py` implements PettingZoo observation/action splitting.
 - `env_runtime/reachability.py` and `env_runtime/metrics.py` contain the two
   simulator-aware analyses.
-- `../training/` contains shared training/evaluation bookkeeping. Algorithm
-  implementations remain in `../algos/`.
+- `../training/config.py` owns CLI/default resolution and validation;
+  `rllib.py` assembles environments and PPO modules; `runner.py` owns the
+  training lifecycle. Shared evaluation/checkpoint bookkeeping remains in
+  `runtime.py`, while algorithm implementations stay in `../algos/`.
 
 There is no second legacy environment builder: `make_parallel(env_id)` first
 calls `resolve_registered_task(env_id)` and then uses
@@ -32,12 +37,14 @@ calls `resolve_registered_task(env_id)` and then uses
 
 Schema v1 keeps the historical registered `env_id` workflow unchanged.
 Schema v2 adds a `task` block and inherits all omitted training defaults from
-`../marl_train_config.json` (or a schema-v1 file named by `extends`).
+`../configs/marl_train_config_default.json` (or a schema-v1 file named by
+`extends`).
 
 Launch the checked-in example with:
 
 ```bash
-python -m omnipiano.multiagent.train omnipiano/multiagent/marl_task_example.json
+python -m omnipiano.multiagent.train \
+  omnipiano/multiagent/configs/marl_task_example.json
 ```
 
 Validate the resolved task and actual spaces without starting Ray, W&B, or a

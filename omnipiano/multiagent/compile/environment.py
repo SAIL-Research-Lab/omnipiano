@@ -3,9 +3,24 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional, Tuple
 
 from omnipiano.multiagent.compile.schema import ResolvedAgent, ResolvedHand, ResolvedTask
+
+if TYPE_CHECKING:
+    from omnipiano.multiagent.compile.env_runtime.parallel_env import (
+        OmniPianoParallelEnv,
+    )
+
+
+_RUNTIME_BYPASS_FIELDS = frozenset({
+    "seed", "record_dir", "record_every", "record_resolution", "camera_id",
+})
+_MA_RUNTIME_KWARGS = frozenset({
+    "obs_visibility", "reward_mode",
+    "inter_agent_collision_penalty_coef", "flatten_obs", "sustain_owner",
+    "include_global_state",
+})
 
 
 def _plain(value):
@@ -41,7 +56,7 @@ def resolve_registered_task(env_id: str) -> ResolvedTask:
         compute_boundary_hands,
     )
     from omnipiano.multiagent.compile.presets import SONGS
-    from omnipiano.multiagent.registration import _ma_registry
+    from omnipiano.multiagent.compile.env_runtime.registry import _ma_registry
 
     if env_id not in _ma_registry:
         if env_id in getattr(sa_reg, "_registry", {}):
@@ -274,6 +289,19 @@ def make_parallel_from_task(
     )
 
 
+def make_parallel(env_id: str, **kwargs) -> "OmniPianoParallelEnv":
+    """Build a registered MA task through the canonical resolved-task path."""
+    allowed = _RUNTIME_BYPASS_FIELDS | _MA_RUNTIME_KWARGS
+    illegal = set(kwargs) - allowed
+    if illegal:
+        raise ValueError(
+            f"make_parallel(**kwargs) only accepts {sorted(allowed)}. "
+            f"Got illegal overrides: {sorted(illegal)}."
+        )
+    task = resolve_registered_task(env_id)
+    return make_parallel_from_task(task, **kwargs)
+
+
 def _make_dm_env_chain_builder(
     *,
     base_env_name: str,
@@ -356,6 +384,7 @@ def _make_dm_env_chain_builder(
 
 
 __all__ = [
+    "make_parallel",
     "make_parallel_from_task",
     "prepare_task",
     "resolve_registered_task",

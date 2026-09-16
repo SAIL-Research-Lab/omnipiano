@@ -31,7 +31,9 @@ from omnipiano.multiagent.compile.presets import (
 
 
 DEFAULT_TRAIN_CONFIG_PATH = (
-    Path(__file__).resolve().parents[1] / "marl_train_config.json"
+    Path(__file__).resolve().parents[1]
+    / "configs"
+    / "marl_train_config_default.json"
 )
 
 

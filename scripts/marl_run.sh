@@ -9,7 +9,6 @@
 #   bash scripts/marl_run.sh paper      # THE RUN: 2 pieces x 2 algos x 10M
 #   bash scripts/marl_run.sh status     # live progress of every launched run
 #   bash scripts/marl_run.sh stop       # kill everything launched by `paper`
-#   bash scripts/marl_run.sh backfill   # push the 3 historical seeds to W&B
 #
 # Overridable: PIECES SEEDS TOTAL_STEPS NUM_WORKERS EVAL_FREQ WANDB_MODE
 set -euo pipefail
@@ -114,23 +113,20 @@ smoke)
     $TRAIN --algo "$algo" --smoke-test \
       --env-id "$(env_id "$(echo "$PIECES" | awk '{print $1}')")" \
       --num-gpus-per-learner 0 --wandb-mode disabled --run-dir "/tmp/smoke_$algo"
-    python -m omnipiano.multiagent.evaluate \
-      --checkpoint "/tmp/smoke_$algo" --no-video
   done
   python - <<'PY'
-import glob, json
+import json, math
 for algo in ("ippo", "mappo"):
     run = f"/tmp/smoke_{algo}"
     try:
-        a = json.load(open(f"{run}/eval_summary.json"))["summary"]
+        summary = json.load(open(f"{run}/eval_summary.json"))["summary"]
     except FileNotFoundError:
         continue
-    b = json.load(open(sorted(glob.glob(f"{run}/standalone_eval_*/eval_summary.json"))[-1]))["summary"]
     for k in ("team_return_mean", "episode_task/musical_f1_mean"):
-        d = abs(a[k] - b[k])
-        print(f"{algo:6s} {k:38s} {a[k]:.6f} vs {b[k]:.6f}  delta={d:.2e}")
-        assert d < 1e-6, f"{algo}: checkpoint round-trip is NOT deterministic"
-print("SMOKE PASSED: train -> checkpoint -> standalone eval is bit-identical")
+        value = float(summary[k])
+        assert math.isfinite(value), f"{algo}: {k} is not finite: {value}"
+        print(f"{algo:6s} {k:38s} {value:.6f}")
+print("SMOKE PASSED: training, checkpointing and final evaluation completed")
 PY
   ;;
 
@@ -222,12 +218,6 @@ stop)
     kill "$pid" 2>/dev/null && echo "killed $(basename "$f" .pid) (pid $pid)"
     rm -f "$f"
   done
-  ;;
-
-backfill)
-  python -m omnipiano.multiagent.wandb_sync \
-    --run-dir 'examples/logs/ippo_rllib_*_seed*' \
-    --entity omnipiano --project multiagent "${@:2}"
   ;;
 
 *)

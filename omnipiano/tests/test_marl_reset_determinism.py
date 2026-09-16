@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from omnipiano.multiagent import make_parallel
-from omnipiano.multiagent import registration as ma_reg
+from omnipiano.multiagent.compile.env_runtime import registry as ma_reg
 
 
 _MA_ID = "OmniPianoTest-MA-ResetDeterminism-v0"
