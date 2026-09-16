@@ -26,13 +26,13 @@ import gymnasium as gym
 import numpy as np
 from pettingzoo.utils.env import ParallelEnv
 
-from omnipiano.multiagent.assignment import (
+from omnipiano.multiagent.compile.env_runtime.topology import (
     MorphologyAssignment,
     compute_agent_territory,
     compute_boundary_hands,
     compute_inter_agent_boundaries,
 )
-from omnipiano.multiagent.coordination_metrics import (
+from omnipiano.multiagent.compile.env_runtime.metrics import (
     BASE_TEAM_RETURN,
     INTER_AGENT_COLLISION_PENALTY_COEF,
     INTER_AGENT_COLLISION_PENALTY_RETURN,
@@ -93,6 +93,8 @@ class OmniPianoParallelEnv(ParallelEnv):
         sustain_owner: Optional[str] = None,
         include_global_state: bool = False,
         inter_agent_collision_penalty_coef: float = 0.0,
+        observation_key_ranges: Optional[Mapping[str, Tuple[int, int]]] = None,
+        visible_teammate_hands: Optional[Mapping[str, Sequence[str]]] = None,
     ) -> None:
         if obs_visibility not in _SUPPORTED_OBS_MODES:
             raise NotImplementedError(
@@ -109,6 +111,10 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._assignment = assignment
         self._hand_key_ranges = dict(hand_key_ranges)
         self._agent_reaches = dict(agent_reaches)
+        self._observation_key_ranges = (
+            dict(observation_key_ranges) if observation_key_ranges is not None
+            else dict(agent_reaches)
+        )
         self._obs_visibility = obs_visibility
         self._reward_mode = reward_mode
         self._flatten_obs = flatten_obs
@@ -121,7 +127,7 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._inter_agent_collision_penalty_coef = penalty_coef
         # CTDE: when True, every agent additionally receives the *centralized*
         # state s used by MAPPO's critic.  The actor must never read it -- see
-        # ``_ctde_module.CtdePPOTorchRLModule`` which enforces that by slicing.
+        # ``algos.ppo_module.CtdePPOTorchRLModule`` enforces that by slicing.
         self._include_global_state = include_global_state
         if include_global_state and not flatten_obs:
             raise NotImplementedError(
@@ -147,16 +153,25 @@ class OmniPianoParallelEnv(ParallelEnv):
             self._sustain_owner_name = sustain_owner
 
         # Derived structures.
-        self._territories = compute_agent_territory(
-            assignment, self._hand_key_ranges
-        )
-        self._boundaries = compute_inter_agent_boundaries(
-            assignment, self._territories
-        )
-        # {agent_name: {neighbor_agent_name: that_neighbor's_boundary_hand_name}}
-        self._boundary_hands_map = compute_boundary_hands(
-            assignment, self._hand_key_ranges
-        )
+        if visible_teammate_hands is None:
+            # Historical registered environments retain their exact boundary
+            # observation semantics.
+            self._boundary_hands_map = compute_boundary_hands(
+                assignment, self._hand_key_ranges
+            )
+        else:
+            known_hands = {h for a in assignment.agents for h in a.hand_names}
+            self._boundary_hands_map = {}
+            for agent in assignment.agents:
+                requested = tuple(visible_teammate_hands.get(agent.name, ()))
+                own = set(agent.hand_names)
+                bad = [h for h in requested if h not in known_hands or h in own]
+                if bad or len(set(requested)) != len(requested):
+                    raise ValueError(
+                        f"invalid visible teammate hands for {agent.name!r}: {requested}"
+                    )
+                # Values are consumed as hand names; keys only need be unique.
+                self._boundary_hands_map[agent.name] = {h: h for h in requested}
 
         self.possible_agents: List[str] = list(assignment.agent_names)
         self.agents: List[str] = []
@@ -185,10 +200,11 @@ class OmniPianoParallelEnv(ParallelEnv):
 
         # Fixed spatial L->R hand order for a permutation-consistent global
         # state.  Must never depend on dict iteration order.
+        # Physical/task order remains spatial even for an explicit assignment
+        # such as agent A=[hands 0,3], agent B=[1,2]. Agent-group order cannot
+        # be used here or MAPPO's global state would silently permute hands.
         self._all_hands_spatial: Tuple[str, ...] = tuple(
-            hand
-            for agent in self._assignment.agents
-            for hand in agent.hand_names
+            self._hand_action_slices
         )
         self._agent_index = {
             agent.name: i for i, agent in enumerate(self._assignment.agents)
@@ -499,7 +515,7 @@ class OmniPianoParallelEnv(ParallelEnv):
         # Pre-cache per-agent slicing info.
         self._agent_reach_slice: Dict[str, slice] = {}
         self._agent_goal_dim: Dict[str, int] = {}
-        for agent_name, (lo, hi) in self._agent_reaches.items():
+        for agent_name, (lo, hi) in self._observation_key_ranges.items():
             reach_dim = hi - lo + 1
             self._agent_reach_slice[agent_name] = slice(lo, hi + 1)
             self._agent_goal_dim[agent_name] = (
@@ -507,7 +523,7 @@ class OmniPianoParallelEnv(ParallelEnv):
             )
 
         for agent in self._assignment.agents:
-            reach_lo, reach_hi = self._agent_reaches[agent.name]
+            reach_lo, reach_hi = self._observation_key_ranges[agent.name]
             reach_dim = reach_hi - reach_lo + 1
             goal_dim = self._agent_goal_dim[agent.name]
 

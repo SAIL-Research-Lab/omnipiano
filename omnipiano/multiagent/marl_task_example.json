@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "description": "Example: configurable 4-hand, 2-agent WinterWind task",
+  "task": {
+    "name": "winterwind-4h-2a-overlap",
+    "song": "WinterWind",
+    "num_hands": 4,
+    "num_agents": 2,
+    "assignment": "default",
+    "sustain_owner": "secondo",
+    "agents": [
+      {
+        "name": "secondo",
+        "action_key_range": [1, 52],
+        "observation_key_range": [1, 60],
+        "visible_teammate_hands": "boundary"
+      },
+      {
+        "name": "primo",
+        "action_key_range": [37, 88],
+        "observation_key_range": [29, 88],
+        "visible_teammate_hands": "boundary"
+      }
+    ]
+  },
+  "experiment": {
+    "algo": "ippo",
+    "env_id": null,
+    "seed": 0,
+    "run_dir": null
+  }
+}

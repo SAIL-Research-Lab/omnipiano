@@ -1,4 +1,4 @@
-"""Shared, testable infrastructure for OmniPiano RLlib MARL baselines.
+"""Shared, testable runtime infrastructure for OmniPiano RLlib MARL baselines.
 
 This module deliberately has no import-time dependency on Ray, PettingZoo, or
 the OmniPiano package.  Keeping the metric aggregation and scheduling logic
@@ -433,6 +433,7 @@ def evaluate_marl(
     action_computer: Optional[Callable[[str, Any, Any], np.ndarray]] = None,
     include_global_state: bool = False,
     inter_agent_collision_penalty_coef: float = 0.0,
+    task: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run deterministic PettingZoo episodes and collect authoritative metrics."""
     if num_episodes <= 0:
@@ -449,9 +450,13 @@ def evaluate_marl(
             "inter_agent_collision_penalty_coef must be finite and non-negative"
         )
     if env_factory is None:
-        from omnipiano.multiagent import make_parallel
-
-        env_factory = make_parallel
+        from omnipiano.multiagent.compile.environment import (
+            make_parallel_from_task,
+            resolve_registered_task,
+        )
+        if task is None:
+            task = resolve_registered_task(env_id).to_dict()
+        env_factory = make_parallel_from_task
 
     env_kwargs: Dict[str, Any] = {
         "seed": int(eval_seed),
@@ -471,7 +476,7 @@ def evaluate_marl(
             record_resolution=(int(record_resolution[0]), int(record_resolution[1])),
             camera_id=str(camera_id),
         )
-    env = env_factory(env_id, **env_kwargs)
+    env = env_factory(task if task is not None else env_id, **env_kwargs)
 
     episodes: List[Dict[str, Any]] = []
     try:

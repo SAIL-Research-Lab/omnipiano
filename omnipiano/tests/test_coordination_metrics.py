@@ -15,7 +15,8 @@ import numpy as np
 _METRICS_PATH = (
     Path(__file__).resolve().parents[1]
     / "multiagent"
-    / "coordination_metrics.py"
+    / "compile"
+    / "metrics.py"
 )
 _SPEC = importlib.util.spec_from_file_location(
     "omnipiano_coordination_metrics_test", _METRICS_PATH
@@ -25,7 +26,12 @@ metrics = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = metrics
 _SPEC.loader.exec_module(metrics)
 
-_WANDB_PATH = Path(__file__).resolve().parents[1] / "multiagent" / "_wandb.py"
+_WANDB_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "multiagent"
+    / "compile"
+    / "tracking.py"
+)
 _WANDB_SPEC = importlib.util.spec_from_file_location(
     "omnipiano_coordination_wandb_test", _WANDB_PATH
 )

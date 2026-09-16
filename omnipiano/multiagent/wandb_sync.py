@@ -100,7 +100,7 @@ def sync_run_dir(
     if dry_run:
         return None
 
-    from omnipiano.multiagent._wandb import WandbRun
+    from omnipiano.multiagent.training.tracking import WandbRun
 
     wb = WandbRun(
         mode=mode,
@@ -174,7 +174,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if not Path(raw).is_absolute():
             # Also interpret the pattern relative to the repo root, so the same
             # command works from ~/, from the repo root, and from its parent.
-            from omnipiano.multiagent.paths import repo_root
+            from omnipiano.multiagent.training.paths import repo_root
             expanded.extend(glob.glob(str(repo_root() / raw)))
         matches = sorted({p for p in expanded if Path(p).is_dir()})
         if not matches:

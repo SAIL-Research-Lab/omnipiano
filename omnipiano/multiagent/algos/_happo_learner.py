@@ -41,7 +41,7 @@ from typing import Any, Dict, Mapping
 import torch
 from ray.rllib.core.columns import Columns
 
-from omnipiano.multiagent._ppo_learner import OmniPianoPPOTorchLearner
+from omnipiano.multiagent.algos.ppo_learner import OmniPianoPPOTorchLearner
 from omnipiano.multiagent.algos._happo_math import (
     DEFAULT_MAX_ABS_LOG_FACTOR,
     clamp_log_factor,

@@ -25,6 +25,7 @@ from omnipiano import envs  # noqa: E402, F401
 # ---------------------------------------------------------------------------
 _MA_LAZY_ATTRS = {
     "make_parallel": "omnipiano.multiagent",
+    "make_parallel_from_task": "omnipiano.multiagent",
     "register_parallel": "omnipiano.multiagent",
     "list_parallel_envs": "omnipiano.multiagent",
     "AGENT_ASSIGNMENTS": "omnipiano.multiagent",

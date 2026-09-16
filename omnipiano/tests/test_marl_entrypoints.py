@@ -5,18 +5,24 @@ from __future__ import annotations
 import inspect
 import json
 from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
 
 import omnipiano
 from omnipiano.configs import BenchmarkProtocolConfig
 from omnipiano.multiagent import evaluate, train
-from omnipiano.multiagent._wandb import WandbRun
+from omnipiano.multiagent.training.tracking import WandbRun
 from omnipiano.multiagent.algos import get_algo
 
 
-def test_canonical_defaults_match_protocol_and_project_convention() -> None:
+def test_canonical_defaults_match_checked_in_project_convention() -> None:
     proto = BenchmarkProtocolConfig()
     args = train.build_arg_parser().parse_args([])
-    assert args.total_steps == proto.total_env_steps == 5_000_000
+    # The project intentionally trains for 10M; the frozen benchmark protocol
+    # remains 5M and run_config records this as a non-protocol budget.
+    assert args.total_steps == 10_000_000
+    assert proto.total_env_steps == 5_000_000
     assert args.gamma == proto.gamma == 0.8
     assert args.eval_freq == proto.eval_freq_env_steps == 50_000
     assert args.inter_agent_collision_penalty_coef == 0.1
@@ -29,6 +35,7 @@ def test_canonical_defaults_match_protocol_and_project_convention() -> None:
     assert (args.video_height, args.video_width) == (480, 640)
     assert args.video_wandb_upload
     assert args.log_every_iters == 5
+    assert not args.dry_run
     assert args.train_batch_size == args.minibatch_size == 4_000
     assert args.num_epochs == 5
     assert args.lr == 3e-4
@@ -57,6 +64,29 @@ def test_canonical_defaults_match_protocol_and_project_convention() -> None:
     assert args.wandb_entity == "omnipiano"
     assert args.wandb_project == "multiagent"
     assert inspect.signature(WandbRun).parameters["project"].default == "multiagent"
+
+
+def test_dry_run_exits_before_training_side_effects(monkeypatch, capsys) -> None:
+    space = SimpleNamespace(shape=(3,), dtype=np.dtype(np.float32))
+    monkeypatch.setattr(
+        train,
+        "probe_agent_spaces",
+        lambda *args, **kwargs: (
+            ["secondo", "primo"],
+            {"secondo": space, "primo": space},
+            {"secondo": space, "primo": space},
+            {
+                "secondo": {"own": (0, 3), "global_state": (0, 0)},
+                "primo": {"own": (0, 3), "global_state": (0, 0)},
+            },
+        ),
+    )
+
+    assert train.main(["--dry-run", "--num-gpus-per-learner", "0"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "ok"
+    assert report["gpu_or_cluster_started"] is False
+    assert report["resolved_task"]["legacy_env_id"] == report["env_id"]
 
 
 def test_json_algorithm_defaults_then_cli_overrides(tmp_path: Path) -> None:

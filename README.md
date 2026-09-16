@@ -433,15 +433,16 @@ omnipiano/
 │                               # default_{three,four,five}_hand_specs() +
 │                               # key_index_to_y / key_range_to_y_range
 ├── multiagent/                 # PettingZoo ParallelEnv layer + RLlib MARL baselines
-│   ├── algos/                  # AlgoSpec registry: ippo.py / mappo.py / base.py
+│   ├── algos/                  # AlgoSpec registry + shared algorithm modules
+│   ├── compile/                # JSON → ResolvedTask → environment factory
+│   │   └── env_runtime/        # topology, PettingZoo adapter, reach and metrics
+│   ├── training/               # shared runtime, W&B tracking and path utilities
 │   ├── train.py                # THE trainer (--algo selects the baseline)
 │   ├── evaluate.py             # deterministic checkpoint evaluation
 │   ├── wandb_sync.py           # backfill finished run dirs into W&B
-│   ├── _ctde_module.py         # shared actor/critic RLModule (critic slice = the ablation)
-│   ├── _ippo_common.py         # env-step accounting, eval, checkpoint validation
-│   ├── _wandb.py               # failure-tolerant W&B + ETA
-│   ├── parallel_env.py / registration.py / assignment.py
-│   ├── coordination_metrics.py / _reach_probe.py / paths.py
+│   ├── registration.py         # public named-environment registry adapter
+│   ├── _ctde_module.py         # backward-compatible checkpoint import shim
+│   ├── _ppo_learner.py         # backward-compatible checkpoint import shim
 │   └── HYPERPARAMS.md          # single source of truth for MARL hparams
 ├── safety/
 │   └── constraints.py          # BaseConstraint + concrete safety rules

@@ -1,4 +1,4 @@
-"""Repository-anchored paths.
+"""Repository-anchored paths for MARL compilation and runtime artifacts.
 
 Run artifacts must land in the same place no matter what the shell's working
 directory is -- otherwise ``--run-dir examples/logs/x`` means different things
@@ -13,7 +13,7 @@ from pathlib import Path
 
 def repo_root() -> Path:
     """Directory containing ``setup.py`` and the ``omnipiano`` package."""
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 def logs_root() -> Path:

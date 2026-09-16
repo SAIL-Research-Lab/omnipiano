@@ -14,9 +14,16 @@ from pathlib import Path
 
 import pytest
 
-EXTERNAL = Path(__file__).parent
-VENDORED = sorted(p for p in EXTERNAL.iterdir()
-                  if p.is_dir() and not p.name.startswith(("_", ".")))
+EXTERNAL = Path(__file__).resolve().parents[1] / "multiagent" / "external"
+VENDORED = sorted(
+    directory
+    for directory in EXTERNAL.iterdir()
+    if directory.is_dir()
+    and any(
+        path.suffix == ".py" and not path.name.startswith("_")
+        for path in directory.iterdir()
+    )
+)
 
 
 def test_something_is_vendored():

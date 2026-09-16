@@ -19,6 +19,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Mapping, Sequence, Tuple
 
+from omnipiano.multiagent.compile.presets import (
+    AGENT_SETUPS,
+    DEFAULT_ASSIGNMENTS,
+    LAYOUTS,
+)
+
 
 @dataclass(frozen=True)
 class AgentDef:
@@ -82,57 +88,27 @@ class MorphologyAssignment:
 # 5-hand → center); see `multi_agent_design.md` § 3.5.
 # ===========================================================================
 
-AGENT_ASSIGNMENTS: Dict[str, MorphologyAssignment] = {
-    "ThreeHand": MorphologyAssignment(
-        morphology="ThreeHand",
-        agent_setup="MainSolo",
-        agents=(
-            AgentDef(
-                name="secondo",
-                hand_names=("lh", "rh_c"),
-                is_sustain_owner=True,
+def _build_default_assignments() -> Dict[str, MorphologyAssignment]:
+    """Materialize typed runtime assignments from the compiler presets."""
+    assignments: Dict[str, MorphologyAssignment] = {}
+    for num_hands, (morphology, hand_names, _buckets) in LAYOUTS.items():
+        groups = DEFAULT_ASSIGNMENTS[num_hands]
+        assignments[morphology] = MorphologyAssignment(
+            morphology=morphology,
+            agent_setup=AGENT_SETUPS[num_hands],
+            agents=tuple(
+                AgentDef(
+                    name=agent_name,
+                    hand_names=tuple(hand_names[index] for index in hand_ids),
+                    is_sustain_owner=(group_index == 0),
+                )
+                for group_index, (agent_name, hand_ids) in enumerate(groups)
             ),
-            AgentDef(
-                name="treble_soloist",
-                hand_names=("rh",),
-            ),
-        ),
-    ),
-    "FourHand": MorphologyAssignment(
-        morphology="FourHand",
-        agent_setup="Duet",
-        agents=(
-            AgentDef(
-                name="secondo",
-                hand_names=("lh_b", "rh_b"),
-                is_sustain_owner=True,
-            ),
-            AgentDef(
-                name="primo",
-                hand_names=("lh_t", "rh_t"),
-            ),
-        ),
-    ),
-    "FiveHand": MorphologyAssignment(
-        morphology="FiveHand",
-        agent_setup="Trio",
-        agents=(
-            AgentDef(
-                name="left_secondo",
-                hand_names=("lh_b", "rh_b"),
-                is_sustain_owner=True,
-            ),
-            AgentDef(
-                name="center_soloist",
-                hand_names=("rh_c",),
-            ),
-            AgentDef(
-                name="right_primo",
-                hand_names=("lh_t", "rh_t"),
-            ),
-        ),
-    ),
-}
+        )
+    return assignments
+
+
+AGENT_ASSIGNMENTS: Dict[str, MorphologyAssignment] = _build_default_assignments()
 
 
 # ===========================================================================
@@ -258,7 +234,7 @@ def compute_agent_reach(
     Args:
         n_settle_steps: number of env.step() calls between qpos pinning and
             fingertip readout. Default 10 — empirically sufficient for finger
-            PD to converge to neutral pose. See `_reach_probe.py`.
+            PD to converge to neutral pose. See `env_runtime/reachability.py`.
         control_timestep / gravity_compensation / disable_hand_collisions:
             physics-affecting BenchmarkEnvConfig fields. Caller should pass
             the same values as the runtime env so probe physics align with
@@ -273,7 +249,9 @@ def compute_agent_reach(
     control_timestep, gravity_compensation, disable_hand_collisions).
     """
     # Import here to avoid module-load circularity.
-    from omnipiano.multiagent._reach_probe import cached_probe_agent_reach
+    from omnipiano.multiagent.compile.env_runtime.reachability import (
+        cached_probe_agent_reach,
+    )
 
     return cached_probe_agent_reach(
         assignment,

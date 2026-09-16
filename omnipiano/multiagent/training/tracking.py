@@ -9,7 +9,7 @@ Three constraints shape this module:
      nothing was uploaded is worse than crashing in the first second.
   3. The x-axis is always lifetime ENVIRONMENT steps -- never RLlib iterations
      and never agent steps -- so IPPO / MAPPO / single-agent curves overlay
-     directly. See ``_ippo_common.extract_env_steps`` for why that distinction
+     directly. See ``training.runtime.extract_env_steps`` for why that distinction
      decides whether a nominal budget counts physical or per-agent interactions.
 """
 

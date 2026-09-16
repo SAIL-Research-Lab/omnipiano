@@ -22,8 +22,8 @@ from typing import Any, Dict, Mapping, Optional, Sequence
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 from omnipiano.configs import BenchmarkProtocolConfig
-from omnipiano.multiagent.paths import resolve_run_path
-from omnipiano.multiagent._ippo_common import (
+from omnipiano.multiagent.training.paths import resolve_run_path
+from omnipiano.multiagent.training.runtime import (
     COORDINATION_RATE_METRICS,
     LEGACY_RLLIB_ENV_NAME,
     REQUIRED_MUSICAL_METRICS,
@@ -118,6 +118,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
     algo_name = run_config.get("algo") or (
         "mappo" if run_config.get("is_centralized_critic") else "ippo")
+    resolved_task = run_config.get("resolved_task")
+    if resolved_task is not None and not isinstance(resolved_task, Mapping):
+        raise ValueError("recorded resolved_task must be an object")
 
     if args.output_dir is not None:
         output_dir = resolve_run_path(args.output_dir).resolve()
@@ -165,6 +168,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         algo = Algorithm.from_checkpoint(str(checkpoint))
         evaluation = evaluate_marl(
             algo, env_id, eval_seed=eval_seed, num_episodes=args.num_eval_eps,
+            task=resolved_task,
             record_dir=None if args.no_video else str(output_dir / "videos"),
             include_global_state=include_global_state,
             inter_agent_collision_penalty_coef=(

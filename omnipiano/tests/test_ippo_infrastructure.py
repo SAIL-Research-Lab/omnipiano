@@ -11,7 +11,10 @@ import numpy as np
 
 
 _COMMON_PATH = (
-    Path(__file__).resolve().parents[1] / "multiagent" / "_ippo_common.py"
+    Path(__file__).resolve().parents[1]
+    / "multiagent"
+    / "compile"
+    / "runtime.py"
 )
 _SPEC = importlib.util.spec_from_file_location("omnipiano_ippo_common_test", _COMMON_PATH)
 assert _SPEC is not None and _SPEC.loader is not None

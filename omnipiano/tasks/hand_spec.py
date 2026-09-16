@@ -13,6 +13,8 @@ from typing import Optional, Tuple
 from robopianist.models.hands import HandSide, shadow_hand
 from robopianist.models.piano import piano_constants as piano_consts
 
+from omnipiano.tasks.multi_hand_layouts import MULTI_HAND_LAYOUTS
+
 
 # Default poses — reproduce the existing 2-hand configuration exactly.
 _LEFT_HAND_POSITION: Tuple[float, float, float] = (0.4, -0.15, 0.13)
@@ -226,6 +228,31 @@ def default_two_hand_specs() -> Tuple[HandSpec, HandSpec]:
     )
 
 
+def _multi_hand_specs(num_hands: int, *, partitioned: bool) -> Tuple[HandSpec, ...]:
+    """Materialize HandSpecs from the shared dependency-free layout table."""
+    try:
+        layout = MULTI_HAND_LAYOUTS[num_hands]
+    except KeyError as exc:
+        raise ValueError(
+            f"num_hands must be one of {sorted(MULTI_HAND_LAYOUTS)}, got {num_hands}"
+        ) from exc
+    return tuple(
+        HandSpec(
+            name=hand.name,
+            side=HandSide[hand.side],
+            position=hand.position,
+            group=hand.group,
+            key_range=hand.key_range if partitioned else None,
+        )
+        for hand in layout.hands
+    )
+
+
+def default_partitioned_hand_specs(num_hands: int) -> Tuple[HandSpec, ...]:
+    """Return the canonical static-partition specs for a 3/4/5-hand layout."""
+    return _multi_hand_specs(num_hands, partitioned=True)
+
+
 def default_three_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec]:
     """3-hand morphology — canonical (LH, RH) pair + one center hand.
 
@@ -268,14 +295,7 @@ def default_three_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec]:
     original RoboPianist (rh, lh) convention as a direct baseline; see
     ``static_partition_design.md`` § N-hand axiom).
     """
-    return (
-        HandSpec(name="lh", side=HandSide.LEFT,
-                 position=(0.4, -0.4051, 0.13), group="bass"),
-        HandSpec(name="rh_c", side=HandSide.RIGHT,
-                 position=(0.4, 0.0, 0.13), group="middle"),
-        HandSpec(name="rh", side=HandSide.RIGHT,
-                 position=(0.4, +0.4056, 0.13), group="treble"),
-    )
+    return _multi_hand_specs(3, partitioned=False)  # type: ignore[return-value]
 
 
 def default_four_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec, HandSpec]:
@@ -332,16 +352,7 @@ def default_four_hand_specs() -> Tuple[HandSpec, HandSpec, HandSpec, HandSpec]:
     or custom forearm overrides should be done at register() time by
     constructing the tuple manually instead of using this helper.
     """
-    return (
-        HandSpec(name="lh_b", side=HandSide.LEFT,
-                 position=(0.4, -0.4521, 0.13), group="bass"),
-        HandSpec(name="rh_b", side=HandSide.RIGHT,
-                 position=(0.4, -0.1527, 0.13), group="mid_bass"),
-        HandSpec(name="lh_t", side=HandSide.LEFT,
-                 position=(0.4, +0.1528, 0.13), group="mid_treble"),
-        HandSpec(name="rh_t", side=HandSide.RIGHT,
-                 position=(0.4, +0.4526, 0.13), group="treble"),
-    )
+    return _multi_hand_specs(4, partitioned=False)  # type: ignore[return-value]
 
 
 def default_five_hand_specs() -> Tuple[
@@ -421,15 +432,4 @@ def default_five_hand_specs() -> Tuple[
     # Bucket boundaries: [(0,17), (18,35), (36,52), (53,70), (71,87)].
     # Positions are CACHED as float constants below for deterministic
     # registry behavior across Python runs.
-    return (
-        HandSpec(name="lh_b", side=HandSide.LEFT,
-                 position=(0.4, -0.4817, 0.13), group="bass"),
-        HandSpec(name="rh_b", side=HandSide.RIGHT,
-                 position=(0.4, -0.2345, 0.13), group="low_mid"),
-        HandSpec(name="rh_c", side=HandSide.RIGHT,
-                 position=(0.4, +0.0061, 0.13), group="middle"),
-        HandSpec(name="lh_t", side=HandSide.LEFT,
-                 position=(0.4, +0.2468, 0.13), group="high_mid"),
-        HandSpec(name="rh_t", side=HandSide.RIGHT,
-                 position=(0.4, +0.4879, 0.13), group="treble"),
-    )
+    return _multi_hand_specs(5, partitioned=False)  # type: ignore[return-value]

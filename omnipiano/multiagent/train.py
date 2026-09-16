@@ -7,6 +7,7 @@ future baseline are guaranteed to differ *only* where their spec differs.
 Canonical invocation::
 
     python -m omnipiano.multiagent.train --algo mappo --seed 0
+    python -m omnipiano.multiagent.train path/to/experiment.json
 
 All numerical defaults come from ``marl_train_config.json``. Pass
 ``--config path/to/variant.json`` for an experiment configuration; explicit
@@ -19,6 +20,7 @@ recorded with its rationale in ``run_config.json``.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import os
@@ -36,8 +38,14 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 
 from omnipiano.configs import BenchmarkProtocolConfig
 from omnipiano.multiagent.algos import AlgoSpec, algo_table, get_algo, list_algos
-from omnipiano.multiagent.paths import logs_root, resolve_run_path
-from omnipiano.multiagent._ippo_common import (
+from omnipiano.multiagent.compile import (
+    DEFAULT_TRAIN_CONFIG_PATH,
+    ResolvedTask,
+    compile_experiment,
+    resolve_train_config_path,
+)
+from omnipiano.multiagent.training.paths import logs_root, resolve_run_path
+from omnipiano.multiagent.training.runtime import (
     COORDINATION_RATE_METRICS,
     LEGACY_RLLIB_ENV_NAME,
     REQUIRED_MUSICAL_METRICS,
@@ -52,211 +60,8 @@ from omnipiano.multiagent._ippo_common import (
     write_json,
 )
 
-DEFAULT_TRAIN_CONFIG_PATH = Path(__file__).with_name("marl_train_config.json")
 RLLIB_TARGET_VERSION = "2.55.1"
 
-# JSON keys are deliberately mapped to argparse destinations in one place.
-# Unknown keys are rejected, so a typo in a long cluster run cannot silently
-# fall back to some other default.
-_CONFIG_FIELDS: Dict[str, Dict[str, str]] = {
-    "experiment": {
-        "algo": "algo", "env_id": "env_id", "seed": "seed",
-        "run_dir": "run_dir",
-    },
-    "protocol": {
-        "total_steps": "total_steps", "gamma": "gamma",
-        "eval_freq": "eval_freq", "num_eval_eps": "num_eval_eps",
-        "eval_seed_offset": "eval_seed_offset",
-    },
-    "reward": {
-        "inter_agent_collision_penalty_coef": (
-            "inter_agent_collision_penalty_coef"
-        ),
-    },
-    "ppo": {
-        "train_batch_size": "train_batch_size",
-        "minibatch_size": "minibatch_size", "num_epochs": "num_epochs",
-        "lr": "lr", "critic_lr": "critic_lr",
-        "adam_epsilon": "adam_epsilon", "gae_lambda": "gae_lambda",
-        "clip_param": "clip_param", "vf_clip_param": "vf_clip_param",
-        "vf_loss_coeff": "vf_loss_coeff",
-        "entropy_coeff": "entropy_coeff", "use_kl_loss": "use_kl_loss",
-        "grad_clip": "grad_clip", "grad_clip_by": "grad_clip_by",
-    },
-    "network": {
-        "hidden_sizes": "hidden_sizes", "activation": "activation",
-        "hidden_orthogonal_gain": "hidden_orthogonal_gain",
-        "policy_output_gain": "policy_output_gain",
-        "value_output_gain": "value_output_gain",
-        "initial_log_std": "initial_log_std",
-        "log_std_min": "log_std_min", "log_std_max": "log_std_max",
-        "input_layer_norm": "input_layer_norm", "value_norm": "value_norm",
-        "value_norm_beta": "value_norm_beta",
-        "value_norm_epsilon": "value_norm_epsilon",
-        "value_norm_variance_floor": "value_norm_variance_floor",
-    },
-    "compute": {
-        "num_workers": "num_workers",
-        "num_cpus_per_env_runner": "num_cpus_per_env_runner",
-        "num_learners": "num_learners",
-        "num_gpus_per_learner": "num_gpus_per_learner",
-        "ray_num_cpus": "ray_num_cpus",
-        "sample_timeout_s": "sample_timeout_s",
-        "max_sampling_stalls": "max_sampling_stalls",
-        "ray_log_to_driver": "ray_log_to_driver",
-        "checkpoint_freq": "checkpoint_freq",
-        "log_every_iters": "log_every_iters", "smoke_test": "smoke_test",
-    },
-    "video": {
-        "enabled": "video_enabled", "freq": "video_freq",
-        "record_final": "video_record_final",
-        "camera_id": "video_camera_id", "height": "video_height",
-        "width": "video_width", "wandb_upload": "video_wandb_upload",
-    },
-    "wandb": {
-        "mode": "wandb_mode", "entity": "wandb_entity",
-        "project": "wandb_project", "group": "wandb_group",
-        "name": "wandb_name", "tags": "wandb_tags",
-        "notes": "wandb_notes",
-        "upload_artifacts": "wandb_upload_artifacts",
-    },
-}
-
-
-def _resolve_train_config_path(path: os.PathLike[str] | str) -> Path:
-    candidate = Path(path).expanduser()
-    if not candidate.is_absolute():
-        candidate = Path.cwd() / candidate
-    candidate = candidate.resolve()
-    if not candidate.is_file():
-        raise FileNotFoundError(f"MARL training config does not exist: {candidate}")
-    return candidate
-
-
-def _load_train_config(
-    path: os.PathLike[str] | str,
-    *,
-    algo_override: Optional[str] = None,
-) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Path]:
-    """Load, validate and flatten the canonical JSON configuration."""
-    config_path = _resolve_train_config_path(path)
-    try:
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid JSON in {config_path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"{config_path}: top-level JSON value must be an object")
-    if raw.get("schema_version") != 1:
-        raise ValueError(
-            f"{config_path}: unsupported schema_version "
-            f"{raw.get('schema_version')!r}; expected 1"
-        )
-
-    allowed_top = {
-        "schema_version", "description", *_CONFIG_FIELDS,
-        "smoke_test_overrides", "algorithm_overrides",
-    }
-    unknown_top = sorted(set(raw) - allowed_top)
-    if unknown_top:
-        raise ValueError(f"{config_path}: unknown top-level keys {unknown_top}")
-
-    defaults: Dict[str, Any] = {}
-
-    def _merge_sections(container: Mapping[str, Any], *, label: str) -> None:
-        unknown_sections = sorted(set(container) - set(_CONFIG_FIELDS))
-        if unknown_sections:
-            raise ValueError(f"{config_path}: {label} has unknown sections "
-                             f"{unknown_sections}")
-        for section, values in container.items():
-            if not isinstance(values, Mapping):
-                raise ValueError(
-                    f"{config_path}: {label}.{section} must be an object"
-                )
-            field_map = _CONFIG_FIELDS[section]
-            unknown_fields = sorted(set(values) - set(field_map))
-            if unknown_fields:
-                raise ValueError(
-                    f"{config_path}: {label}.{section} has unknown fields "
-                    f"{unknown_fields}"
-                )
-            if label == "defaults":
-                missing_fields = sorted(set(field_map) - set(values))
-                if missing_fields:
-                    raise ValueError(
-                        f"{config_path}: defaults.{section} is missing fields "
-                        f"{missing_fields}"
-                    )
-            for key, value in values.items():
-                destination = field_map[key]
-                if label.startswith("algorithm_overrides") and destination == "algo":
-                    raise ValueError(
-                        f"{config_path}: an algorithm override cannot change algo"
-                    )
-                defaults[destination] = value
-
-    base_sections: Dict[str, Any] = {}
-    for section in _CONFIG_FIELDS:
-        if section not in raw:
-            # Reward shaping was added as an optional extension to schema v1.
-            # Old experiment JSON files must remain reproducible, so absence
-            # means the exact historical reward (coefficient zero), not the
-            # new canonical config's enabled value.
-            if section == "reward":
-                base_sections[section] = {
-                    "inter_agent_collision_penalty_coef": 0.0,
-                }
-                continue
-            raise ValueError(f"{config_path}: missing required section {section!r}")
-        base_sections[section] = raw[section]
-    _merge_sections(base_sections, label="defaults")
-
-    configured_algo = str(defaults.get("algo", ""))
-    if configured_algo not in list_algos():
-        raise ValueError(
-            f"{config_path}: unknown configured algorithm {configured_algo!r}; "
-            f"registered algorithms are {list_algos()}"
-        )
-    selected_algo = str(algo_override or configured_algo)
-    if selected_algo not in list_algos():
-        raise ValueError(
-            f"unknown --algo {selected_algo!r}; registered algorithms are "
-            f"{list_algos()}"
-        )
-    algorithm_overrides = raw.get("algorithm_overrides", {})
-    if not isinstance(algorithm_overrides, Mapping):
-        raise ValueError(f"{config_path}: algorithm_overrides must be an object")
-    unknown_algorithms = sorted(set(algorithm_overrides) - set(list_algos()))
-    if unknown_algorithms:
-        raise ValueError(
-            f"{config_path}: overrides reference unknown algorithms "
-            f"{unknown_algorithms}"
-        )
-    selected_overrides = algorithm_overrides.get(selected_algo, {})
-    if not isinstance(selected_overrides, Mapping):
-        raise ValueError(
-            f"{config_path}: algorithm_overrides.{selected_algo} must be an object"
-        )
-    _merge_sections(
-        selected_overrides, label=f"algorithm_overrides.{selected_algo}"
-    )
-    # A CLI --algo chooses the registry entry and its JSON overrides without
-    # rewriting the canonical experiment default.
-    defaults["algo"] = selected_algo
-
-    smoke_overrides = raw.get("smoke_test_overrides", {})
-    if not isinstance(smoke_overrides, Mapping):
-        raise ValueError(f"{config_path}: smoke_test_overrides must be an object")
-    valid_destinations = {
-        destination
-        for fields in _CONFIG_FIELDS.values()
-        for destination in fields.values()
-    }
-    unknown_smoke = sorted(set(smoke_overrides) - valid_destinations)
-    if unknown_smoke:
-        raise ValueError(
-            f"{config_path}: smoke_test_overrides has unknown fields {unknown_smoke}"
-        )
-    return defaults, dict(smoke_overrides), raw, config_path
 
 def _install_sigterm_as_interrupt() -> None:
     """Route SIGTERM through the same graceful path as Ctrl-C.
@@ -292,24 +97,29 @@ def build_arg_parser(
     *,
     algo_override: Optional[str] = None,
 ) -> argparse.ArgumentParser:
-    defaults, smoke_overrides, config_snapshot, resolved_config_path = (
-        _load_train_config(
-            config_path or DEFAULT_TRAIN_CONFIG_PATH,
-            algo_override=algo_override,
-        )
+    compiled = compile_experiment(
+        config_path or DEFAULT_TRAIN_CONFIG_PATH,
+        registered_algorithms=list_algos(),
+        algo_override=algo_override,
     )
+    defaults = dict(compiled.values)
     proto = BenchmarkProtocolConfig()
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.set_defaults(
-        _smoke_test_overrides=smoke_overrides,
-        _training_config_snapshot=config_snapshot,
-        _training_config_path=str(resolved_config_path),
+        _smoke_test_overrides=dict(compiled.smoke_test_overrides),
+        _training_config_snapshot=compiled.request.snapshot(),
+        _training_config_path=str(compiled.config_path),
+        _resolved_task=(compiled.task.to_dict() if compiled.task is not None else None),
+    )
+    p.add_argument(
+        "experiment_config", nargs="?", metavar="EXPERIMENT.json",
+        help="Optional positional spelling of --config for one-command launches.",
     )
 
     core = p.add_argument_group("experiment identity")
-    core.add_argument("--config", default=str(resolved_config_path),
+    core.add_argument("--config", default=str(compiled.config_path),
                      help="MARL JSON config. CLI flags override its selected values.")
     core.add_argument("--algo", default=defaults["algo"], choices=list_algos(),
                      help="Registered baseline; see --list-algos.")
@@ -317,6 +127,13 @@ def build_arg_parser(
                      help="Print the algorithm registry and exit.")
     core.add_argument("--list-envs", action="store_true",
                      help="Print every registered multi-agent env id and exit.")
+    core.add_argument(
+        "--dry-run", action="store_true",
+        help=(
+            "Resolve and construct one environment, print its complete task "
+            "and spaces, then exit before Ray, W&B, GPU use, or run artifacts."
+        ),
+    )
     core.add_argument("--env-id", default=defaults["env_id"])
     core.add_argument("--seed", type=int, default=defaults["seed"],
                      help=f"One training seed. Protocol replication set: {proto.seeds}.")
@@ -498,15 +315,31 @@ def build_arg_parser(
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     """Two-phase parse so --config and --algo select the correct JSON defaults."""
     tokens = list(argv) if argv is not None else sys.argv[1:]
+    # Positional config is deliberately first-token only. Letting argparse's
+    # parse_known_args see an unknown option such as ``--total-steps 5000``
+    # can otherwise mistake that option's value for the positional path.
+    positional_config = (
+        tokens[0] if tokens and not tokens[0].startswith("-") else None
+    )
     bootstrap = argparse.ArgumentParser(add_help=False)
     bootstrap.add_argument("--config", default=str(DEFAULT_TRAIN_CONFIG_PATH))
     bootstrap.add_argument("--algo", default=None)
-    selected, _ = bootstrap.parse_known_args(tokens)
+    selected, _ = bootstrap.parse_known_args(
+        tokens[1:] if positional_config is not None else tokens
+    )
+    selected_config = positional_config or selected.config
     parser = build_arg_parser(
-        selected.config,
+        selected_config,
         algo_override=selected.algo,
     )
     args = parser.parse_args(tokens)
+    if positional_config and any(
+        token == "--config" or token.startswith("--config=") for token in tokens
+    ):
+        raise ValueError(
+            "pass the experiment JSON positionally or with --config, not both"
+        )
+    args.config = str(resolve_train_config_path(selected_config))
     explicit_destinations = set()
     for token in tokens:
         option = token.split("=", 1)[0]
@@ -522,6 +355,12 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
     spec = get_algo(args.algo)
     spec.assert_launchable(
         allow_experimental=bool(getattr(args, "allow_experimental", False)))
+    if (getattr(args, "_resolved_task", None) is not None
+            and "env_id" in getattr(args, "_explicit_cli_destinations", set())):
+        raise ValueError(
+            "--env-id cannot override a schema-v2 task; edit the task block "
+            "or use a schema-v1 registered-environment config"
+        )
 
     if args.smoke_test:
         for destination, value in args._smoke_test_overrides.items():
@@ -655,14 +494,20 @@ def make_env_for_rllib(env_config: Mapping[str, Any]) -> Any:
     worker_index / vector_index; a plain dict (evaluation path) does not, so
     both fall back to 0 and the driver-side probe stays reproducible.
     """
-    from omnipiano.multiagent import make_parallel
+    from omnipiano.multiagent.compile.environment import (
+        make_parallel_from_task,
+        resolve_registered_task,
+    )
 
     base_seed = int(env_config.get("seed", 0))
     worker_index = int(getattr(env_config, "worker_index", 0) or 0)
     vector_index = int(getattr(env_config, "vector_index", 0) or 0)
 
-    parallel_env = make_parallel(
-        str(env_config["env_id"]),
+    task = env_config.get("task")
+    if task is None:
+        task = resolve_registered_task(str(env_config["env_id"])).to_dict()
+    parallel_env = make_parallel_from_task(
+        task,
         seed=base_seed + 1_000 * worker_index + vector_index,
         flatten_obs=True,
         include_global_state=bool(env_config.get("include_global_state", False)),
@@ -676,13 +521,19 @@ def make_env_for_rllib(env_config: Mapping[str, Any]) -> Any:
 
 
 def probe_agent_spaces(
-    env_id: str, seed: int, include_global_state: bool
+    env_id: str, seed: int, include_global_state: bool,
+    task: Optional[Mapping[str, Any]] = None,
 ) -> Tuple[Sequence[str], Dict[str, Any], Dict[str, Any], Dict[str, Dict[str, Tuple[int, int]]]]:
     """Return agents, obs/action spaces, and the flat actor/critic slice layout."""
-    from omnipiano.multiagent import make_parallel
+    from omnipiano.multiagent.compile.environment import (
+        make_parallel_from_task,
+        resolve_registered_task,
+    )
 
-    env = make_parallel(
-        env_id, seed=seed, flatten_obs=True,
+    if task is None:
+        task = resolve_registered_task(env_id).to_dict()
+    env = make_parallel_from_task(
+        task, seed=seed, flatten_obs=True,
         include_global_state=include_global_state,
     )
     try:
@@ -755,7 +606,7 @@ def _completed_eval_videos(
 
 
 def _git_metadata() -> Dict[str, Any]:
-    from omnipiano.multiagent.paths import repo_root
+    from omnipiano.multiagent.training.paths import repo_root
 
     def _run(*a: str) -> str:
         return subprocess.run(["git", *a], cwd=str(repo_root()), check=True,
@@ -859,6 +710,7 @@ def _build_run_config(
             "snapshot": args._training_config_snapshot,
         },
         "env_id": args.env_id,
+        "resolved_task": getattr(args, "_resolved_task", None),
         "run_dir": str(run_dir),
         "seed": int(args.seed),
         "eval_seed": int(args.seed + args.eval_seed_offset),
@@ -1009,6 +861,47 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     spec = _resolve_args(args)
+    from omnipiano.multiagent.compile.environment import (
+        prepare_task,
+        resolve_registered_task,
+    )
+    if getattr(args, "_resolved_task", None) is None:
+        prepared = resolve_registered_task(args.env_id)
+    else:
+        prepared = prepare_task(ResolvedTask.from_dict(args._resolved_task))
+    args._resolved_task = prepared.to_dict()
+
+    if args.dry_run:
+        # Environment/task constructors contain a few legacy informational
+        # prints. Keep stdout machine-readable JSON and route those messages
+        # to stderr during inspection.
+        with contextlib.redirect_stdout(sys.stderr):
+            agents, obs_spaces, act_spaces, layouts = probe_agent_spaces(
+                args.env_id,
+                args.seed,
+                spec.needs_global_state,
+                task=args._resolved_task,
+            )
+        print(json.dumps({
+            "status": "ok",
+            "mode": "dry-run",
+            "algorithm": spec.metadata(),
+            "env_id": args.env_id,
+            "resolved_task": args._resolved_task,
+            "agents": list(agents),
+            "observation_spaces": {
+                agent: _space_metadata(obs_spaces[agent]) for agent in agents
+            },
+            "action_spaces": {
+                agent: _space_metadata(act_spaces[agent]) for agent in agents
+            },
+            "obs_layout": {
+                agent: {key: list(value) for key, value in layouts[agent].items()}
+                for agent in agents
+            },
+            "gpu_or_cluster_started": False,
+        }, indent=2, sort_keys=True))
+        return 0
     proto = BenchmarkProtocolConfig()
     run_dir = _prepare_run_dir(args.run_dir, spec.name, args.env_id, args.seed)
     run_config = _build_run_config(args, spec, proto, run_dir)
@@ -1042,7 +935,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"[{tag}] run_dir={run_dir}")
 
     # ---- W&B: fail fast here, before any GPU hour is spent ----
-    from omnipiano.multiagent._wandb import WandbRun
+    from omnipiano.multiagent.training.tracking import WandbRun
 
     penalty_token = format(
         float(args.inter_agent_collision_penalty_coef), ".8g"
@@ -1099,7 +992,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     register_env(LEGACY_RLLIB_ENV_NAME, make_env_for_rllib)
 
     agents, obs_spaces, act_spaces, layouts = probe_agent_spaces(
-        args.env_id, args.seed, spec.needs_global_state
+        args.env_id, args.seed, spec.needs_global_state,
+        task=getattr(args, "_resolved_task", None),
     )
     run_config.update({
         "agents": list(agents),
@@ -1124,6 +1018,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                    enable_env_runner_and_connector_v2=True)
         .environment(RLLIB_ENV_NAME, env_config={
             "env_id": args.env_id, "seed": args.seed,
+            "task": getattr(args, "_resolved_task", None),
             "include_global_state": bool(spec.needs_global_state),
             "inter_agent_collision_penalty_coef": float(
                 args.inter_agent_collision_penalty_coef
@@ -1175,10 +1070,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # Getting this wrong is the single failure mode that produces plausible but
     # mislabelled curves, so the choice is made once and recorded.
     if spec.rl_module == "ctde":
-        from omnipiano.multiagent._ctde_module import (
+        from omnipiano.multiagent.algos.ppo_module import (
             build_ctde_module_spec, build_multi_module_spec,
         )
-        from omnipiano.multiagent._ppo_learner import OmniPianoPPOTorchLearner
+        from omnipiano.multiagent.algos.ppo_learner import OmniPianoPPOTorchLearner
 
         learner_cls = spec.resolve_learner_class() or OmniPianoPPOTorchLearner
         # A CTDE algorithm that does NOT inherit our learner would silently lose
@@ -1262,6 +1157,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # global block.
         return evaluate_marl(
             algo, args.env_id,
+            task=getattr(args, "_resolved_task", None),
             eval_seed=args.seed + args.eval_seed_offset,
             num_episodes=args.num_eval_eps,
             record_dir=str(record_dir) if record_dir is not None else None,

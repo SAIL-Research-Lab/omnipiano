@@ -9,7 +9,7 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("ray.rllib")
 
-from omnipiano.multiagent._ctde_module import (
+from omnipiano.multiagent.algos.ppo_module import (
     CtdePPOTorchRLModule,
     RunningValueNorm,
 )
@@ -19,6 +19,15 @@ OWN_DIM, GLOBAL_DIM, ACT_DIM = 64, 128, 45
 OBS_DIM = GLOBAL_DIM + OWN_DIM          # flatten order: [global_state | own]
 OWN_SLICE = slice(GLOBAL_DIM, OBS_DIM)
 GS_SLICE = slice(0, GLOBAL_DIM)
+
+
+def test_legacy_module_imports_alias_canonical_implementation() -> None:
+    from omnipiano.multiagent import _ctde_module as legacy
+    from omnipiano.multiagent.algos import ppo_module as canonical
+
+    assert legacy.CtdePPOTorchRLModule is canonical.CtdePPOTorchRLModule
+    assert legacy.RunningValueNorm is canonical.RunningValueNorm
+    assert legacy.build_ctde_module_spec is canonical.build_ctde_module_spec
 
 
 def _module(critic_input: str) -> CtdePPOTorchRLModule:

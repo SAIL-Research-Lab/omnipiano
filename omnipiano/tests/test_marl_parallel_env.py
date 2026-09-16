@@ -19,7 +19,7 @@ from omnipiano.multiagent import (
     list_parallel_envs,
     make_parallel,
 )
-from omnipiano.multiagent.coordination_metrics import (
+from omnipiano.multiagent.compile.env_runtime.metrics import (
     BASE_TEAM_RETURN,
     COMMON_AREA_DUPLICATE_PRESS_RATE,
     COMMON_AREA_SUCCESS_RATE,
@@ -215,8 +215,12 @@ class TestThreeHandLayoutRegression:
 
     def test_per_agent_clamp_secondo_hands_share_joint_range_three_hand(self) -> None:
         """Plan § 2.2 under 3-hand: secondo's lh and rh_c must share forearm_tx joint.range."""
-        from omnipiano.multiagent.parallel_env import _find_task
-        from omnipiano.multiagent._reach_probe import y_to_key_index
+        from omnipiano.multiagent.compile.env_runtime.parallel_env import (
+            _find_task,
+        )
+        from omnipiano.multiagent.compile.env_runtime.reachability import (
+            y_to_key_index,
+        )
         task = _find_task(self.env._env)
         ranges_by_hand: Dict[str, tuple] = {}
         for spec_name, hand in task.hands_by_name.items():
@@ -347,8 +351,12 @@ class TestFiveHandLayoutRegression:
         """Plan § 2.2: per-agent clamp under 5-hand — left_secondo and
         right_primo each have 2 hands sharing one joint.range; center_soloist
         has its own (single-hand) clamp."""
-        from omnipiano.multiagent.parallel_env import _find_task
-        from omnipiano.multiagent._reach_probe import y_to_key_index
+        from omnipiano.multiagent.compile.env_runtime.parallel_env import (
+            _find_task,
+        )
+        from omnipiano.multiagent.compile.env_runtime.reachability import (
+            y_to_key_index,
+        )
         task = _find_task(self.env._env)
         ranges_by_hand: Dict[str, tuple] = {}
         for spec_name, hand in task.hands_by_name.items():
@@ -615,8 +623,12 @@ class TestPlanInvariant:
     def test_per_agent_clamp_secondo_hands_share_joint_range(self) -> None:
         """Plan § 2: under MA Territorial, all hands of one agent share forearm_tx
         joint.range (= agent territory), removing the SA per-hand bucket wall."""
-        from omnipiano.multiagent.parallel_env import _find_task
-        from omnipiano.multiagent._reach_probe import y_to_key_index
+        from omnipiano.multiagent.compile.env_runtime.parallel_env import (
+            _find_task,
+        )
+        from omnipiano.multiagent.compile.env_runtime.reachability import (
+            y_to_key_index,
+        )
         task = _find_task(self.env._env)
         # Map each spec hand to its forearm_tx joint range (world key range).
         ranges_by_hand: Dict[str, Tuple[int, int]] = {}

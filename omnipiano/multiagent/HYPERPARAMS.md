@@ -4,6 +4,12 @@ The machine-readable source of truth is `marl_train_config.json`; this file
 adds the rationale. The trainer snapshots that JSON and the final CLI-resolved
 values into every run's `run_config.json`, so an artifact is self-describing.
 
+`marl_train_config_2026-09-15.json` is the frozen Phase-1 archive of those
+experiment settings. It is byte-for-byte identical to the source of truth at
+commit `fd42702d7049434ba6848d4f7421293197afdd6f` (SHA-256
+`3075152813bf578f10602b567caa7793aec32e3063b91a1603f3273c1adde863`) and is
+not read implicitly by the trainer.
+
 `python -m omnipiano.multiagent.train --list-algos` prints the live registry.
 Canonical defaults require no long parameter list:
 
@@ -42,7 +48,7 @@ input-dimensionality difference explicitly.
 
 | Parameter | Value | Why |
 |---|---|---|
-| `total_env_steps` | 5,000,000 | **ENVIRONMENT** steps, not agent steps. With 2 agents a summed agent-step counter would end the run at 2.5M physical interactions. Enforced by `_ippo_common.extract_env_steps`. |
+| `total_env_steps` | 5,000,000 | **ENVIRONMENT** steps, not agent steps. With 2 agents a summed agent-step counter would end the run at 2.5M physical interactions. Enforced by `training.runtime.extract_env_steps`. |
 | `gamma` | 0.8 | Task property, not an algorithm knob — same value for SAC/PPO/TQC. Effective horizon ~5 control steps. |
 | `eval_freq_env_steps` | 50,000 | Protocol cadence, giving 100 evaluation points over a 5M run. |
 | `num_eval_eps` | 1 | Protocol default. Cross-seed aggregation supplies the main uncertainty estimate; each evaluation episode is deterministically reseeded. |

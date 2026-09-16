@@ -4,7 +4,7 @@ Three rules. They exist so that "we match the reference implementation" is a
 claim a reviewer can check in one command instead of taking on trust.
 
 1. **Files copied from upstream are VERBATIM and are never edited.**
-   Not reformatted, not linted, not type-annotated. `provenance_test.py` records
+   Not reformatted, not linted, not type-annotated. The MARL provenance test records
    a sha256 for each and fails if any changes. That is what makes
    "unmodified reference implementation" checkable rather than asserted.
 
@@ -27,7 +27,7 @@ IPPO/MAPPO runs share one sampler, one reward, one evaluation protocol and one
 metrics path. Running HAPPO inside HARL would change all four at once, so a
 HAPPO-vs-MAPPO difference could no longer be attributed to the update rule. We
 therefore implement the update rule in our own Learner and prove numerical
-agreement with the reference (see `algos/_happo_oracle_test.py`).
+agreement with the reference (see `omnipiano/tests/test_marl_happo_oracle.py`).
 
 For FACMAC and MASAC that trade is reversed: they need a replay buffer, target
 networks and an off-policy loop that our PPO trainer does not have, and RLlib's
