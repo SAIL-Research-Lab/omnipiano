@@ -69,9 +69,9 @@ EVAL_SEED_OFFSET = 10_000
 def _load_model(algo: str, ckpt: str, device: str, framework: str = "sb3"):
     if framework == "torchrl":
         from omnipiano.integrations.torch_rl.model.policy_adapter import (
-            TorchRLPolicyAdapter,
+            TorchRLPolicy,
         )
-        return TorchRLPolicyAdapter.load(ckpt, device=device)
+        return TorchRLPolicy.load(ckpt, device=device)
     algo = algo.lower()
     if algo == "ppo":
         from stable_baselines3 import PPO

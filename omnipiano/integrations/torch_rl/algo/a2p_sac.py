@@ -11,6 +11,7 @@ from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
 from ..log.checkpoint import save_checkpoint
 from omnipiano.integrations.eval_callback import EvalCallback
+from omnipiano.integrations.policy_config import PolicyConfig
 from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.a2p_sac.adversarial import (
     A2PCollectionPolicy,
@@ -18,18 +19,15 @@ from ..model.a2p_sac.adversarial import (
     mix_actions,
 )
 from ..model.networks import build_sac_modules, build_actor
-from ..model.policy_adapter import TorchRLPolicyAdapter
+from ..model.policy_adapter import TorchRLPolicy
 
 
 @dataclass
-class A2PSACConfig:
-    total_env_steps: int = 5_000_000
-    gamma: float = 0.8
+class A2PSACConfig(PolicyConfig):
     n_envs: int = 24
     batch_size: int = 256
     buffer_size: int = 1_000_000
     learning_starts: int = 5_000
-    learning_rate: float = 3e-4
     adversary_learning_rate: float = 3e-4
     tau: float = 0.005
     utd: int = 1
@@ -41,7 +39,6 @@ class A2PSACConfig:
     epsilon_max: float = 0.2
     epsilon_warmup_steps: int = 5_000
     adversary_update_frequency: int = 10
-    device: str = "cpu"
 
 
 def make_config(args, device: str) -> A2PSACConfig:
@@ -227,7 +224,7 @@ def train_a2p_sac(
     update_steps = 0
     eval_callback = EvalCallback(
         env_id, periodic_eval_env, run_dir, seed + 10_000, protocol,
-        policy_factory=lambda: TorchRLPolicyAdapter(actor, model_spec, config.device),
+        policy=lambda: TorchRLPolicy(actor, model_spec, config.device),
         save_best_fn=lambda path: save_checkpoint(path, actor=actor, model_spec=model_spec),
     )
     checkpoint_index = 0
@@ -301,4 +298,4 @@ def train_a2p_sac(
     final_dir = save_checkpoint(
         run_dir / "final_model", actor=actor, model_spec=model_spec,
     )
-    return TorchRLPolicyAdapter.load(final_dir, config.device), None
+    return TorchRLPolicy.load(final_dir, config.device), None

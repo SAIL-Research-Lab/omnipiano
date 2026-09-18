@@ -12,25 +12,22 @@ from ..env.collectors import batch_env_steps, make_collector
 from ..env.observation import observation_indices
 from ..log.checkpoint import save_checkpoint
 from omnipiano.integrations.eval_callback import EvalCallback
+from omnipiano.integrations.policy_config import PolicyConfig
 from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.networks import build_sac_modules
-from ..model.policy_adapter import TorchRLPolicyAdapter
+from ..model.policy_adapter import TorchRLPolicy
 
 
 @dataclass
-class SCPOConfig:
-    total_env_steps: int = 5_000_000
-    gamma: float = 0.8
+class SCPOConfig(PolicyConfig):
     n_envs: int = 24
     batch_size: int = 256
     buffer_size: int = 1_000_000
     learning_starts: int = 5_000
-    learning_rate: float = 3e-4
     tau: float = 0.005
     utd: int = 1
     state_noise: float = 0.005
     gradient_observation: str = "dynamic"
-    device: str = "cpu"
 
 
 def make_config(args, device: str) -> SCPOConfig:
@@ -163,7 +160,7 @@ def train_scpo(env_id, seed, run_dir, protocol, config: SCPOConfig,
     env_steps = 0; checkpoint_index = 0
     eval_callback = EvalCallback(
         env_id, periodic_eval_env, run_dir, seed + 10_000, protocol,
-        policy_factory=lambda: TorchRLPolicyAdapter(actor, model_spec, config.device),
+        policy=lambda: TorchRLPolicy(actor, model_spec, config.device),
         save_best_fn=lambda path: save_checkpoint(path, actor=actor, model_spec=model_spec),
     )
     checkpoint_steps = sorted(checkpoint_steps)
@@ -195,4 +192,4 @@ def train_scpo(env_id, seed, run_dir, protocol, config: SCPOConfig,
     collector.shutdown()
     logger.close()
     final_dir = save_checkpoint(run_dir / "final_model", actor=actor, model_spec=model_spec)
-    return TorchRLPolicyAdapter.load(final_dir, config.device), None
+    return TorchRLPolicy.load(final_dir, config.device), None

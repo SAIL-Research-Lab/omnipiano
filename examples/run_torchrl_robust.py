@@ -7,15 +7,12 @@ does not import or reuse their training helpers.
 from __future__ import annotations
 
 import argparse
-import importlib.metadata
 import json
 import os
 import re
 import sys
 from dataclasses import replace
 from pathlib import Path
-
-import torch
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
@@ -334,7 +331,6 @@ def main() -> None:
     effective_hparams = {**vars(config), "net_arch": list(hidden_sizes)}
     result.update(
         {
-            "framework": "torchrl",
             "algorithm": args.algo.upper(),
             "seed": args.seed,
             "total_env_steps": args.total_steps,

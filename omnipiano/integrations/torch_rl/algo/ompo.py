@@ -13,6 +13,7 @@ from ..env.collectors import batch_env_steps, make_collector
 from ..env.observation import observation_indices
 from ..log.checkpoint import save_checkpoint
 from omnipiano.integrations.eval_callback import EvalCallback
+from omnipiano.integrations.policy_config import PolicyConfig
 from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.ompo.occupancy import (
     TransitionDiscriminator,
@@ -20,19 +21,16 @@ from ..model.ompo.occupancy import (
     discriminator_loss,
     build_ompo_actor,
 )
-from ..model.policy_adapter import TorchRLPolicyAdapter
+from ..model.policy_adapter import TorchRLPolicy
 
 
 @dataclass
-class OMPOConfig:
-    total_env_steps: int = 5_000_000
-    gamma: float = 0.8
+class OMPOConfig(PolicyConfig):
     n_envs: int = 24
     batch_size: int = 256
     buffer_size: int = 1_000_000
     local_buffer_size: int = 1_000
     learning_starts: int = 5_000
-    learning_rate: float = 3e-4
     tau: float = 0.005
     updates_per_step: int = 3
     target_update_interval: int = 2
@@ -44,7 +42,6 @@ class OMPOConfig:
     correction_coefficient: float = 0.001
     reward_max: float = 1.0
     reward_epsilon: float = 1e-6
-    device: str = "cpu"
 
 
 def make_config(args, device: str) -> OMPOConfig:
@@ -255,7 +252,7 @@ def train_ompo(
     update_steps = 0
     eval_callback = EvalCallback(
         env_id, periodic_eval_env, run_dir, seed + 10_000, protocol,
-        policy_factory=lambda: TorchRLPolicyAdapter(actor, model_spec, config.device),
+        policy=lambda: TorchRLPolicy(actor, model_spec, config.device),
         save_best_fn=lambda path: save_checkpoint(path, actor=actor, model_spec=model_spec),
     )
     checkpoint_index = 0
@@ -366,4 +363,4 @@ def train_ompo(
         logger.close()
 
     final_dir = save_checkpoint(run_dir / "final_model", actor=actor, model_spec=model_spec)
-    return TorchRLPolicyAdapter.load(final_dir, config.device), None
+    return TorchRLPolicy.load(final_dir, config.device), None

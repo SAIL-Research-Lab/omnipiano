@@ -18,7 +18,7 @@ ACTOR_BUILDERS = {
 }
 
 
-class TorchRLPolicyAdapter:
+class TorchRLPolicy:
     def __init__(self, actor, model_spec: dict, device: str = "cpu"):
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,7 +46,7 @@ class TorchRLPolicyAdapter:
         save_checkpoint(path, actor=self.actor, model_spec=self.model_spec)
 
     @classmethod
-    def load(cls, path: Path, device: str = "cpu") -> "TorchRLPolicyAdapter":
+    def load(cls, path: Path, device: str = "cpu") -> "TorchRLPolicy":
         from torchrl.data import Bounded
 
         path = Path(path)

@@ -11,25 +11,20 @@ from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
 from ..log.checkpoint import save_checkpoint
 from omnipiano.integrations.eval_callback import EvalCallback
+from omnipiano.integrations.policy_config import PolicyConfig
 from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.networks import build_ppo_modules
-from ..model.policy_adapter import TorchRLPolicyAdapter
+from ..model.policy_adapter import TorchRLPolicy
 
 
 @dataclass
-class PPOConfig:
-    total_env_steps: int = 5_000_000
-    gamma: float = 0.8
-    n_envs: int = 16
+class PPOConfig(PolicyConfig):
     n_steps: int = 2048
-    batch_size: int = 64
     n_epochs: int = 10
-    learning_rate: float = 3e-4
     gae_lambda: float = 0.95
     clip_epsilon: float = 0.2
     entropy_coeff: float = 0.0
     critic_coeff: float = 0.5
-    device: str = "cpu"
 
 
 def make_config(args, device: str) -> PPOConfig:
@@ -94,7 +89,7 @@ def train_ppo(
     env_steps = 0
     eval_callback = EvalCallback(
         env_id, periodic_eval_env, run_dir, seed + 10_000, protocol,
-        policy_factory=lambda: TorchRLPolicyAdapter(actor, model_spec, config.device),
+        policy=lambda: TorchRLPolicy(actor, model_spec, config.device),
         save_best_fn=lambda path: save_checkpoint(path, actor=actor, model_spec=model_spec),
     )
     checkpoint_index = 0
@@ -166,4 +161,4 @@ def train_ppo(
     final_dir = save_checkpoint(
         run_dir / "final_model", actor=actor, model_spec=model_spec,
     )
-    return TorchRLPolicyAdapter.load(final_dir, config.device), None
+    return TorchRLPolicy.load(final_dir, config.device), None

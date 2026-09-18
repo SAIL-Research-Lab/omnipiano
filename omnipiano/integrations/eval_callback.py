@@ -15,9 +15,12 @@ from omnipiano.utils.info_keys import InfoKeys
 
 def evaluate_policy(
     policy, env_id: str, env, eval_seed: int, num_episodes: int = 1,
+    config=None,
     *, true_reward: bool = True,
 ):
-    """Evaluate any policy exposing ``predict(obs, deterministic=True)``."""
+    """Evaluate a policy, instantiating it first when config is provided."""
+    if config is not None:
+        policy = policy(config)
     episodes = []
     for index in range(num_episodes):
         obs, _ = env.reset(seed=eval_seed + index * 10_000)
@@ -96,14 +99,14 @@ class EvalCallback:
 
     def __init__(
         self, env_id, env, run_dir, eval_seed, protocol,
-        policy_factory, save_best_fn,
+        policy, save_best_fn,
     ):
         self.env_id = env_id
         self.env = env
         self.run_dir = Path(run_dir)
         self.eval_seed = int(eval_seed)
         self.protocol = protocol
-        self.policy_factory = policy_factory
+        self.policy = policy
         self.save_best_fn = save_best_fn
         self.next_eval = protocol.eval_freq_env_steps
         self.best_mean_reward = -np.inf
@@ -121,7 +124,7 @@ class EvalCallback:
             return stats, False
 
         result = evaluate_policy(
-            self.policy_factory(), self.env_id, self.env, self.eval_seed,
+            self.policy(), self.env_id, self.env, self.eval_seed,
             self.protocol.num_eval_eps, true_reward=False,
         )
         returns = [episode["episode_return"] for episode in result["episodes"]]

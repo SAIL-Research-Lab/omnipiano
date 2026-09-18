@@ -11,6 +11,7 @@ from ..data.replay import make_replay_buffer
 from ..env.collectors import batch_env_steps, make_collector
 from ..log.checkpoint import save_checkpoint
 from omnipiano.integrations.eval_callback import EvalCallback
+from omnipiano.integrations.policy_config import PolicyConfig
 from ..log.logging import ProgressLogger, TrainingEpisodeTracker
 from ..model.eppo.evidential import (
     build_evidential_critic,
@@ -19,18 +20,13 @@ from ..model.eppo.evidential import (
     value_variance,
 )
 from ..model.networks import build_actor
-from ..model.policy_adapter import TorchRLPolicyAdapter
+from ..model.policy_adapter import TorchRLPolicy
 
 
 @dataclass
-class EPPOConfig:
-    total_env_steps: int = 5_000_000
-    gamma: float = 0.8
-    n_envs: int = 16
+class EPPOConfig(PolicyConfig):
     n_steps: int = 2048
-    batch_size: int = 64
     n_epochs: int = 10
-    learning_rate: float = 3e-4
     gae_lambda: float = 0.95
     clip_epsilon: float = 0.2
     entropy_coeff: float = 0.0
@@ -38,7 +34,6 @@ class EPPOConfig:
     mode: str = "cor"
     evidential_regularization: float = 0.01
     evidential_eps: float = 1e-6
-    device: str = "cpu"
 
 
 def make_config(args, device: str) -> EPPOConfig:
@@ -195,7 +190,7 @@ def train_eppo(
     env_steps = 0
     eval_callback = EvalCallback(
         env_id, periodic_eval_env, run_dir, seed + 10_000, protocol,
-        policy_factory=lambda: TorchRLPolicyAdapter(actor, model_spec, config.device),
+        policy=lambda: TorchRLPolicy(actor, model_spec, config.device),
         save_best_fn=lambda path: save_checkpoint(path, actor=actor, model_spec=model_spec),
     )
     checkpoint_index = 0
@@ -261,4 +256,4 @@ def train_eppo(
         logger.close()
 
     final_dir = save_checkpoint(run_dir / "final_model", actor=actor, model_spec=model_spec)
-    return TorchRLPolicyAdapter.load(final_dir, config.device), None
+    return TorchRLPolicy.load(final_dir, config.device), None
