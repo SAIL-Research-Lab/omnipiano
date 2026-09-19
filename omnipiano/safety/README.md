@@ -17,12 +17,25 @@ number of selected units. The default weight is 1:
 | Semantic | Unit / signal | Excess and default parameters | Settings |
 |---|---|---|---|
 | Joint range | THJ2/FFJ2/MFJ2/RFJ2/LFJ2 on every hand; physical qpos | Distance outside central 50% of native range, divided by full native span; values ≤ 1e-8 treated as zero | Event, Excess, Fraction |
-| Actuator power | One scalar: sum of absolute actuator force × transmission velocity over every selected hand | `max(P / P_ref - 1, 0)`; `P_ref = 4 × number_of_hands` | Event, Excess |
+| Actuator power | Event/Excess: total power over selected hands; Fraction: total power of each selected hand separately | Event/Excess: `max(P_total / P_ref - 1, 0)`, default `P_ref = 4 × number_of_hands`; Fraction: share of selected hands above the per-hand reference, default 4 | Event, Excess, Fraction |
 | Injured finger | Five named thumb actuators THJ1–THJ5 on one fixed right hand | Per-actuator `max(P_i / 1.0 - 1, 0)` | Event, Excess, Fraction |
 | Hand collision | Every unordered pair of selected hands, including zero-contact pairs | Sum of absolute normal contact forces within each pair, then `max(F_pair / 10 - 1, 0)` | Event, Excess, Fraction |
 
-This gives **11**, not 12, combinations. Fraction on the single total-power
-scalar equals Event and is not duplicated. For two hands, collision also has
+This gives **4 semantics × 3 settings = 12 combinations**. Power Fraction is
+`number_of_selected_hands_with_P_hand_above_reference / number_of_selected_hands`.
+Equality to the reference is safe. Every actuator on a selected hand contributes
+to that hand's power; the denominator counts hands, not actuators or time steps.
+The weight is applied after taking the fraction.
+
+The three power settings share the power semantic but **not the same measurement
+unit**: Event/Excess retain total-system power; Fraction measures local overload
+coverage. This compatibility choice keeps the original main experiment unchanged.
+It is not a strict aggregation-only ablation. With hand powers `[6, 0]`, a total
+reference of 8 yields Event=0 and Excess=0, while a per-hand reference of 4 yields
+Fraction=0.5. When constructing a power/Fraction CostSpec, `reference` means the
+per-hand limit; it is not automatically divided by the number of hands.
+
+For two hands, collision also has
 only one pair, so Event and Fraction are identical; both are retained to keep
 the same pair-based definition for 3–5 hands. A pair can have multiple contact
 points; they are summed before thresholding. Self-contact and piano contacts
@@ -91,12 +104,23 @@ from previous local versions; preserving selections is not bitwise reproduction.
 | `main` | 8 environments × 5 algorithms × seeds 1,2,3 | 120 | 5M |
 | `hands` | 4 nested hand counts × 5 algorithms × seeds 1,2,3 | 60 | 5M |
 | `budget` | 5 budgets × 4 constrained algorithms × 3 seeds + 3 PPO references | 63 | 5M |
-| `extensions` | 4 hand/song anchors × 11 settings × PPO/PPOLag × seed 0 | 88 | 2M |
+| `extensions` | 4 hand/song anchors × 12 settings × PPO/PPOLag × seed 0 | 96 | 2M |
 
 The first three groups are **243 independent runs**. No cross-device/group model,
-result or state reuse. The optional 88-run extension screen includes old-axis
+result or state reuse. The optional 96-run extension screen includes old-axis
 controls as well as new semantic candidates; it is not part of the main results.
 Its anchors are 2H ForElise, 3H PolonaiseOp40No1, and 4/5H PicturesGreatKiev.
+There are now 48 extension environments and 58 unique registered environments
+after combining main and ablations. The new four power/Fraction tasks use per-hand
+reference 4 and candidate episode budgets 19.95, 28.15, 36, 36 respectively.
+These budgets follow the existing `0.05 × nominal_episode_steps` Fraction rule;
+they have not been calibrated to make a particular algorithm succeed.
+
+Manifest version is now `safety-semantic-20260919-v2`. Original main/hand/budget
+environment IDs, formulas, budgets and run selections are unchanged, but the code
+fingerprint and extension cell indices changed. Do not switch versions mid-batch;
+pin commit `303e68b` when completing an existing v1 batch, or use a new output
+directory for v2. Do not relabel historical v1 validation as testing this addition.
 
 Hand sensitivity fixes Great Kiev, total-power Excess, `P_ref=16`, and budget 14.4.
 Its nested order is `rh_b, lh_t, lh_b, rh_t, rh_c`; each added hand preserves existing

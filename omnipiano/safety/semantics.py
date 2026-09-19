@@ -10,7 +10,7 @@ from omnipiano.safety.constraints import BaseConstraint
 
 SETTINGS = {
     "joint_range": ("event", "excess", "fraction"),
-    "actuator_power": ("event", "excess"),
+    "actuator_power": ("event", "excess", "fraction"),
     "injured_finger": ("event", "excess", "fraction"),
     "hand_collision": ("event", "excess", "fraction"),
 }
@@ -143,7 +143,12 @@ class SemanticConstraint(BaseConstraint):
             excess = np.where(excess > 1e-8, excess, 0.0)
             raw = excess
         elif spec.semantic == "actuator_power":
-            raw = np.asarray([sum(float(actuator_power(physics, h).sum()) for h in hands)])
+            if spec.setting == "fraction":
+                # reference is per selected hand here, not a global power limit.
+                raw = np.asarray([float(actuator_power(physics, h).sum()) for h in hands])
+            else:
+                # Keep the original total-power Event/Excess definitions unchanged.
+                raw = np.asarray([sum(float(actuator_power(physics, h).sum()) for h in hands)])
             excess = np.maximum(raw / spec.reference - 1, 0)
         elif spec.semantic == "injured_finger":
             if spec.protected_hand not in mapping:

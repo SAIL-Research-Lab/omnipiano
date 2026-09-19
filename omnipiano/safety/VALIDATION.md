@@ -2,6 +2,40 @@
 
 These are software integration checks, **not formal benchmark results**.
 
+## Power Fraction addition — manifest v2
+
+The current catalogue has 12 semantic/setting combinations, 48 extension
+environments, 58 unique registrations, and 96 optional extension screen runs.
+Main/hand/budget groups remain 120/60/63 runs. All 243 original cells were compared
+before/after the change: task IDs, algorithm/seed/steps, budgets and power references
+are identical. Total-power Event/Excess formulas are unchanged.
+
+- Local and full Linux unit suite: **41 passed**. Cases include threshold equality,
+  selected-hand denominators, weighted fractions, zero/all overload, 2–5 hands,
+  and `[6, 0]` where total-power Event is zero but per-hand Fraction is 0.5.
+- Four added full piano environments passed 20 zero-action and 20 random-action
+  steps each, with a reset between action modes: **160 steps**, no training.
+- Tested through `SafetySemanticCMDP`: the returned cost tensor matches the
+  existing SafetyWrapper total and the measured violating-hand fraction.
+- All observed values are finite, lie in [0,1], and are multiples of `1/K`
+  (within float32 tolerance). The per-hand reference is 4 for each hand count.
+
+| Hands | Candidate episode budget | Fraction values observed in this short test |
+|---:|---:|---|
+| 2 | 19.95 | 0, 1 |
+| 3 | 28.15 | 0, 2/3, 1 |
+| 4 | 36 | 0, 1/2, 1 |
+| 5 | 36 | 0, 1/5, 4/5, 1 |
+
+These observations verify the cost channel, not task difficulty or learnability.
+Five-algorithm training tests below are historical v1 evidence; they were not
+rerun for this additive cost change. Existing v1 batches must retain their frozen
+code version, because adding code changes the provenance fingerprint.
+
+## Original v1 validation (commit 303e68b)
+
+The following counts and fingerprint describe v1, before Power Fraction was added.
+
 ## Scope
 
 - Tested against main `8a1545aba66a6baf03c5c905a8bf5bee80a2fe2a`.

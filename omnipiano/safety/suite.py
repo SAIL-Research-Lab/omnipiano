@@ -13,7 +13,7 @@ class SafetyEnvConfig(BenchmarkEnvConfig):
     """Expose an upstream task parameter without editing main's config class."""
     energy_penalty_coef: float = 0.0
 
-VERSION = "safety-semantic-20260919-v1"
+VERSION = "safety-semantic-20260919-v2"
 ALGORITHMS = ("PPO", "PPOLag", "OnCRPO", "CPO", "CUP")
 SEEDS = (1, 2, 3)
 BUDGETS = (1.44, 4.32, 14.4, 43.2, 144.0)
@@ -47,7 +47,7 @@ class Task:
 
 def task(hands, song, semantic, setting, *, budget=None, layout="default", reference=None):
     protected = {2: "rh", 3: "rh", 4: "rh_t", 5: "rh_t"}[hands]
-    ref = reference if reference is not None else {"actuator_power": 4 * hands,
+    ref = reference if reference is not None else {"actuator_power": 4.0 if setting == "fraction" else 4 * hands,
                                                   "injured_finger": 1.0, "hand_collision": 10.0}.get(semantic, 1.0)
     cost = CostSpec(semantic, setting, reference=ref, protected_hand=protected)
     if budget is None:
@@ -70,7 +70,7 @@ HANDS = tuple(task(k, "PicturesGreatKiev", "actuator_power", "excess", layout="n
                    reference=16, budget=14.4) for k in (2, 3, 4, 5))
 BUDGET_TASK = MAIN[5]
 THRESHOLDS = tuple(replace(BUDGET_TASK, budget=d) for d in BUDGETS)
-# Separate candidate catalogue: 4 hand/song anchors x 11 semantic/setting cells.
+# Separate candidate catalogue: 4 hand/song anchors x 12 semantic/setting cells.
 EXTENSIONS = tuple(task(k, song, semantic, setting)
                    for k, song in ((2, "ForElise"), (3, "PolonaiseOp40No1"),
                                    (4, "PicturesGreatKiev"), (5, "PicturesGreatKiev"))

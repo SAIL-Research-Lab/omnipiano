@@ -13,10 +13,10 @@ from omnipiano.wrappers.safety_wrapper import SafetyWrapper
 
 
 def test_matrix():
-    assert sum(map(len, SETTINGS.values())) == 11
-    assert len(EXTENSIONS) == 44
-    assert len({t.env_id for t in EXTENSIONS}) == 44
-    assert [len(cells(g)) for g in ("main", "hands", "budget", "extensions")] == [120, 60, 63, 88]
+    assert sum(map(len, SETTINGS.values())) == 12
+    assert len(EXTENSIONS) == 48
+    assert len({t.env_id for t in EXTENSIONS}) == 48
+    assert [len(cells(g)) for g in ("main", "hands", "budget", "extensions")] == [120, 60, 63, 96]
     assert [t.budget for t in MAIN] == [19.95, 11.76, 14.4, 11.26, 14.4, 14.4, 36.0, 14.4]
     assert [t.hands for t in MAIN] == [2, 2, 3, 3, 4, 4, 5, 5]
     assert BUDGETS == (1.44, 4.32, 14.4, 43.2, 144.0)
@@ -61,7 +61,7 @@ def test_bad_cost(values):
 
 def test_invalid_specs():
     with pytest.raises(ValueError):
-        CostSpec("actuator_power", "fraction")
+        CostSpec("actuator_power", "unknown")
     with pytest.raises(ValueError):
         CostSpec("joint_range", "event", central_fraction=2)
     with pytest.raises(ValueError):
@@ -106,7 +106,7 @@ def test_real_mujoco(k, semantic):
         cost = constraint.compute_cost(None, None, None, info)
         assert np.isfinite(cost) and cost >= 0
         assert info[f"step_safety/{semantic}/unit_count"] == {
-            "joint_range": 5 * k, "actuator_power": 1,
+            "joint_range": 5 * k, "actuator_power": k if setting == "fraction" else 1,
             "injured_finger": 5, "hand_collision": k * (k - 1) // 2}[semantic]
         if semantic == "hand_collision":
             assert cost == 0  # isolated hand roots have no inter-hand contacts
@@ -149,3 +149,41 @@ def test_collision_pairs_include_zeros_and_exclude_piano(monkeypatch):
     assert raw.tolist() == [16, 0, 0]
     assert aggregate(np.maximum(raw / 10 - 1, 0), "fraction") == pytest.approx(1 / 3)
     assert aggregate(np.maximum(raw / 10 - 1, 0), "excess") == pytest.approx(.2)
+
+
+@pytest.mark.parametrize("powers,expected", [([6, 0], .5), ([0, 0, 0], 0),
+                                           ([6, 4, 0], 1 / 3), ([5, 5, 0, 0], .5),
+                                           ([5, 5, 5, 5, 5], 1)])
+def test_power_fraction_per_hand(monkeypatch, powers, expected):
+    from omnipiano.safety import semantics
+    names = [f"hand_{i}" for i in range(len(powers))]
+    task = SimpleNamespace(hands_by_name=dict(zip(names, powers)))
+    monkeypatch.setattr(semantics, "actuator_power", lambda physics, hand: np.array([hand]))
+    constraint = SemanticConstraint(CostSpec("actuator_power", "fraction", reference=4))
+    constraint._get_dm_internals = lambda env: (None, task)
+    info = {}
+    assert constraint.compute_cost(None, None, None, info) == pytest.approx(expected)
+    assert info["step_safety/actuator_power/unit_count"] == len(powers)
+    assert info["step_safety/actuator_power/violating_fraction"] == pytest.approx(expected)
+
+
+def test_power_settings_distinct_and_selected_hands(monkeypatch):
+    from omnipiano.safety import semantics
+    task = SimpleNamespace(hands_by_name={"a": 6., "b": 0., "c": 100.})
+    monkeypatch.setattr(semantics, "actuator_power", lambda physics, hand: np.array([hand]))
+    for setting, reference, expected in (("event", 8, 0), ("excess", 8, 0), ("fraction", 4, .5)):
+        spec = CostSpec("actuator_power", setting, reference=reference, hand_names=("a", "b"))
+        constraint = SemanticConstraint(spec)
+        constraint._get_dm_internals = lambda env: (None, task)
+        assert constraint.compute_cost(None, None, None, {}) == expected
+        weighted = SemanticConstraint(replace(spec, weight=2))
+        weighted._get_dm_internals = constraint._get_dm_internals
+        assert weighted.compute_cost(None, None, None, {}) == expected * 2
+
+
+def test_power_fraction_catalogue():
+    fraction = [t for t in EXTENSIONS if (t.cost.semantic, t.cost.setting) == ("actuator_power", "fraction")]
+    assert [t.hands for t in fraction] == [2, 3, 4, 5]
+    assert all(t.cost.reference == 4 for t in fraction)
+    assert [t.budget for t in fraction] == [19.95, 28.15, 36, 36]
+    assert all(t.cost.setting != "fraction" for t in MAIN + HANDS if t.cost.semantic == "actuator_power")
