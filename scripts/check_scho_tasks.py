@@ -55,8 +55,10 @@ def main():
             "collision_penalty": (
                 "-coefficient once per step if any cross-agent contact exists"
             ),
-            "partition_invariant_collision_reward": False,
-            "heterogeneous_is_H_only": False,
+            "base_o_c_teammate_visibility_identical": True,
+            "observation_changes_only_key_observation_ranges": True,
+            "coupling_changes_only_action_ranges": True,
+            "boundary_teammate_visibility": True,
         },
         "limitations": [
             "Random actions do not guarantee a real MuJoCo collision is triggered.",
@@ -76,7 +78,7 @@ def main():
         ):
             paths.append((path, cfg))
 
-    assert len(paths) == 4, f"Expected 4 IPPO seed-0 configs, got {len(paths)}"
+    assert len(paths) == 5, f"Expected 5 IPPO seed-0 configs, got {len(paths)}"
 
     for path, cfg in paths:
         args = _parse_args([str(path)])

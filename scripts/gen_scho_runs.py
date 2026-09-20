@@ -29,46 +29,52 @@ def write_json(path, value):
 
 def agent(name, hands, action, observation, visible=None):
     if visible is None:
-        visible = [h for h in range(4) if h not in hands]
+        visible = "boundary"
     return {
         "name": name,
         "hand_ids": list(hands),
         "action_key_range": list(action),
         "observation_key_range": list(observation),
-        "visible_teammate_hands": list(visible),
+        "visible_teammate_hands": (
+            list(visible) if not isinstance(visible, str) else visible
+        ),
     }
 
 
 def task(name, agents):
     return {
-        "name": f"scho-v1-winterwind-4h-{name}",
+        "name": f"scho-v2-winterwind-4h-{name}",
         "song": "WinterWind",
         "num_hands": 4,
         "num_agents": len(agents),
         "assignment": "explicit",
-        "sustain_owner": "a0",
+        "sustain_owner": "agent_1",
         "agents": agents,
     }
 
 
 TASKS = {
     "base": task("base", [
-        agent("a0", [0, 1], [1, 48], [1, 88]),
-        agent("a1", [2, 3], [41, 88], [1, 88]),
+        agent("agent_1", [0, 1], [1, 44], [1, 49], [2]),
+        agent("agent_2", [2, 3], [45, 88], [40, 88], [1]),
     ]),
-    "coupled_partial": task("coupled-partial", [
-        agent("a0", [0, 1], [1, 60], [1, 48], []),
-        agent("a1", [2, 3], [29, 88], [41, 88], []),
+    "observability": task("observability", [
+        agent("agent_1", [0, 1], [1, 44], [1, 70], [2]),
+        agent("agent_2", [2, 3], [45, 88], [19, 88], [1]),
+    ]),
+    "coupling": task("coupling", [
+        agent("agent_1", [0, 1], [1, 70], [1, 49], [2]),
+        agent("agent_2", [2, 3], [19, 88], [40, 88], [1]),
     ]),
     "heterogeneous": task("heterogeneous", [
-        agent("a0", [0], [1, 48], [1, 88]),
-        agent("a1", [1, 2, 3], [1, 88], [1, 88]),
+        agent("agent_1", [0], [1, 22], [1, 27], [1]),
+        agent("agent_2", [1, 2, 3], [23, 88], [18, 88], [0]),
     ]),
-    "scaled": task("scaled", [
-        agent("a0", [0], [1, 48], [1, 88]),
-        agent("a1", [1], [1, 48], [1, 88]),
-        agent("a2", [2], [41, 88], [1, 88]),
-        agent("a3", [3], [41, 88], [1, 88]),
+    "scalability": task("scalability", [
+        agent("agent_1", [0], [1, 22], [1, 27], [1]),
+        agent("agent_2", [1], [23, 44], [18, 49], [0, 2]),
+        agent("agent_3", [2], [45, 66], [40, 71], [1, 3]),
+        agent("agent_4", [3], [67, 88], [62, 88], [2]),
     ]),
 }
 
@@ -146,20 +152,27 @@ def main():
         "semantic_checks": {
             "physical_hands_and_midi": "must verify after compilation",
             "range_fields_affect_runtime": "must verify in compiler/runtime",
-            "partition_invariant_collision_reward": "not established",
-            "heterogeneous_is_H_only": False,
+            "base_o_c_teammate_visibility_identical": True,
+            "observation_changes_only_key_observation_ranges": True,
+            "coupling_changes_only_action_ranges": True,
+            "boundary_teammate_visibility": True,
         },
         "runs": [],
     }
 
-    # Initial launch order:
-    # each six-job block contains one setting and all algorithm/seed pairs.
-    # Alternating the algorithm order balances IPPO/MAPPO across GPU slots.
+    # Initial launch order covers every algorithm/task pair before queuing the
+    # second and third seeds. This maximizes task coverage under a constrained
+    # process or GPU budget while keeping matched seeds in the same suite.
     index = 0
-    for task_index, (setting, t) in enumerate(TASKS.items()):
-        for position in range(6):
-            algo = ("ippo", "mappo")[(position + task_index) % 2]
-            seed = (position // 2 + task_index) % 3
+    pairs = [
+        (setting, ("ippo", "mappo")[(task_index + offset) % 2])
+        for offset in range(2)
+        for task_index, setting in enumerate(TASKS)
+    ]
+    assert len(set(pairs)) == 10
+    for seed in (0, 1, 2):
+        for setting, algo in pairs:
+            t = TASKS[setting]
 
             cfg = copy.deepcopy(base)
             name = (
@@ -193,13 +206,14 @@ def main():
                 cfg["compute"]["log_every_iters"] = 1
 
             cfg["video"].update(
-                enabled=False,
-                record_final=False,
-                wandb_upload=False,
+                enabled=True,
+                freq=500_000,
+                record_final=True,
+                wandb_upload=True,
             )
 
             tags = [
-                a.suite_id, "scho-v1", setting, algo,
+                a.suite_id, "scho-v2", setting, algo,
                 "WinterWind", "4hands", f"{t['num_agents']}agents",
                 f"seed{seed}", "collision-0.1", budget_tag,
                 f"workers{a.workers}",
@@ -232,11 +246,11 @@ def main():
             })
             index += 1
 
-    assert index == 24
+    assert index == 30
     assert len({
         (r["algo"], r["setting"], r["seed"])
         for r in manifest["runs"]
-    }) == 24
+    }) == 30
 
     write_json(out / "manifest.json", manifest)
 
@@ -258,10 +272,10 @@ def main():
         for setting, t in TASKS.items()
         for seed in (0, 1, 2)
     ]
-    write_json(out / "all_72_runs_plan.json", plan)
+    write_json(out / "all_90_runs_plan.json", plan)
 
-    print(f"Generated 24 full configs: {out / 'runs'}")
-    print(f"Generated 72-run plan:    {out / 'all_72_runs_plan.json'}")
+    print(f"Generated 30 full configs: {out / 'runs'}")
+    print(f"Generated 90-run plan:    {out / 'all_90_runs_plan.json'}")
     print("No training was launched.")
     print("Review semantic_checks before approving production runs.")
 
