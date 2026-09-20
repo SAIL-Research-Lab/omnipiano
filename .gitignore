@@ -18,6 +18,11 @@
 !/setup.py
 !/README.md
 !/action_index_reference.md
+!/.readthedocs.yaml
+!/docs/
+
+# Generated Sphinx output
+/docs/_build/
 
 # Paper drafts co-evolve with the code (claims/abstract/sections in git)
 !/paper/
