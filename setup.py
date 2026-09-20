@@ -36,6 +36,8 @@ setup(
         "pettingzoo",
         "numpy",
         "stable-baselines3",
+        "openai>=1.0",
+        "Pillow",
         "moviepy",
     ],
     extras_require={

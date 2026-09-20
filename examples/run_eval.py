@@ -1,11 +1,13 @@
-"""Run standalone LLM evaluation for OmniPiano.
+"""Run standalone LLM keyframe evaluation for OmniPiano.
 
 The evaluation loop and metric aggregation live in
-``omnipiano.integrations.eval_callback.evaluate_policy``. This script only
-loads a policy, creates ``make(..., mode="eval")``, and writes artifacts.
+``omnipiano.integrations.eval_callback.evaluate_policy``. Generate the frozen
+trajectory first with ``examples/run_keyframes.py``.
 
-Set OPENAI_API_KEY, then run::
+Run::
 
+    python examples/run_keyframes.py \\
+        --env OmniPiano-ClairDeLune-Clean-v0
     python examples/run_eval.py \\
         --env OmniPiano-ClairDeLune-Clean-v0
 
@@ -22,7 +24,7 @@ from omnipiano.integrations.eval_callback import (
     evaluate_policy,
     write_eval_summary,
 )
-from omnipiano.integrations.llm import LLMConfig, LLMPolicy
+from omnipiano.integrations.llm import KeyframeConfig, KeyframePolicy
 from omnipiano.integrations.policy_registry import (
     register_policy,
     registered_policies,
@@ -46,7 +48,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out-dir",
         default=None,
-        help="Output directory. Defaults to examples/logs/eval.",
+        help="Output directory. Defaults to examples/logs/eval/keyframes.",
     )
     parser.add_argument(
         "--record",
@@ -60,7 +62,7 @@ def main(argv=None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    out_dir = Path(args.out_dir or "examples/logs/eval")
+    out_dir = Path(args.out_dir or "examples/logs/eval/keyframes")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     env_kwargs = {
@@ -77,8 +79,12 @@ def main(argv=None) -> int:
     env = make(args.env, **env_kwargs)
     try:
         # Register every policy that should be evaluated in this run.
-        llm_config = LLMConfig(action_space=env.action_space)
-        register_policy("llm", LLMPolicy, llm_config)
+        llm_config = KeyframeConfig(
+            env=env,
+            action_space=env.action_space,
+            path=str(out_dir / f"keyframes_{args.env}.json"),
+        )
+        register_policy("llm_keyframes", KeyframePolicy, llm_config)
 
         for name, (policy, config) in registered_policies():
             result = evaluate_policy(
