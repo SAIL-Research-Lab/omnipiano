@@ -358,12 +358,12 @@ def cached_probe_agent_reach(
 ) -> Dict[str, Tuple[int, int]]:
     """Cached front-end to :func:`probe_agent_reach`.
 
-    Cache key includes all parameters that affect probe results (morphology
+    Cache key includes all parameters that affect probe results (full assignment
     + hand_specs + n_settle_steps + physics-config kwargs). Changes to any
     of these invalidate the cache entry so ablations don't get stale data.
     """
     key = (
-        assignment.morphology,
+        assignment,
         tuple(hand_specs),
         n_settle_steps,
         control_timestep,

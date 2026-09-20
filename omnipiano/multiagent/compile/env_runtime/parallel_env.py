@@ -47,6 +47,75 @@ _SUPPORTED_OBS_MODES = frozenset({"own_plus_boundary"})
 _SUPPORTED_REWARD_MODES = frozenset({"shared"})
 
 
+
+# EMPTY_BOUNDARY_HANDS_FLATTEN_V2
+import gymnasium as _eb_gym
+import numpy as _eb_np
+
+
+def _eb_is_empty_boundary(space):
+    if not isinstance(space, _eb_gym.spaces.Dict):
+        return False
+    boundary = space.spaces.get("boundary_hands")
+    return (
+        isinstance(boundary, _eb_gym.spaces.Dict)
+        and not boundary.spaces
+    )
+
+
+def _eb_flatten_space(space):
+    # Only the optional, empty boundary_hands field is omitted.
+    # A sequence of pairs preserves the existing field order.
+    # Handle the global-state wrapper without changing the raw space.
+    if (
+        isinstance(space, _eb_gym.spaces.Dict)
+        and set(space.spaces) == {"global_state", "own"}
+        and _eb_is_empty_boundary(space.spaces["own"])
+    ):
+        adapted = _eb_gym.spaces.Dict([
+            (key, _eb_flatten_space(child) if key == "own" else child)
+            for key, child in space.spaces.items()
+        ])
+        return _eb_gym.spaces.utils.flatten_space(adapted)
+
+    if _eb_is_empty_boundary(space):
+        space = _eb_gym.spaces.Dict([
+            (key, child)
+            for key, child in space.spaces.items()
+            if key != "boundary_hands"
+        ])
+    return _eb_gym.spaces.utils.flatten_space(space)
+
+
+def _eb_flatten(space, x):
+    # Flatten each block against its own declared space, in existing order.
+    if (
+        isinstance(space, _eb_gym.spaces.Dict)
+        and set(space.spaces) == {"global_state", "own"}
+        and _eb_is_empty_boundary(space.spaces["own"])
+    ):
+        return _eb_np.concatenate([
+            _eb_flatten(child, x[key])
+            if key == "own"
+            else _eb_gym.spaces.utils.flatten(child, x[key])
+            for key, child in space.spaces.items()
+        ])
+
+    if not _eb_is_empty_boundary(space):
+        return _eb_gym.spaces.utils.flatten(space, x)
+
+    # Do not silently discard unexpected real boundary observations.
+    if not space.spaces["boundary_hands"].contains(x["boundary_hands"]):
+        raise ValueError("Empty boundary_hands space requires observation {}")
+
+    parts = [
+        _eb_gym.spaces.utils.flatten(child, x[key])
+        for key, child in space.spaces.items()
+        if key != "boundary_hands"
+    ]
+    return _eb_np.concatenate(parts)
+
+
 class OmniPianoParallelEnv(ParallelEnv):
     """4-hand / 3-hand / 5-hand Territorial multi-agent OmniPiano env.
 
@@ -229,7 +298,7 @@ class OmniPianoParallelEnv(ParallelEnv):
 
         if flatten_obs:
             self._flat_observation_spaces = {
-                a: gym.spaces.utils.flatten_space(s)
+                a: _eb_flatten_space(s)
                 for a, s in self._dict_observation_spaces.items()
             }
         else:
@@ -676,9 +745,9 @@ class OmniPianoParallelEnv(ParallelEnv):
                     ),
                     "own": agent_obs,
                 }
-                agent_obs = gym.spaces.utils.flatten(outer_space, agent_obs)
+                agent_obs = _eb_flatten(outer_space, agent_obs)
             elif self._flatten_obs:
-                agent_obs = gym.spaces.utils.flatten(
+                agent_obs = _eb_flatten(
                     self._dict_observation_spaces[agent.name], agent_obs
                 )
 

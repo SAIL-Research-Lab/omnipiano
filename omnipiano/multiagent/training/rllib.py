@@ -100,6 +100,15 @@ def build_ppo_config(
     layouts: Mapping[str, Mapping[str, Tuple[int, int]]],
 ) -> Tuple[Any, Optional[type]]:
     """Build the RLlib PPO configuration and resolve its learner class."""
+    if (
+        not spec.is_on_policy
+        or spec.rl_module not in ("ctde", "rllib_default")
+    ):
+        raise NotImplementedError(
+            f"{spec.name}: build_ppo_config only supports the current "
+            "per-agent PPO path. Joint/autoregressive and off-policy "
+            "algorithms must use their dedicated training backend."
+        )
     from ray.rllib.algorithms.ppo import PPOConfig
 
     config = (

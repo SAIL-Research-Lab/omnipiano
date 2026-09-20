@@ -43,3 +43,9 @@ omnipiano/envs/robopianist/music/data/pig_single_finger/
 !.gitignore
 
 /omnipiano/PianoFingeringDataset_v1.2.zip
+
+
+/omnipiano/multiagent/external/_upstream/
+/.marl-launch/
+/.marl_jobs.lock
+/handoff/

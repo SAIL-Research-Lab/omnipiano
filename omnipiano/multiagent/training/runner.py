@@ -604,9 +604,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
 
     try:
-        ray.init(ignore_reinit_error=True,
-                 log_to_driver=bool(args.ray_log_to_driver),
-                 num_cpus=args.ray_num_cpus)
+        ray.init(
+            ignore_reinit_error=True,
+            log_to_driver=bool(args.ray_log_to_driver),
+            num_cpus=args.ray_num_cpus,
+            include_dashboard=False,
+        )
         ray_started = True
         build = getattr(config, "build_algo", None)
         algo = build() if callable(build) else config.build()
