@@ -33,3 +33,4 @@ class KeyframeOptimizerConfig(LLMConfig):
     num_optimization_steps: int = 3
     target_f1: float = 0.9
     practice_seed: int = 0
+    resume: bool = False

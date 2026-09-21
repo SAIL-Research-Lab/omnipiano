@@ -16,7 +16,7 @@ from robopianist.models.hands import shadow_hand_constants
 from omnipiano.utils.env_unwrap import get_composer_env_from_gym
 from omnipiano.utils.info_keys import EpisodeInfoKeys
 
-from .policy import OpenAIClient
+from .policy import ClaudeAgent, OpenAIClient, OpenAIResponseClient
 from .policy_config import KeyframeOptimizerConfig
 
 
@@ -45,8 +45,16 @@ class KeyframeOptimizer:
         )
         self.num_optimization_steps = config.num_optimization_steps
         self.target_f1, self.practice_seed = config.target_f1, config.practice_seed
+        self.resume = getattr(config, "resume", False)
         self.trajectories = {}
-        self.client = OpenAIClient(
+        model_name = config.model.rsplit("/", 1)[-1].lower()
+        if model_name.startswith("claude"):
+            client_class = ClaudeAgent
+        elif model_name == "gpt-6-astra":
+            client_class = OpenAIResponseClient
+        else:
+            client_class = OpenAIClient
+        self.client = client_class(
             config.model, base_url=config.base_url, api_key=config.api_key,
             thinking=config.thinking,
             temperature=config.temperature, max_tokens=config.max_tokens,
@@ -62,15 +70,24 @@ class KeyframeOptimizer:
         self._fk_joint_size = len(context["fk_joint_names"])
         self._fk_joint_low = np.asarray(context["fk_joint_low"], dtype=float)
         self._fk_joint_high = np.asarray(context["fk_joint_high"], dtype=float)
-        messages = [
-            {"role": "system", "content": "You synthesize safe robot piano controllers. Use tools when useful."},
-            {"role": "user", "content": self._prompt(context)},
-        ]
-        self._save_conversation(messages)
-        best, history = None, []
-        for attempt in range(1, self.num_optimization_steps + 1):
+        if self.resume:
+            messages, best, history = self._load_resume(context)
+        else:
+            messages = [
+                {"role": "system", "content": "You synthesize safe robot piano controllers. Use tools when useful."},
+                {"role": "user", "content": self._prompt(context)},
+            ]
+            self._save_conversation(messages)
+            best, history = None, []
+        for attempt in range(len(history) + 1, self.num_optimization_steps + 1):
+            if best is not None and best[0]["f1"] >= self.target_f1:
+                break
             usage_before = self.client.token_usage.copy()
-            _, source, actions = self._request_and_run(messages, context)
+            source = self._unpracticed_source(messages)
+            if source is None:
+                _, source, actions = self._request_and_run(messages, context)
+            else:
+                actions = self._run_program(source, context)
             metrics, trajectory, key_geometry = self._practice(actions, attempt)
             metrics["token_usage"] = {
                 name: self.client.token_usage[name] - usage_before[name]
@@ -93,10 +110,99 @@ class KeyframeOptimizer:
             self._append_message(messages, {"role": "user", "content": self._feedback(
                 attempt, metrics, best[3], best[0]["f1"], trajectory_path.name, error_ranges,
             )})
+        if best is None:
+            raise ValueError("no completed practice attempt to freeze")
         self._save(context, history, *best)
         print(f"best controller -> {self.program_path}")
         print(f"frozen keyframes -> {self.path}")
         print(f"token usage -> {self.client.token_usage}")
+
+    def _load_resume(self, context):
+        conversation_path = self.path.with_name(self.path.stem + "_conversation.json")
+        conversation = json.loads(conversation_path.read_text(encoding="utf-8"))
+        messages = conversation["messages"]
+        # if conversation["model"] != self.client.model or len(messages) < 2:
+        #     raise ValueError("saved conversation model or messages do not match this run")
+        original_prompt = messages[1].get("content", "")
+        try:
+            original_context = json.loads(original_prompt.split("**Context:**\n", 1)[1])
+        except (IndexError, json.JSONDecodeError) as error:
+            raise ValueError("saved conversation has no usable environment context") from error
+        for key in ("environment_id", "num_steps", "action_size", "action_names",
+                    "control_timestep", "score", "hand_partitions"):
+            if original_context.get(key) != context.get(key):
+                raise ValueError(f"saved conversation environment differs at {key}")
+        self.client.token_usage.update(conversation["token_usage"])
+
+        history, best = [], None
+        if self.path.is_file():
+            saved = json.loads(self.path.read_text(encoding="utf-8"))
+            history = saved["practice_attempts"]
+            if [item["attempt"] for item in history] != list(range(1, len(history) + 1)):
+                raise ValueError("saved practice attempts are not consecutive")
+            summary_path = self.path.with_name("optimization_summary.json")
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            if summary["practice_seed"] != self.practice_seed:
+                raise ValueError("saved practice seed differs from --eval-seed")
+            if summary["practice_attempts"] != history:
+                raise ValueError("saved practice summary differs from keyframes")
+            for item in history:
+                attempt = item["attempt"]
+                trajectory_path = self.path.with_name(f"attempt_{attempt:03d}_trajectory.json")
+                trajectory = json.loads(trajectory_path.read_text(encoding="utf-8"))
+                if trajectory["attempt"] != attempt or trajectory["metrics"] != item:
+                    raise ValueError(f"saved trajectory {attempt} differs from practice history")
+                self.trajectories[attempt] = trajectory["steps"]
+            best_attempt = saved["best_attempt"]
+            if best_attempt not in range(1, len(history) + 1):
+                raise ValueError("invalid saved best attempt")
+            if saved["practice_metrics"] != history[best_attempt - 1]:
+                raise ValueError("saved best metrics differ from practice history")
+            source = self.program_path.read_text(encoding="utf-8")
+            actions = np.asarray(saved["actions"], dtype=np.float32)
+            if actions.shape != (context["num_steps"], context["action_size"]):
+                raise ValueError("saved best actions have the wrong shape")
+            best = (saved["practice_metrics"], source, actions, best_attempt)
+
+        # A practice may have been saved before its feedback was appended.
+        if history and history[-1]["f1"] < self.target_f1:
+            last_attempt = history[-1]["attempt"]
+            feedback_written = any(
+                message.get("role") == "user"
+                and message.get("content", "").startswith(
+                    f"Revise the preceding play.py. Practice completed: {{\"attempt\":{last_attempt},"
+                )
+                for message in messages
+            )
+            if not feedback_written:
+                trajectory = self.trajectories[last_attempt]
+                self._append_message(messages, {"role": "user", "content": self._feedback(
+                    last_attempt, history[-1], best[3], best[0]["f1"],
+                    f"attempt_{last_attempt:03d}_trajectory.json", self._error_ranges(trajectory),
+                )})
+        print(f"resuming {self.path.parent}: {len(history)} completed practices, "
+              f"{len(messages)} conversation messages")
+        return messages, best, history
+
+    @classmethod
+    def _unpracticed_source(cls, messages):
+        last_feedback = max(
+            (index for index, message in enumerate(messages)
+             if message.get("role") == "user" and message.get("content", "").startswith(
+                 "Revise the preceding play.py. Practice completed:")),
+            default=1,
+        )
+        if not messages or messages[-1].get("role") != "assistant":
+            return None
+        if len(messages) - 1 <= last_feedback:
+            return None
+        content = messages[-1].get("content") or ""
+        try:
+            source = cls._python_block(content)
+            cls._validate_program(source)
+            return source
+        except (SyntaxError, ValueError):
+            return None
 
     def _context(self):
         composer = get_composer_env_from_gym(self.env)
@@ -234,9 +340,49 @@ class KeyframeOptimizer:
             + json.dumps(context, separators=(",", ":"))
         )
 
+    def _tool_response(self, call):
+        if not isinstance(call, dict):
+            call = call.model_dump(exclude_none=True, mode="json")
+        name = call["function"]["name"]
+        try:
+            result = self._tool_result(name, json.loads(call["function"]["arguments"]))
+        except (json.JSONDecodeError, ValueError) as error:
+            result = {"error": str(error)}
+        return {
+            "role": "tool", "tool_call_id": call["id"],
+            "content": json.dumps(result, separators=(",", ":")),
+        }
+
     def _request_program(self, messages):
+        latest_feedback = max(
+            (index for index, item in enumerate(messages)
+             if item.get("role") == "user" and item.get("content", "").startswith(
+                 "Revise the preceding play.py. Practice completed:")),
+            default=1,
+        )
+        if self._unpracticed_source(messages) is not None:
+            latest_feedback = len(messages) - 1
+        current_attempt = messages[latest_feedback + 1:]
         tool_calls = {name: 0 for name in _TOOL_CALL_LIMITS}
-        all_tools_notice_sent = False
+        for item in current_attempt:
+            for call in item.get("tool_calls") or ():
+                name = call["function"]["name"]
+                if name in tool_calls:
+                    tool_calls[name] += 1
+        all_tools_notice_sent = any(
+            item.get("role") == "user" and item.get("content", "").startswith(
+                "All available tool budgets are exhausted")
+            for item in current_attempt
+        )
+        # A crash may happen after an assistant tool call but before every
+        # result has been written. Finish those calls before asking the model.
+        answered = {item.get("tool_call_id") for item in current_attempt
+                    if item.get("role") == "tool"}
+        for item in current_attempt:
+            for call in item.get("tool_calls") or ():
+                if call["id"] not in answered:
+                    self._append_message(messages, self._tool_response(call))
+                    answered.add(call["id"])
         while True:
             message = self.client.chat(messages, tools=self._tools(
                 include_reference=tool_calls["get_robot_reference"] < _MAX_ROBOT_REFERENCE_CALLS,

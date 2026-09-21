@@ -38,24 +38,53 @@ def main(argv=None):
     parser.add_argument("--eval-noise-scale", type=float, default=1.0)
     parser.add_argument("--out-dir", default=None)
     parser.add_argument("--tries", type=int, default=3)
+    parser.add_argument(
+        "--resume", action="store_true",
+        help=(
+            "Continue an existing --out-dir conversation; "
+            "--tries is the total number of practices."
+        ),
+    )
     args = parser.parse_args(argv)
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        parser.error("DEEPSEEK_API_KEY environment variable is required")
+    if args.resume and not args.out_dir:
+        parser.error("--resume requires --out-dir")
+    # api_key = os.environ.get("DEEPSEEK_API_KEY")
+    # if not api_key:
+    #     parser.error("DEEPSEEK_API_KEY environment variable is required")
 
+    # api_key = os.environ.get("OPENAI_API_KEY")
+    # if not api_key:
+    #     parser.error("OPENAI_API_KEY environment variable is required")
+
+    # api_key = os.environ.get("GEMINI_API_KEY")
+    # if not api_key:
+    #     parser.error("GEMINI_API_KEY environment variable is required")
+
+    # api_key = os.environ.get("GLM_API_KEY")
+    # if not api_key:
+    #     parser.error("GLM_API_KEY environment variable is required")
+
+    # api_key = os.environ.get("GROK_API_KEY")
+    # if not api_key:
+    #     parser.error("GROK_API_KEY environment variable is required")
+
+    api_key = os.environ.get("CLAUDE_API_KEY")
+    
     llm_kwargs = {
-        "model": "deepseek-flash",
-        "base_url": "https://api.deepseek.com",
+        "model": "claude-opus-5",
+        "base_url": "https://4router.net/v1",
         "api_key": api_key,
-        "thinking": False,
+        # "thinking": True,
         "temperature": 0,
-        # "max_tokens": 16_384,
+        "max_tokens": 65_536,
     }
     out_dir = Path(args.out_dir) if args.out_dir else _run_dir(
         Path(__file__).resolve().parent / "logs",
         f"{llm_kwargs['model'].replace('/', '_')}_keyframes_"
         f"{_short_env_token(args.env)}_seed{args.eval_seed}",
     )
+    if args.resume and not (out_dir / f"keyframes_{args.env}_conversation.json").is_file():
+        parser.error(f"no saved conversation in {out_dir} for {args.env}")
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[run_keyframes] log_dir={out_dir}")
     env = make(
@@ -71,6 +100,7 @@ def main(argv=None):
             path=str(out_dir / f"keyframes_{args.env}.json"),
             practice_seed=args.eval_seed,
             num_optimization_steps=args.tries,
+            resume=args.resume,
             **llm_kwargs,
         )
         KeyframeOptimizer(config).optimize()
