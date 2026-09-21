@@ -37,6 +37,7 @@ def build_arg_parser(
         _training_config_snapshot=compiled.request.snapshot(),
         _training_config_path=str(compiled.config_path),
         _resolved_task=(compiled.task.to_dict() if compiled.task is not None else None),
+        _native_options=dict(compiled.native_options),
     )
     p.add_argument(
         "experiment_config", nargs="?", metavar="EXPERIMENT.json",
@@ -65,6 +66,17 @@ def build_arg_parser(
     core.add_argument("--run-dir", "--save-dir", dest="run_dir",
                      default=defaults["run_dir"],
                      help="Run artifact directory (repo-relative paths allowed).")
+    core.add_argument(
+        "--resume-native", default=None,
+        help=("Resume a trusted native-backend checkpoint into a fresh run "
+              "directory. Learner/replay/RNG state is restored; the exact "
+              "MuJoCo episode state is not."),
+    )
+    core.add_argument(
+        "--eval-native", default=None,
+        help=("Evaluate a trusted native-backend checkpoint and exit without "
+              "creating training artifacts."),
+    )
 
     proto_g = p.add_argument_group("protocol (BenchmarkProtocolConfig)")
     proto_g.add_argument("--total-steps", type=int, default=defaults["total_steps"],
@@ -280,6 +292,13 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
     spec = get_algo(args.algo)
     spec.assert_launchable(
         allow_experimental=bool(getattr(args, "allow_experimental", False)))
+    if (args.resume_native or args.eval_native) and not spec.is_native:
+        raise ValueError(
+            "--resume-native/--eval-native require an algorithm with "
+            "backend='native'"
+        )
+    if args.resume_native and args.eval_native:
+        raise ValueError("--resume-native and --eval-native are mutually exclusive")
     if (getattr(args, "_resolved_task", None) is not None
             and "env_id" in getattr(args, "_explicit_cli_destinations", set())):
         raise ValueError(
@@ -339,12 +358,13 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
         raise ValueError("lr and critic_lr must be positive")
     if not math.isfinite(args.adam_epsilon) or args.adam_epsilon <= 0.0:
         raise ValueError("adam_epsilon must be positive")
-    if args.minibatch_size > args.train_batch_size:
+    if not spec.is_native and args.minibatch_size > args.train_batch_size:
         raise ValueError("minibatch_size cannot exceed train_batch_size")
-    if args.train_batch_size > args.eval_freq:
+    if not spec.is_native and args.train_batch_size > args.eval_freq:
         raise ValueError("train_batch_size > eval_freq: one PPO iteration could "
                          "skip multiple protocol evaluation thresholds")
-    if 0 < args.checkpoint_freq < args.train_batch_size:
+    if (not spec.is_native
+            and 0 < args.checkpoint_freq < args.train_batch_size):
         raise ValueError("checkpoint_freq must be 0 or >= train_batch_size")
     if args.video_enabled:
         if args.video_freq <= 0:

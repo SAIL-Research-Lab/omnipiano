@@ -28,6 +28,9 @@ _LEARNER_KEYS: Sequence[str] = (
     "total_loss", "gradients_default_optimizer_global_norm",
     "gradients_actor_global_norm", "gradients_critic_global_norm",
     "value_norm_mean", "value_norm_std", "value_clip_fraction",
+    # Native off-policy backends (FACMAC/MASAC).
+    "actor_loss", "critic_loss", "actor_grad_norm", "critic_grad_norm",
+    "replay_size", "gradient_updates",
 )
 
 

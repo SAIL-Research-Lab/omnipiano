@@ -45,16 +45,46 @@ def native_options(args):
         options = {
             "replay_capacity": 50_000,
             "batch_size": 256,
-            "learning_starts": 10_000,
+            "buffer_warmup": 10_000,
+            "random_action_steps": 10_000,
             "collect_steps": 24,
             "updates_per_env_step": 0.25,
             "tau": 0.005,
             "max_replay_gib": 4.0,
         }
         if args.algo == "facmac":
-            options.update(
-                noise_std=0.1, action_l2=0.001,
-                mixer_embed=64, monotonic=True)
+            # oxwhirl/facmac's MAMuJoCo defaults. Gamma and total env-step
+            # budget deliberately remain in the shared OmniPiano protocol.
+            options = {
+                "variant": "facmac_continuous_qmix_v1",
+                "reference_commit": (
+                    "d7e62b8c51a5a77330de85f83c10553d0bd18fe5"
+                ),
+                "parameter_sharing": False,
+                "actor_hidden_sizes": [400, 400],
+                "utility_hidden_sizes": [400, 400],
+                "actor_lr": 0.001,
+                "critic_lr": 0.001,
+                "adam_epsilon": 0.01,
+                "grad_clip": 0.5,
+                "replay_capacity": 1_000_000,
+                "batch_size": 100,
+                "buffer_warmup": 1_000,
+                "random_action_steps": 10_000,
+                "collect_steps": 24,
+                "updates_per_env_step": 1.0,
+                "tau": 0.001,
+                "noise_std": 0.1,
+                "action_l2": 0.001,
+                "mixer_embed": 64,
+                "hypernet_embed": 64,
+                "monotonic": True,
+                "max_replay_gib": 32.0,
+                # Checkpointing is deliberately separate from the training
+                # replay capacity.  Keeping only a recent tail makes recovery
+                # useful without copying a ~20 GiB buffer into every snapshot.
+                "checkpoint_replay_transitions": 50_000,
+            }
         else:
             options.update(
                 alpha_init=0.1, alpha_lr=0.0003,
@@ -77,10 +107,18 @@ def native_options(args):
         raise ValueError("MAT has a joint optimizer; critic_lr must equal lr")
     if args.algo == "masac" and options["variant"] != "cooperative_joint_entropy_v1":
         raise ValueError("Unsupported MASAC definition")
+    if args.algo == "facmac":
+        if options["variant"] != "facmac_continuous_qmix_v1":
+            raise ValueError("Unsupported FACMAC definition")
+        if options["reference_commit"] != (
+            "d7e62b8c51a5a77330de85f83c10553d0bd18fe5"
+        ):
+            raise ValueError("FACMAC reference_commit must stay pinned")
 
     integers = (
         "embed_dim", "heads", "blocks", "replay_capacity", "batch_size",
-        "learning_starts", "collect_steps", "mixer_embed",
+        "buffer_warmup", "random_action_steps", "collect_steps", "mixer_embed",
+        "hypernet_embed",
     )
     for name in integers:
         if name in options:
@@ -92,16 +130,34 @@ def native_options(args):
             if not math.isfinite(value):
                 raise ValueError(f"Non-finite native option: {name}")
     for name in ("updates_per_env_step", "max_replay_gib", "alpha_init",
-                 "alpha_lr", "target_entropy_scale"):
+                 "alpha_lr", "target_entropy_scale", "actor_lr", "critic_lr",
+                 "adam_epsilon", "grad_clip"):
         if name in options and options[name] <= 0:
             raise ValueError(f"{name} must be positive")
     for name in ("noise_std", "action_l2"):
         if name in options and options[name] < 0:
             raise ValueError(f"{name} must be nonnegative")
+    checkpoint_replay = options.get("checkpoint_replay_transitions")
+    if checkpoint_replay is not None and (
+        type(checkpoint_replay) is not int or checkpoint_replay < 0
+    ):
+        raise ValueError("checkpoint_replay_transitions must be a non-negative integer")
     if "tau" in options and not 0 < options["tau"] <= 1:
         raise ValueError("tau must be in (0,1]")
     if "monotonic" in options and type(options["monotonic"]) is not bool:
         raise ValueError("monotonic must be boolean")
+    if "parameter_sharing" in options and options["parameter_sharing"] is not False:
+        raise ValueError(
+            "OmniPiano FACMAC requires independent networks because SCHO permits "
+            "heterogeneous observation/action dimensions"
+        )
+    for name in ("actor_hidden_sizes", "utility_hidden_sizes"):
+        if name in options and (
+            not isinstance(options[name], (list, tuple))
+            or not options[name]
+            or any(type(width) is not int or width <= 0 for width in options[name])
+        ):
+            raise ValueError(f"{name} must be a non-empty list of positive integers")
     if args.algo == "mat" and options["embed_dim"] % options["heads"]:
         raise ValueError("MAT embed_dim must be divisible by heads")
     if "replay_capacity" in options:
@@ -109,11 +165,22 @@ def native_options(args):
             # Explicitly make the smoke run exercise off-policy updates.
             options["replay_capacity"] = min(options["replay_capacity"], 2048)
             options["batch_size"] = min(options["batch_size"], 128)
-            options["learning_starts"] = min(options["learning_starts"], 128)
+            options["buffer_warmup"] = min(options["buffer_warmup"], 128)
+            options["random_action_steps"] = min(
+                options["random_action_steps"], 128)
+            if "checkpoint_replay_transitions" in options:
+                options["checkpoint_replay_transitions"] = min(
+                    options["checkpoint_replay_transitions"],
+                    options["replay_capacity"],
+                )
         if options["batch_size"] > options["replay_capacity"]:
             raise ValueError("Replay batch exceeds capacity")
+        if options["buffer_warmup"] >= options["replay_capacity"]:
+            raise ValueError("Replay warm-up must be smaller than capacity")
         if options["collect_steps"] > options["replay_capacity"]:
             raise ValueError("Collection size exceeds capacity")
+        if options.get("checkpoint_replay_transitions", 0) > options["replay_capacity"]:
+            raise ValueError("Checkpoint replay tail exceeds replay capacity")
     return options
 
 
@@ -187,7 +254,12 @@ class NativeAlgorithm(NativePolicy):
             "cuda:0" if args.num_gpus_per_learner > 0 else "cpu")
         torch.set_num_threads(1)
         if torch.get_num_interop_threads() != 1:
-            torch.set_num_interop_threads(1)
+            try:
+                torch.set_num_interop_threads(1)
+            except RuntimeError:
+                # PyTorch only permits this before the first inter-op task.
+                # A prior in-process smoke test may already have frozen it.
+                pass
         random.seed(args.seed)
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -216,7 +288,7 @@ class NativeAlgorithm(NativePolicy):
             self.resume_count += 1
             if self.env_steps >= args.total_steps:
                 raise ValueError("Checkpoint already reached the requested budget")
-            if self.replay is not None:
+            if self.replay is not None and checkpoint.get("replay") is not None:
                 self.replay.restore(checkpoint["replay"])
         try:
             self.pool = EnvPool(
@@ -253,8 +325,15 @@ class NativeAlgorithm(NativePolicy):
                 self.args.inter_agent_collision_penalty_coef,
             "eval_freq_env_steps": self.args.eval_freq,
             "checkpoint_freq_env_steps": self.args.checkpoint_freq,
+            "checkpoint_replay_transitions": self.options.get(
+                "checkpoint_replay_transitions", 0
+            ),
             "native_resume_source": self.args.resume_native,
-            "resume_semantics": "learner/replay/RNG restored; environment episodes reset",
+            "resume_semantics": (
+                "learner/optimizer/target/RNG restored; replay restored when "
+                "present (recovery checkpoints retain a recent tail); "
+                "environment episodes reset"
+            ),
             "on_policy": self.model.on_policy,
             "off_policy_ignores": (
                 [] if self.model.on_policy else [
@@ -281,9 +360,9 @@ class NativeAlgorithm(NativePolicy):
             current_step = self.env_steps + collected
             warmup = (
                 not self.model.on_policy
-                and current_step < self.options["learning_starts"])
+                and current_step < self.options["random_action_steps"])
             if warmup:
-                k = min(k, self.options["learning_starts"] - current_step)
+                k = min(k, self.options["random_action_steps"] - current_step)
             before = self.codec.pack(self.pool.observations[:k])
             keys = self.pool.keys(k)
             with torch.no_grad():
@@ -342,8 +421,8 @@ class NativeAlgorithm(NativePolicy):
         else:
             self.replay.add(batch)
             eligible = (
-                max(0, self.env_steps - self.options["learning_starts"])
-                - max(0, previous - self.options["learning_starts"])
+                max(0, self.env_steps - self.options["buffer_warmup"])
+                - max(0, previous - self.options["buffer_warmup"])
             )
             if self.replay.size >= self.options["batch_size"]:
                 self.update_credit += eligible * self.options["updates_per_env_step"]
@@ -362,9 +441,12 @@ class NativeAlgorithm(NativePolicy):
             "env_runners": {},
         }
 
-    def save_to_path(self, directory):
+    def save_to_path(self, directory, replay_transitions=None):
         directory = Path(directory).resolve()
         directory.mkdir(parents=True, exist_ok=False)
+        replay_state = None
+        if self.replay is not None and replay_transitions != 0:
+            replay_state = self.replay.state(max_transitions=replay_transitions)
         state = {
             "format": FORMAT,
             "identity": identity(self.args, self.meta, self.options),
@@ -372,7 +454,7 @@ class NativeAlgorithm(NativePolicy):
             "model": self.model.state_dict(),
             "optimizers": self.model.optimizer_state(),
             "rng": rng_state(),
-            "replay": self.replay.state() if self.replay is not None else None,
+            "replay": replay_state,
             "collector_episodes": self.pool.episode,
             **{key: getattr(self, key) for key in (
                 "env_steps", "iterations", "gradient_updates",
@@ -385,7 +467,18 @@ class NativeAlgorithm(NativePolicy):
         write_json(directory / "native_checkpoint.json", {
             "format": FORMAT, "algo": self.args.algo,
             "env_steps": self.env_steps,
-            "contains_replay": self.replay is not None,
+            "contains_replay": replay_state is not None,
+            "replay_transitions": (
+                int(replay_state["size"]) if replay_state is not None else 0
+            ),
+            "replay_original_size": (
+                int(replay_state.get("original_size", replay_state["size"]))
+                if replay_state is not None else 0
+            ),
+            "replay_truncated": (
+                bool(replay_state.get("truncated", False))
+                if replay_state is not None else False
+            ),
             "exact_environment_resume": False,
         })
         return str(directory)

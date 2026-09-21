@@ -11,6 +11,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 ALL_ALGOS = ("ippo", "mappo", "happo", "mat", "facmac", "masac")
+RUNNABLE_ALGOS = ("ippo", "mappo", "facmac")
 
 
 def digest(value):
@@ -116,7 +117,13 @@ def main():
     p.add_argument("--suite-id", required=True)
     p.add_argument("--phase", choices=("preflight", "train"), required=True)
     p.add_argument("--workers", type=int, default=3)
+    p.add_argument(
+        "--algos", nargs="+", choices=RUNNABLE_ALGOS,
+        default=("ippo", "mappo"),
+        help="Algorithms to materialize; defaults preserve the original suite.",
+    )
     p.add_argument("--checkpoint-freq", type=int, default=1_000_000)
+    p.add_argument("--start-index", type=int, default=0)
     p.add_argument(
         "--run-root", default="/root/autodl-fs/omnipiano_runs"
     )
@@ -126,6 +133,8 @@ def main():
         p.error("--suite-id must contain only letters, digits, '_' or '-'")
     if a.workers < 1:
         p.error("--workers must be >= 1")
+    if a.start_index < 0:
+        p.error("--start-index must be non-negative")
 
     base = json.loads((ROOT / a.base).read_text(encoding="utf-8"))
     if base.get("schema_version") != 2 or "task" not in base:
@@ -138,6 +147,13 @@ def main():
     preflight = a.phase == "preflight"
     total_steps = 20_000 if preflight else 10_000_000
     budget_tag = "20k-preflight" if preflight else "10M"
+    selected_algos = tuple(dict.fromkeys(a.algos))
+    facmac_defaults = json.loads(
+        (
+            ROOT
+            / "omnipiano/multiagent/configs/marl_train_config_default.json"
+        ).read_text(encoding="utf-8")
+    )["algorithm_overrides"]["facmac"]["native"]
 
     for name, t in TASKS.items():
         validate_task(t)
@@ -146,6 +162,7 @@ def main():
     manifest = {
         "suite_id": a.suite_id,
         "phase": a.phase,
+        "selected_algorithms": list(selected_algos),
         "git_commit": git_output("rev-parse", "HEAD"),
         "git_status": git_output("status", "--short"),
         "task_hashes": {k: digest(v) for k, v in TASKS.items()},
@@ -163,13 +180,13 @@ def main():
     # Initial launch order covers every algorithm/task pair before queuing the
     # second and third seeds. This maximizes task coverage under a constrained
     # process or GPU budget while keeping matched seeds in the same suite.
-    index = 0
+    index = a.start_index
     pairs = [
-        (setting, ("ippo", "mappo")[(task_index + offset) % 2])
-        for offset in range(2)
+        (setting, selected_algos[(task_index + offset) % len(selected_algos)])
+        for offset in range(len(selected_algos))
         for task_index, setting in enumerate(TASKS)
     ]
-    assert len(set(pairs)) == 10
+    assert len(set(pairs)) == len(TASKS) * len(selected_algos)
     for seed in (0, 1, 2):
         for setting, algo in pairs:
             t = TASKS[setting]
@@ -195,12 +212,16 @@ def main():
                 num_cpus_per_env_runner=1,
                 num_learners=1,
                 num_gpus_per_learner=1.0,
-                ray_num_cpus=a.workers + 2,
+                ray_num_cpus=(None if algo == "facmac" else a.workers + 2),
                 smoke_test=False,
                 checkpoint_freq=(
                     10_000 if preflight else a.checkpoint_freq
                 ),
             )
+            if algo == "facmac":
+                # Freeze the complete native recipe into every run instead of
+                # relying on whichever defaults happen to be installed later.
+                cfg["native"] = copy.deepcopy(facmac_defaults)
             if preflight:
                 cfg["protocol"]["eval_freq"] = 10_000
                 cfg["compute"]["log_every_iters"] = 1
@@ -246,11 +267,12 @@ def main():
             })
             index += 1
 
-    assert index == 30
+    expected_runs = len(TASKS) * len(selected_algos) * 3
+    assert index == a.start_index + expected_runs
     assert len({
         (r["algo"], r["setting"], r["seed"])
         for r in manifest["runs"]
-    }) == 30
+    }) == expected_runs
 
     write_json(out / "manifest.json", manifest)
 
@@ -274,7 +296,7 @@ def main():
     ]
     write_json(out / "all_90_runs_plan.json", plan)
 
-    print(f"Generated 30 full configs: {out / 'runs'}")
+    print(f"Generated {expected_runs} full configs: {out / 'runs'}")
     print(f"Generated 90-run plan:    {out / 'all_90_runs_plan.json'}")
     print("No training was launched.")
     print("Review semantic_checks before approving production runs.")

@@ -203,6 +203,7 @@ class ResolvedExperiment:
     algorithm: str
     values: Mapping[str, Any]
     smoke_test_overrides: Mapping[str, Any]
+    native_options: Mapping[str, Any]
     task: Optional[ResolvedTask] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -213,6 +214,7 @@ class ResolvedExperiment:
             "selected_algorithm": self.algorithm,
             "values": deepcopy(dict(self.values)),
             "smoke_test_overrides": deepcopy(dict(self.smoke_test_overrides)),
+            "native_options": deepcopy(dict(self.native_options)),
             "request": self.request.snapshot(),
             "task": self.task.to_dict() if self.task is not None else None,
         }

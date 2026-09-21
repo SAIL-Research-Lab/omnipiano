@@ -1,4 +1,4 @@
-"""Native, feed-forward MARL learners. External validation is still required.
+"""Native, feed-forward MARL learners.
 
 No Ray dependency. All batches contain aligned JOINT environment transitions.
 HAPPO/central PPO use raw Gaussian actions with execution-time clipping.
@@ -13,6 +13,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.distributions import Normal
+
+from omnipiano.multiagent.algos._facmac_mixer import FactoredMixer
 
 
 def ranges(widths):
@@ -39,6 +41,23 @@ def mlp(inp, out, args, output_gain=None):
     )
     nn.init.zeros_(layer.bias)
     layers.append(layer)
+    return nn.Sequential(*layers)
+
+
+def facmac_mlp(inp, out, hidden_sizes):
+    """Official FACMAC MAMuJoCo MLP shape with PyTorch default init.
+
+    The reference uses two 400-wide ReLU layers for both actor and per-agent
+    utility.  It does not apply LayerNorm or orthogonal initialisation.
+    ``hidden_sizes`` remains explicit so every realized architecture is stored
+    in the experiment JSON/checkpoint identity.
+    """
+    layers = []
+    previous = inp
+    for width in hidden_sizes:
+        layers.extend((nn.Linear(previous, width), nn.ReLU()))
+        previous = width
+    layers.append(nn.Linear(previous, out))
     return nn.Sequential(*layers)
 
 
@@ -475,38 +494,21 @@ class MAT(NativeModel):
         return stats
 
 
-class Mixer(nn.Module):
-    def __init__(self, state_dim, n_agents, width, monotonic):
-        super().__init__()
-        self.n, self.width, self.monotonic = n_agents, width, monotonic
-
-        def hyper(output):
-            return nn.Sequential(
-                nn.Linear(state_dim, width), nn.ReLU(), nn.Linear(width, output))
-
-        self.first_weights = hyper(n_agents * width)
-        self.final_weights = hyper(width)
-        self.bias = nn.Linear(state_dim, width)
-        self.state_value = hyper(1)
-
-    def forward(self, utilities, state):
-        first = self.first_weights(state).reshape(-1, self.n, self.width)
-        final = self.final_weights(state)
-        if self.monotonic:
-            first, final = first.abs(), final.abs()
-        hidden = F.elu(torch.einsum("bn,bne->be", utilities, first) + self.bias(state))
-        return (hidden * final).sum(-1) + self.state_value(state).squeeze(-1)
-
-
 class FactoredQ(nn.Module):
     def __init__(self, model):
         super().__init__()
         self.os, self.ac = model.os, model.ac
         self.utilities = nn.ModuleList(
-            mlp(o + a, 1, model.args) for o, a in zip(model.od, model.ad))
-        self.mixer = Mixer(
-            model.sd, model.n, model.options["mixer_embed"],
-            model.options["monotonic"])
+            facmac_mlp(o + a, 1, model.options["utility_hidden_sizes"])
+            for o, a in zip(model.od, model.ad)
+        )
+        self.mixer = FactoredMixer(
+            n_agents=model.n,
+            state_dim=model.sd,
+            embed_dim=model.options["mixer_embed"],
+            monotonic=model.options["monotonic"],
+            hypernet_embed=model.options["hypernet_embed"],
+        )
 
     def forward(self, batch, actions):
         utilities = torch.stack([
@@ -533,7 +535,9 @@ class OffPolicy(NativeModel):
         self.sac = args.algo == "masac"
         self.actors = nn.ModuleList([
             Gaussian(o, a, args, squashed=True) if self.sac
-            else nn.Sequential(mlp(o, a, args, args.policy_output_gain), nn.Tanh())
+            else nn.Sequential(
+                facmac_mlp(o, a, options["actor_hidden_sizes"]), nn.Tanh()
+            )
             for o, a in zip(self.od, self.ad)
         ])
         self.q = TwinQ(self) if self.sac else FactoredQ(self)
@@ -549,10 +553,20 @@ class OffPolicy(NativeModel):
             self.target_actors = copy.deepcopy(self.actors).requires_grad_(False)
 
     def build_optimizers(self):
+        actor_lr = (
+            self.args.lr if self.sac else self.options["actor_lr"]
+        )
+        critic_lr = (
+            self.args.critic_lr if self.sac else self.options["critic_lr"]
+        )
+        epsilon = (
+            self.args.adam_epsilon if self.sac
+            else self.options["adam_epsilon"]
+        )
         self.optimizers["actors"] = torch.optim.Adam(
-            self.actors.parameters(), lr=self.args.lr, eps=self.args.adam_epsilon)
+            self.actors.parameters(), lr=actor_lr, eps=epsilon)
         self.optimizers["critic"] = torch.optim.Adam(
-            self.q.parameters(), lr=self.args.critic_lr, eps=self.args.adam_epsilon)
+            self.q.parameters(), lr=critic_lr, eps=epsilon)
         if self.sac:
             self.optimizers["alpha"] = torch.optim.Adam(
                 [self.log_alpha], lr=self.options["alpha_lr"],
@@ -575,20 +589,25 @@ class OffPolicy(NativeModel):
         actions, logp = self.policy(batch, deterministic)
         return {"a": actions, "lp": logp}
 
-    def learn(self, batch):
-        args, options = self.args, self.options
+    def td_target(self, batch):
+        """One-step target; true termination blocks bootstrap, truncation does not."""
         next_batch = {"o": batch["no"], "s": batch["ns"]}
         with torch.no_grad():
             next_actions, next_logp = self.policy(next_batch, target=True)
             target_q = self.target_q(next_batch, next_actions).min(-1).values
             if self.sac:
                 target_q -= (self.log_alpha.exp() * next_logp).sum(-1)
-            target = batch["r"] + args.gamma * (1 - batch["term"]) * target_q
+            return batch["r"] + self.args.gamma * (1 - batch["term"]) * target_q
+
+    def learn(self, batch):
+        args, options = self.args, self.options
+        target = self.td_target(batch)
         predictions = self.q(batch, batch["a"])
         critic_loss = (predictions - target[:, None]).square().mean()
         qloss, qnorm = optimize(
             self.optimizers["critic"], critic_loss,
-            self.q.parameters(), args.grad_clip)
+            self.q.parameters(),
+            args.grad_clip if self.sac else options["grad_clip"])
 
         self.q.requires_grad_(False)
         try:
@@ -602,7 +621,8 @@ class OffPolicy(NativeModel):
                 actor_loss = -q.mean() + options["action_l2"] * actions.square().mean()
             ploss, pnorm = optimize(
                 self.optimizers["actors"], actor_loss,
-                self.actors.parameters(), args.grad_clip)
+                self.actors.parameters(),
+                args.grad_clip if self.sac else options["grad_clip"])
         finally:
             self.q.requires_grad_(True)
 

@@ -479,10 +479,15 @@ def evaluate_marl(
     env = env_factory(task if task is not None else env_id, **env_kwargs)
 
     episodes: List[Dict[str, Any]] = []
+    joint_action_computer = None
     try:
         agent_ids = list(env.possible_agents)
         if action_computer is None:
-            action_computer = DeterministicActionComputer(algorithm, agent_ids)
+            candidate = getattr(algorithm, "compute_joint_actions", None)
+            if callable(candidate):
+                joint_action_computer = candidate
+            else:
+                action_computer = DeterministicActionComputer(algorithm, agent_ids)
 
         for episode_index in range(num_episodes):
             episode_seed = int(eval_seed + episode_index * 10_000)
@@ -495,17 +500,48 @@ def evaluate_marl(
             while env.agents:
                 acting_agents = list(env.agents)
                 actions: Dict[str, np.ndarray] = {}
-                for agent in acting_agents:
+                if joint_action_computer is not None:
                     try:
-                        actions[agent] = action_computer(
-                            agent, observations[agent], env.action_space(agent)
+                        actions = joint_action_computer(
+                            observations,
+                            {agent: env.action_space(agent) for agent in acting_agents},
                         )
                     except Exception as exc:
                         raise RuntimeError(
                             "MARL evaluation inference failed at "
                             f"episode={episode_index}, step={episode_length}, "
-                            f"agent={agent!r}: {exc}"
+                            f"joint_backend=native: {exc}"
                         ) from exc
+                    if set(actions) != set(acting_agents):
+                        raise RuntimeError(
+                            "joint inference action keys do not match active agents: "
+                            f"actions={sorted(actions)}, active={sorted(acting_agents)}"
+                        )
+                    for agent, action in actions.items():
+                        action = np.asarray(action, dtype=np.float32)
+                        space = env.action_space(agent)
+                        if tuple(action.shape) != tuple(space.shape):
+                            raise RuntimeError(
+                                f"agent {agent!r} action shape {tuple(action.shape)} "
+                                f"!= {tuple(space.shape)}"
+                            )
+                        if not np.isfinite(action).all() or not space.contains(action):
+                            raise RuntimeError(
+                                f"agent {agent!r} produced an invalid joint action"
+                            )
+                        actions[agent] = action
+                else:
+                    for agent in acting_agents:
+                        try:
+                            actions[agent] = action_computer(
+                                agent, observations[agent], env.action_space(agent)
+                            )
+                        except Exception as exc:
+                            raise RuntimeError(
+                                "MARL evaluation inference failed at "
+                                f"episode={episode_index}, step={episode_length}, "
+                                f"agent={agent!r}: {exc}"
+                            ) from exc
 
                 observations, rewards, terminations, truncations, infos = env.step(
                     actions
@@ -565,6 +601,10 @@ def evaluate_marl(
     backends = getattr(action_computer, "backends", None)
     if backends is not None:
         result["inference_backends"] = dict(backends)
+    elif joint_action_computer is not None:
+        result["inference_backends"] = {
+            agent: "native_joint" for agent in agent_ids
+        }
     return result
 
 
@@ -583,13 +623,31 @@ def _checkpoint_result_path(result: Any) -> str:
     )
 
 
-def save_algorithm_checkpoint(algorithm: Any, checkpoint_dir: Path) -> str:
-    """Save an Algorithm checkpoint using the current or legacy RLlib API."""
+def save_algorithm_checkpoint(
+    algorithm: Any,
+    checkpoint_dir: Path,
+    *,
+    native_replay_transitions: Optional[int] = None,
+) -> str:
+    """Save an Algorithm checkpoint using the current or legacy RLlib API.
+
+    ``native_replay_transitions`` is intentionally explicit.  ``None`` keeps
+    the historical/native full-state behaviour, ``0`` writes a lightweight
+    policy checkpoint, and a positive value retains only the newest replay
+    tail for recovery.  RLlib checkpoints never receive this native-only
+    argument.
+    """
     checkpoint_dir = Path(checkpoint_dir).resolve()
     checkpoint_dir.parent.mkdir(parents=True, exist_ok=True)
     save_to_path = getattr(algorithm, "save_to_path", None)
     if callable(save_to_path):
-        result = save_to_path(str(checkpoint_dir))
+        if native_replay_transitions is None:
+            result = save_to_path(str(checkpoint_dir))
+        else:
+            result = save_to_path(
+                str(checkpoint_dir),
+                replay_transitions=int(native_replay_transitions),
+            )
     else:
         save = getattr(algorithm, "save", None)
         if not callable(save):
@@ -614,7 +672,7 @@ def checkpoint_reference(checkpoint_path: Path, run_dir: Path) -> str:
 
 
 def _validate_checkpoint_path(path: Path) -> Path:
-    """Validate a complete RLlib Algorithm checkpoint, not just any component."""
+    """Validate a complete RLlib or OmniPiano-native checkpoint."""
     path = Path(path).expanduser().resolve()
     if not path.exists():
         raise FileNotFoundError(f"checkpoint path does not exist: {path}")
@@ -625,6 +683,20 @@ def _validate_checkpoint_path(path: Path) -> Path:
         raise FileNotFoundError(
             f"not a recognized legacy RLlib Algorithm checkpoint file: {path}"
         )
+    native_state = path / "state.pt"
+    native_marker = path / "native_checkpoint.json"
+    if native_state.is_file() and native_marker.is_file():
+        try:
+            marker = json.loads(native_marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FileNotFoundError(
+                f"invalid native checkpoint metadata: {native_marker}"
+            ) from exc
+        if marker.get("format") != "omnipiano-native-v1":
+            raise FileNotFoundError(
+                f"unsupported native checkpoint format in {native_marker}"
+            )
+        return path
     state_markers = [
         name for name in ALGORITHM_STATE_MARKERS if (path / name).is_file()
     ]

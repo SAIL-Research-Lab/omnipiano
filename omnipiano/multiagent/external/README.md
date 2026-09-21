@@ -14,11 +14,9 @@ claim a reviewer can check in one command instead of taking on trust.
    no changed constants. If the adapter has to make a choice (a default the
    upstream config supplied), it documents the choice in a comment.
 
-3. **Nothing here is imported by the training path unless it is pure torch.**
-   `external/mat/*` and `external/facmac/*` hold `nn.Module`s and ARE imported at
-   runtime -- exactly like MapAnything vendors VGGT and DINOv2 layers. The rest is
-   test-only: HARL, PyMARL and on-policy each pin their own gym/sacred versions
-   and would fight our `ray[rllib]` install.
+3. **Nothing here is imported by the training path unless it is pure torch and
+   redistributable.** The rest is test-only: HARL, PyMARL and on-policy each pin
+   their own gym/sacred versions and would fight our `ray[rllib]` install.
 
 ## Why not just run HARL / PyMARL end to end?
 
@@ -29,12 +27,12 @@ HAPPO-vs-MAPPO difference could no longer be attributed to the update rule. We
 therefore implement the update rule in our own Learner and prove numerical
 agreement with the reference (see `omnipiano/tests/test_marl_happo_oracle.py`).
 
-For FACMAC and MASAC that trade is reversed: they need a replay buffer, target
-networks and an off-policy loop that our PPO trainer does not have, and RLlib's
-new API stack has open issues combining multi-agent with replay buffers. Running
-them in their own framework against a shared env wrapper is the cheaper path.
-The cost -- different bookkeeping -- must be stated in the paper, and the
-comparison restricted to the environment-step axis.
+FACMAC uses OmniPiano's native joint-transition backend: it keeps the same task,
+sampler, evaluation, metrics and checkpoint lifecycle as the other baselines,
+but supplies the replay buffer, target networks and off-policy update that PPO
+does not have. The upstream oxwhirl repository has no licence, so its code is
+not copied here. Our clean-room implementation pins the read-only reference
+commit in every configuration and has architecture/equation/gradient tests.
 
 ## Provenance
 
@@ -42,5 +40,5 @@ comparison restricted to the environment-step axis.
 |---|---|---|---|---|
 | `harl/` | PKU-MARL/HARL | see PROVENANCE.json | see UPSTREAM_LICENSE | HAPPO + HASAC oracle |
 | `mat/` | PKU-MARL/Multi-Agent-Transformer | " | " | MAT module (runtime) + oracle |
-| `facmac/` | oxwhirl/facmac | " | " | QMIX mixer (runtime) |
+| FACMAC (not vendored) | oxwhirl/facmac | `d7e62b8...` | no licence found | read-only specification/oracle |
 | `on_policy/` | marlbenchmark/on-policy | " | " | MAPPO retro-oracle |

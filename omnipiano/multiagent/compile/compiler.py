@@ -81,6 +81,7 @@ def compile_experiment(
         "schema_version",
         "description",
         *CONFIG_FIELDS,
+        "native",
         "smoke_test_overrides",
         "algorithm_overrides",
     }
@@ -113,10 +114,16 @@ def compile_experiment(
                 if not isinstance(raw[section], dict):
                     raise ValueError(f"{section} must be an object")
                 inherited.setdefault(section, {}).update(raw[section])
-        for key in ("description", "smoke_test_overrides", "algorithm_overrides"):
+        for key in (
+            "description", "smoke_test_overrides", "algorithm_overrides", "native"
+        ):
             if key in raw:
                 if key == "description":
                     inherited[key] = raw[key]
+                elif key == "native":
+                    if not isinstance(raw[key], dict):
+                        raise ValueError("native must be an object")
+                    inherited.setdefault(key, {}).update(raw[key])
                 else:
                     if not isinstance(raw[key], dict):
                         raise ValueError(f"{key} must be an object")
@@ -218,8 +225,17 @@ def compile_experiment(
         raise ValueError(
             f"{config_path}: algorithm_overrides.{selected_algo} must be an object"
         )
+    selected_native = selected_overrides.get("native", {})
+    if not isinstance(selected_native, Mapping):
+        raise ValueError(
+            f"{config_path}: algorithm_overrides.{selected_algo}.native "
+            "must be an object"
+        )
+    selected_training_overrides = {
+        key: value for key, value in selected_overrides.items() if key != "native"
+    }
     _merge_sections(
-        selected_overrides,
+        selected_training_overrides,
         label=f"algorithm_overrides.{selected_algo}",
     )
     defaults["algo"] = selected_algo
@@ -242,6 +258,12 @@ def compile_experiment(
     if task is not None and "env_id" in smoke_overrides:
         raise ValueError("smoke_test_overrides cannot change env_id for a custom task")
 
+    shared_native = raw.get("native", {})
+    if not isinstance(shared_native, Mapping):
+        raise ValueError(f"{config_path}: native must be an object")
+    native_options = dict(shared_native)
+    native_options.update(selected_native)
+
     request = ExperimentRequest(
         schema_version=version,
         description=str(raw.get("description", "")),
@@ -260,6 +282,7 @@ def compile_experiment(
         algorithm=selected_algo,
         values=dict(defaults),
         smoke_test_overrides=dict(smoke_overrides),
+        native_options=native_options,
         task=task,
     )
 

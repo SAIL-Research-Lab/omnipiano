@@ -1,5 +1,13 @@
 # algos/facmac.py
-"""FACMAC: factored centralised critic + centralised deterministic policy gradient."""
+"""FACMAC: factored centralised critic + joint deterministic policy gradient.
+
+The official repository is an old PyMARL application, not an importable Python
+library.  OmniPiano therefore keeps the sampler/evaluator shared with the other
+baselines and implements the paper's continuous-control update in the native
+backend.  The implementation is in :mod:`algos._native`; the QMIX factorisation
+is isolated in :mod:`algos._facmac_mixer` and regression tested against the
+equations and tensor layout at the pinned upstream commit below.
+"""
 
 from __future__ import annotations
 
@@ -31,9 +39,10 @@ register_algo(
         needs_global_state=True,
         rl_module="joint_actor_critic",
         execution="decentralized",
+        backend="native",
         rl_module_class="omnipiano.multiagent.algos._facmac_mixer:FactoredMixer",
-        status="planned",
-        blocking=_OFF_POLICY_BLOCKING,
+        status="supported",
+        blocking="",
         reference="Peng et al. (2021), FACMAC: Factored multi-agent centralised "
                   "policy gradients, NeurIPS (arXiv:2003.06709)",
         notes=("Targets the C and S domains: factorisation keeps the critic's "
@@ -44,6 +53,13 @@ register_algo(
                "area. Execution stays decentralized (deterministic per-agent "
                "actors), so unlike MAT it IS comparable to IPPO/MAPPO at "
                "execution time -- but only on the env-step axis, since its "
-               "wall-clock per env step is ~50x PPO's."),
+               "wall-clock per env step is higher than PPO's. OmniPiano uses "
+               "independent actor/utility networks because SCHO permits "
+               "heterogeneous observation and action dimensions; the FACMAC "
+               "paper does not require parameter sharing. The optimizer, "
+               "400x400 ReLU networks, QMIX mixer, replay, exploration and "
+               "target-update defaults follow oxwhirl/facmac commit "
+               "d7e62b8c51a5a77330de85f83c10553d0bd18fe5; gamma=0.8 and the "
+               "10M environment-step protocol are OmniPiano task choices."),
     )
 )

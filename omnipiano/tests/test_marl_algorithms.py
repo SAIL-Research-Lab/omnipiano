@@ -29,14 +29,14 @@ def test_expected_algorithms_are_registered():
 def test_only_validated_algorithms_are_supported():
     """A 'supported' algo must be launchable with no extra flags."""
     assert set(list_algos(status="supported")) == {
-        "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic"}
+        "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic", "facmac"}
     for name in list_algos(status="supported"):
         get_algo(name).assert_launchable()
 
 
 def test_unimplemented_algorithms_refuse_to_launch():
     # ppo-monolithic joins this set: num_agents is not an env_config knob here.
-    for name in ("mat", "facmac", "masac", "ppo-monolithic"):
+    for name in ("mat", "masac", "ppo-monolithic"):
         with pytest.raises(ValueError, match="NOT IMPLEMENTED"):
             get_algo(name).assert_launchable(allow_experimental=True)
 

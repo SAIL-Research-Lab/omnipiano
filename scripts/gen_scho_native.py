@@ -49,11 +49,18 @@ for source, original in originals:
         cfg["compute"]["num_workers"] = 3
         cfg["algorithm_overrides"] = {}
         cfg["native"] = {}
+        readiness = (
+            "supported" if algo == "facmac" else "validation-pending"
+        )
         cfg["wandb"].update(
             name=name, group=f"{suite}_{setting}_{algo}",
-            tags=f"{suite},{setting},{algo},seed{seed},10M,native,validation-pending",
+            tags=f"{suite},{setting},{algo},seed{seed},10M,native,{readiness}",
             notes=(cfg["wandb"].get("notes") or "")
-                  + "; native backend; independent validation required",
+                  + (
+                      "; native backend; FACMAC readiness gates passed"
+                      if algo == "facmac"
+                      else "; native backend; independent validation required"
+                  ),
         )
         path = runs / f"{index:02d}_{name}.json"
         path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")

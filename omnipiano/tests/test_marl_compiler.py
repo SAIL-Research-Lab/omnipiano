@@ -16,6 +16,7 @@ REGISTERED_ALGORITHMS = (
     "ippo-rllib-module",
     "mappo",
     "mappo-own-critic",
+    "facmac",
 )
 
 
@@ -39,6 +40,7 @@ def test_canonical_config_compiles_without_changing_any_default() -> None:
         for json_key, destination in fields.items():
             assert compiled.values[destination] == raw[section][json_key]
     assert dict(compiled.smoke_test_overrides) == raw["smoke_test_overrides"]
+    assert dict(compiled.native_options) == {}
 
 
 def test_selected_algorithm_override_precedes_shared_defaults(
@@ -59,6 +61,24 @@ def test_selected_algorithm_override_precedes_shared_defaults(
     assert compiled.values["algo"] == "mappo"
     assert compiled.values["num_epochs"] == 7
     assert compiled.request.snapshot()["experiment"]["algo"] == "ippo"
+
+
+def test_facmac_native_options_are_selected_and_can_be_overridden(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["native"] = {"noise_std": 0.2}
+    path = tmp_path / "facmac.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    compiled = _compile(path, algo="facmac")
+
+    assert compiled.native_options["reference_commit"].startswith("d7e62b8")
+    assert compiled.native_options["actor_hidden_sizes"] == [400, 400]
+    # Algorithm-specific settings have higher precedence than shared native
+    # settings, preventing a generic block from silently changing a baseline.
+    assert compiled.native_options["noise_std"] == 0.1
 
 
 def test_legacy_config_without_reward_keeps_zero_penalty(tmp_path: Path) -> None:

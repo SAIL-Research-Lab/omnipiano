@@ -286,13 +286,52 @@ class Replay:
         self.size = min(self.capacity, self.size + count)
 
     def sample(self, size):
-        indices = np.random.randint(0, self.size, size=size)
+        if size > self.size:
+            raise ValueError(
+                f"cannot sample {size} unique transitions from replay size {self.size}"
+            )
+        # The official FACMAC replay samples a batch without replacement.
+        indices = np.random.choice(self.size, size=size, replace=False)
         return {name: array[indices] for name, array in self.arrays.items()}
 
-    def state(self):
+    def state(self, max_transitions=None):
+        if max_transitions is not None and (
+            type(max_transitions) is not int or max_transitions < 0
+        ):
+            raise ValueError("max_transitions must be a non-negative integer or None")
+        count = self.size if max_transitions is None else min(
+            self.size, max_transitions
+        )
+        if count == self.size:
+            # Preserve the physical ring layout for an exact full-buffer
+            # restore, including the next-overwrite cursor.
+            arrays = {
+                name: array[:self.size].copy()
+                for name, array in self.arrays.items()
+            }
+            position = self.position
+        else:
+            # A compact recovery checkpoint keeps the newest transitions in
+            # chronological order.  Uniform sampling is order-independent and
+            # future writes continue from the end of this retained tail.
+            if self.size < self.capacity:
+                indices = np.arange(self.size - count, self.size)
+            else:
+                indices = (
+                    np.arange(self.position - count, self.position)
+                    % self.capacity
+                )
+            arrays = {
+                name: array[indices].copy()
+                for name, array in self.arrays.items()
+            }
+            position = count % self.capacity
         return {
-            "position": self.position, "size": self.size,
-            "arrays": {name: array[:self.size] for name, array in self.arrays.items()},
+            "position": position,
+            "size": count,
+            "original_size": self.size,
+            "truncated": count < self.size,
+            "arrays": arrays,
         }
 
     def restore(self, state):

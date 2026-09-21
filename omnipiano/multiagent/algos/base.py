@@ -49,6 +49,7 @@ FAMILIES = (
 # is a DIFFERENT DEPLOYMENT CLASS: it must not be presented as a drop-in
 # comparison against IPPO/MAPPO without saying so out loud.
 EXECUTIONS = ("decentralized", "sequential_autoregressive", "centralized")
+BACKENDS = ("rllib", "native")
 # Honest gate.  "planned" specs are printed, cited and documented, but refused
 # by train.py -- so nobody burns three GPU-days on a stub.
 STATUSES = ("supported", "experimental", "planned")
@@ -89,6 +90,10 @@ class AlgoSpec:
     family: str = "on_policy_ppo"
     critic_head: str = "v"
     execution: str = "decentralized"
+    # ``rllib`` is the PPO stack; ``native`` is the joint-transition stack used
+    # by algorithms whose replay/target-network semantics RLlib cannot express
+    # without changing the benchmark sampler.
+    backend: str = "rllib"
     status: str = "supported"
     # Dotted paths, resolved by train.py only when this algo is actually run.
     learner_class: Optional[str] = None
@@ -109,6 +114,7 @@ class AlgoSpec:
             (self.rl_module, RL_MODULES, "rl_module"),
             (self.family, FAMILIES, "family"),
             (self.execution, EXECUTIONS, "execution"),
+            (self.backend, BACKENDS, "backend"),
             (self.status, STATUSES, "status"),
         ):
             if value not in allowed:
@@ -172,6 +178,10 @@ class AlgoSpec:
     def is_decentralized_execution(self) -> bool:
         return self.execution == "decentralized"
 
+    @property
+    def is_native(self) -> bool:
+        return self.backend == "native"
+
     def resolve_learner_class(self) -> Optional[Any]:
         return resolve_dotted(self.learner_class) if self.learner_class else None
 
@@ -191,10 +201,10 @@ class AlgoSpec:
                 f"  Caveat: {self.blocking}\n"
                 f"  Pass --allow-experimental to run it anyway (and do NOT put "
                 f"the numbers in a paper before the validation run below passes).")
-        if not self.is_on_policy:
+        if not self.is_on_policy and not self.is_native:
             raise ValueError(
                 f"--algo {self.name!r} is family={self.family!r}; the current "
-                f"trainer builds a PPOConfig and cannot run it.\n"
+                f"backend={self.backend!r} cannot run it.\n"
                 f"  Blocking work: {self.blocking}")
 
     def metadata(self) -> Dict[str, Any]:
@@ -206,6 +216,7 @@ class AlgoSpec:
             "critic_input": self.critic_input,
             "critic_head": self.critic_head,
             "execution": self.execution,
+            "backend": self.backend,
             "rl_module": self.rl_module,
             "needs_global_state": self.needs_global_state,
             "status": self.status,

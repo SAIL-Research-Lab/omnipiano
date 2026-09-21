@@ -97,6 +97,37 @@
     "ippo": {},
     "mappo": {},
     "mappo-own-critic": {},
+    "facmac": {
+      "compute": {
+        "num_workers": 3,
+        "ray_num_cpus": null
+      },
+      "native": {
+        "variant": "facmac_continuous_qmix_v1",
+        "reference_commit": "d7e62b8c51a5a77330de85f83c10553d0bd18fe5",
+        "parameter_sharing": false,
+        "actor_hidden_sizes": [400, 400],
+        "utility_hidden_sizes": [400, 400],
+        "actor_lr": 0.001,
+        "critic_lr": 0.001,
+        "adam_epsilon": 0.01,
+        "grad_clip": 0.5,
+        "replay_capacity": 1000000,
+        "batch_size": 100,
+        "buffer_warmup": 1000,
+        "random_action_steps": 10000,
+        "collect_steps": 24,
+        "updates_per_env_step": 1.0,
+        "tau": 0.001,
+        "noise_std": 0.1,
+        "action_l2": 0.001,
+        "mixer_embed": 64,
+        "hypernet_embed": 64,
+        "monotonic": true,
+        "max_replay_gib": 32.0,
+        "checkpoint_replay_transitions": 50000
+      }
+    },
     "ippo-rllib-module": {
       "ppo": {
         "vf_clip_param": 1000.0

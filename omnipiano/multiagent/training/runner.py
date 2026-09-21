@@ -25,6 +25,7 @@ import json
 import math
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -106,6 +107,7 @@ def _prepare_run_dir(requested: Optional[str], algo: str, env_id: str, seed: int
         "run_config.json", "progress.jsonl", "periodic_eval.jsonl",
         "eval_summary.json", "checkpoint_path.txt", "final_checkpoint_path.txt",
         "latest_checkpoint_path.txt", "checkpoints.jsonl", "videos.jsonl", "videos",
+        "recovery", "latest_recovery_checkpoint.json",
     )
     existing = [n for n in protected if (run_dir / n).exists()]
     if existing:
@@ -235,6 +237,7 @@ def _build_run_config(
         "effective_config": {
             # --- algorithm identity ---
             "algo": spec.name,
+            "backend": spec.backend,
             "critic_input": spec.critic_input,
             "rl_module": spec.rl_module,
             "learner_class": (
@@ -410,6 +413,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "gpu_or_cluster_started": False,
         }, indent=2, sort_keys=True))
         return 0
+    if args.eval_native:
+        from omnipiano.multiagent.training.native import evaluate_saved
+        return evaluate_saved(args)
     proto = BenchmarkProtocolConfig()
     run_dir = _prepare_run_dir(args.run_dir, spec.name, args.env_id, args.seed)
     run_config = _build_run_config(args, spec, proto, run_dir)
@@ -475,17 +481,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     write_json(run_dir / "run_config.json", run_config)
 
+    ray = None
     try:
         import gymnasium
         import pettingzoo
-        import ray
         import torch
+        if not spec.is_native:
+            import ray as ray_module
+            ray = ray_module
     except ImportError as exc:
         write_json(run_dir / "failure.json",
                    {"stage": "dependency_import", "error": f"{type(exc).__name__}: {exc}"})
         wandb_run.finish(exit_code=1)
-        raise RuntimeError("multi-agent training requires ray[rllib], PettingZoo "
-                          "and torch: pip install -e '.[marl]'") from exc
+        dependency = (
+            "PettingZoo and torch" if spec.is_native
+            else "ray[rllib], PettingZoo and torch"
+        )
+        raise RuntimeError(
+            f"multi-agent {spec.backend} training requires {dependency}: "
+            "pip install -e '.[marl]'"
+        ) from exc
 
     if args.num_gpus_per_learner > 0 and not torch.cuda.is_available():
         wandb_run.finish(exit_code=1)
@@ -494,7 +509,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "Pass --num-gpus-per-learner 0, or check CUDA_VISIBLE_DEVICES."
         )
 
-    register_rllib_envs()
+    if not spec.is_native:
+        register_rllib_envs()
 
     agents, obs_spaces, act_spaces, layouts = probe_agent_spaces(
         args.env_id, args.seed, spec.needs_global_state,
@@ -507,27 +523,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "action_spaces": {a: _space_metadata(act_spaces[a]) for a in agents},
         "obs_layout": {a: {k: list(v) for k, v in layouts[a].items()} for a in agents},
         "library_versions": {
-            "ray": ray.__version__, "torch": torch.__version__,
+            "ray": (ray.__version__ if ray is not None else None),
+            "torch": torch.__version__,
             "gymnasium": gymnasium.__version__,
             "pettingzoo": getattr(pettingzoo, "__version__", "unknown"),
         },
     })
-    if ray.__version__ != RLLIB_TARGET_VERSION:
+    if ray is not None and ray.__version__ != RLLIB_TARGET_VERSION:
         print(f"[{tag} warning] targets ray[rllib]=={RLLIB_TARGET_VERSION}, "
               f"found {ray.__version__} (recorded in run_config.json)")
     write_json(run_dir / "run_config.json", run_config)
 
-    config, learner_cls = build_ppo_config(
-        args, spec, agents, obs_spaces, act_spaces, layouts
-    )
+    if spec.is_native:
+        from omnipiano.multiagent.training.native import build_native_config
+        config, learner_cls = build_native_config(
+            args, spec, agents, obs_spaces, act_spaces, layouts
+        )
+    else:
+        config, learner_cls = build_ppo_config(
+            args, spec, agents, obs_spaces, act_spaces, layouts
+        )
 
     # Record what was ACTUALLY installed, not what the branch implies.
+    default_learner = (
+        "OmniPiano native joint learner"
+        if spec.is_native else "RLlib default PPOTorchLearner"
+    )
     run_config["effective_config"]["learner_class"] = (
-        learner_cls.__name__ if learner_cls is not None
-        else "RLlib default PPOTorchLearner"
+        learner_cls.__name__ if learner_cls is not None else default_learner
     )
     run_config["effective_config"]["learner_class_module"] = (
-        learner_cls.__module__ if learner_cls is not None else "ray.rllib"
+        learner_cls.__module__ if learner_cls is not None
+        else ("omnipiano.multiagent.algos._native" if spec.is_native else "ray.rllib")
     )
     print(f"[{tag}] learner_class={run_config['effective_config']['learner_class']}")
     write_json(run_dir / "run_config.json", run_config)
@@ -604,18 +631,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
 
     try:
-        ray.init(
-            ignore_reinit_error=True,
-            log_to_driver=bool(args.ray_log_to_driver),
-            num_cpus=args.ray_num_cpus,
-            include_dashboard=False,
-        )
-        ray_started = True
+        if ray is not None:
+            ray.init(
+                ignore_reinit_error=True,
+                log_to_driver=bool(args.ray_log_to_driver),
+                num_cpus=args.ray_num_cpus,
+                include_dashboard=False,
+            )
+            ray_started = True
         build = getattr(config, "build_algo", None)
         algo = build() if callable(build) else config.build()
-        print(f"[{tag}] RLlib PPO built; starting training")
+        if spec.is_native:
+            run_config["effective_config"] = algo.effective_config()
+            run_config["effective_config"]["learner_class"] = default_learner
+            run_config["effective_config"]["learner_class_module"] = (
+                "omnipiano.multiagent.algos._native"
+            )
+            write_json(run_dir / "run_config.json", run_config)
+            print(f"[{tag}] native {spec.display_name} learner built; starting training")
+        else:
+            print(f"[{tag}] RLlib PPO built; starting training")
 
-        if spec.rl_module == "ctde":
+        if not spec.is_native and spec.rl_module == "ctde":
             # Snapshot the realized actor/critic parameter split so an
             # IPPO/MAPPO pair can be verified as architecturally matched
             # after the fact.
@@ -684,11 +721,47 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     if total_steps >= args.total_steps:
                         continue  # the final save below supersedes it
                     path = save_algorithm_checkpoint(
-                        algo, run_dir / "checkpoints" / f"step_{total_steps:09d}")
+                        algo,
+                        run_dir / "checkpoints" / f"step_{total_steps:09d}",
+                        native_replay_transitions=(0 if spec.is_native else None),
+                    )
                     ref = checkpoint_reference(path, run_dir)
                     record = {"scheduled_env_step": int(scheduled),
                               "actual_env_step": int(total_steps),
                               "checkpoint_path": ref}
+                    recovery_tail = int(
+                        getattr(algo, "options", {}).get(
+                            "checkpoint_replay_transitions", 0
+                        )
+                    )
+                    if spec.is_native and recovery_tail > 0:
+                        recovery_root = run_dir / "recovery"
+                        recovery_path = save_algorithm_checkpoint(
+                            algo,
+                            recovery_root / f"step_{total_steps:09d}",
+                            native_replay_transitions=recovery_tail,
+                        )
+                        recovery_ref = checkpoint_reference(
+                            recovery_path, run_dir
+                        )
+                        record["recovery_checkpoint_path"] = recovery_ref
+                        record["recovery_replay_transitions"] = min(
+                            int(getattr(algo.replay, "size", 0)), recovery_tail
+                        )
+                        write_json(
+                            run_dir / "latest_recovery_checkpoint.json",
+                            {
+                                "actual_env_step": int(total_steps),
+                                "checkpoint_path": recovery_ref,
+                                "replay_transitions": record[
+                                    "recovery_replay_transitions"
+                                ],
+                            },
+                        )
+                        resolved_recovery = Path(recovery_path).resolve()
+                        for old in recovery_root.glob("step_*"):
+                            if old.resolve() != resolved_recovery:
+                                shutil.rmtree(old)
                     append_jsonl(run_dir / "checkpoints.jsonl", record)
                     periodic_ckpts.append(record)
                     (run_dir / "latest_checkpoint_path.txt").write_text(ref + "\n",
@@ -697,7 +770,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
             if total_steps >= args.total_steps and final_ckpt is None:
                 final_ckpt = save_algorithm_checkpoint(
-                    algo, run_dir / "checkpoints" / "final")
+                    algo,
+                    run_dir / "checkpoints" / "final",
+                    native_replay_transitions=(0 if spec.is_native else None),
+                )
                 final_ckpt_ref = checkpoint_reference(final_ckpt, run_dir)
                 for name in ("final_checkpoint_path.txt",
                              "latest_checkpoint_path.txt",
@@ -782,6 +858,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if final_eval is None:
             raise RuntimeError("training completed without a final evaluation")
 
+        cumulative_iterations = (
+            int(getattr(algo, "iterations", iterations))
+            if spec.is_native else int(iterations)
+        )
         eval_summary = {
             "schema_version": 2,
             "algo": spec.name,
@@ -800,7 +880,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "requested_total_env_steps": int(args.total_steps),
             "actual_total_env_steps": int(total_steps),
             "trained_env_steps": int(total_steps),
-            "training_iterations": int(iterations),
+            "training_iterations": cumulative_iterations,
+            "iterations_in_this_process": int(iterations),
             "num_eval_eps": int(args.num_eval_eps),
             "num_eval_episodes": int(args.num_eval_eps),
             "checkpoint_path": final_ckpt_ref,
