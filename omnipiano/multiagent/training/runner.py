@@ -54,6 +54,7 @@ from omnipiano.multiagent.training.runtime import (
     crossed_eval_targets,
     evaluate_marl,
     extract_env_steps,
+    next_periodic_target,
     save_algorithm_checkpoint,
     write_json,
 )
@@ -669,7 +670,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 print(f"[{tag} warning] could not snapshot CTDE specs: {exc}")
 
-        previous = -1
+        # Native checkpoints restore lifetime counters. Continue periodic
+        # schedules after the restored point; restarting them from step zero
+        # would make the first post-resume iteration cross every old target.
+        restored_steps = (
+            int(getattr(algo, "env_steps", 0)) if spec.is_native else 0
+        )
+        if restored_steps:
+            total_steps = restored_steps
+            next_eval = next_periodic_target(total_steps, args.eval_freq)
+            if next_ckpt is not None:
+                next_ckpt = next_periodic_target(
+                    total_steps, args.checkpoint_freq
+                )
+
+        session_start_steps = total_steps
+        previous = total_steps
         stalls = 0
         while total_steps < args.total_steps:
             result = algo.train()
@@ -701,7 +717,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             wandb_run.log_train(total_steps, row, result)
             if iterations == 1 or iterations % args.log_every_iters == 0:
                 elapsed = max(time.time() - start, 1e-9)
-                sps = total_steps / elapsed
+                sps = (total_steps - session_start_steps) / elapsed
                 eta_h = ((args.total_steps - total_steps) / sps / 3600.0
                          if sps > 0 else float("inf"))
                 print(f"[{tag} iter {iterations:5d}] env_steps={total_steps:>10,}  "

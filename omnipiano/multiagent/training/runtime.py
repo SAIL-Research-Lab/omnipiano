@@ -175,6 +175,23 @@ def crossed_eval_targets(
     return crossed, next_eval_step
 
 
+def next_periodic_target(
+    current_env_steps: int,
+    frequency_env_steps: int,
+) -> int:
+    """Return the first periodic threshold strictly after the current step.
+
+    Resumed native runs restore a lifetime environment-step counter. Their
+    evaluation and checkpoint schedules must skip thresholds already reached
+    by the source checkpoint instead of replaying the schedule from step zero.
+    """
+    if current_env_steps < 0:
+        raise ValueError("current_env_steps must be non-negative")
+    if frequency_env_steps <= 0:
+        raise ValueError("frequency_env_steps must be positive")
+    return (current_env_steps // frequency_env_steps + 1) * frequency_env_steps
+
+
 def _numeric_metrics(info: Mapping[str, Any]) -> Dict[str, float]:
     metrics: Dict[str, float] = {}
     for key, value in info.items():

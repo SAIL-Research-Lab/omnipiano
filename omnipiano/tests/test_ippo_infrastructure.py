@@ -200,6 +200,16 @@ class IPPOInfrastructureTest(unittest.TestCase):
         self.assertEqual(targets, list(range(50_000, 5_000_001, 50_000)))
         self.assertEqual(len(targets), 100)
 
+    def test_resumed_periodic_schedule_skips_completed_thresholds(self):
+        self.assertEqual(common.next_periodic_target(0, 1_000), 1_000)
+        self.assertEqual(common.next_periodic_target(1_000, 1_000), 2_000)
+        self.assertEqual(common.next_periodic_target(4_008, 1_000), 5_000)
+        self.assertEqual(common.next_periodic_target(4_008, 5_000), 5_000)
+        with self.assertRaises(ValueError):
+            common.next_periodic_target(-1, 1_000)
+        with self.assertRaises(ValueError):
+            common.next_periodic_target(0, 0)
+
     def test_extract_env_steps_rejects_ambiguous_agent_counter(self):
         self.assertEqual(
             common.extract_env_steps({"num_env_steps_sampled_lifetime": 123}), 123
