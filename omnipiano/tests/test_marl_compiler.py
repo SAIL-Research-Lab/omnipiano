@@ -16,6 +16,7 @@ REGISTERED_ALGORITHMS = (
     "ippo-rllib-module",
     "mappo",
     "mappo-own-critic",
+    "happo",
     "facmac",
 )
 
@@ -79,6 +80,14 @@ def test_facmac_native_options_are_selected_and_can_be_overridden(
     # Algorithm-specific settings have higher precedence than shared native
     # settings, preventing a generic block from silently changing a baseline.
     assert compiled.native_options["noise_std"] == 0.1
+
+
+def test_happo_selects_native_compute_without_unrelated_native_options() -> None:
+    path = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    compiled = _compile(path, algo="happo")
+
+    assert compiled.values["ray_num_cpus"] is None
+    assert dict(compiled.native_options) == {}
 
 
 def test_legacy_config_without_reward_keeps_zero_penalty(tmp_path: Path) -> None:

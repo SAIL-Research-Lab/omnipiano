@@ -22,9 +22,9 @@ VENDOR=omnipiano/multiagent/external
 # Pinning to a branch is a deliberate first step: you cannot know the right
 # commit before you have read the code. `vendor` freezes whatever you resolved.
 REPOS=(
-  # HAPPO oracle moved here from HARL: this is the ICLR 2022 paper's own code,
-  # i.e. the reference we actually cite, AND it is MIT. HARL is unlicensed.
-  # Default branch is `master` (it is a fork of cyanrain7/TRPO-in-MARL).
+  # The ICLR 2022 paper's own code, retained for historical cross-checking.
+  # HARL below is the maintained source for the executable HAPPO equation
+  # oracle because it makes continuous-action aggregation explicit (prod).
   "happo_iclr22|https://github.com/morning9393/HAPPO-HATRPO.git|master"
   "on_policy|https://github.com/marlbenchmark/on-policy.git|main"
   # Unlicensed upstreams: cloned for READING and for V3 (run in their own conda

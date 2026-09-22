@@ -22,14 +22,15 @@ from omnipiano.multiagent.algos._mat_module import MATDecoder, MATEncoder
 def test_expected_algorithms_are_registered():
     assert set(list_algos()) == {
         "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic",
-        "mappo-noshuffle", "happo", "happo-m1-control",
+        "happo",
         "mat", "facmac", "masac", "ppo-monolithic"}
 
 
 def test_only_validated_algorithms_are_supported():
     """A 'supported' algo must be launchable with no extra flags."""
     assert set(list_algos(status="supported")) == {
-        "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic", "facmac"}
+        "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic",
+        "happo", "facmac"}
     for name in list_algos(status="supported"):
         get_algo(name).assert_launchable()
 
@@ -39,13 +40,6 @@ def test_unimplemented_algorithms_refuse_to_launch():
     for name in ("mat", "masac", "ppo-monolithic"):
         with pytest.raises(ValueError, match="NOT IMPLEMENTED"):
             get_algo(name).assert_launchable(allow_experimental=True)
-
-
-def test_experimental_algorithms_need_an_explicit_flag():
-    for name in ("happo", "happo-m1-control", "mappo-noshuffle"):
-        with pytest.raises(ValueError, match="EXPERIMENTAL"):
-            get_algo(name).assert_launchable()
-        get_algo(name).assert_launchable(allow_experimental=True)
 
 
 def test_ippo_and_mappo_differ_only_in_the_critic():
@@ -79,32 +73,14 @@ def test_nondecentralized_execution_must_be_documented():
         assert len(spec.notes) > 80, f"{name}: caveat too short to be a warning"
 
 
-def test_happo_control_is_only_a_control():
-    """It must never be mistaken for a reportable baseline."""
-    spec = get_algo("happo-m1-control")
-    assert spec.status == "experimental"
-    assert "must never appear in a results table" in spec.blocking
-    assert dict(spec.training_overrides) == dict(
-        get_algo("mappo-noshuffle").training_overrides), (
-        "the control and its comparison partner must share the shuffle setting")
-
-
-def test_happo_learner_inherits_the_ctde_learner():
-    """Guards the failure mode where HAPPO silently loses MAPPO's learner.
-
-    Skipped without ray/torch so the registry tests stay import-light, but it
-    runs in CI and before any launch, which is when it matters.
-    """
-    ray = pytest.importorskip("ray")            # noqa: F841
-    from omnipiano.multiagent.algos.ppo_learner import OmniPianoPPOTorchLearner
-    for name in ("happo", "happo-m1-control"):
-        cls = get_algo(name).resolve_learner_class()
-        assert cls is not None, f"{name}: learner_class did not resolve"
-        assert issubclass(cls, OmniPianoPPOTorchLearner), (
-            f"{name}: {cls.__name__} must subclass OmniPianoPPOTorchLearner, or "
-            f"it silently drops the separate actor/critic optimizers, critic_lr, "
-            f"adam_epsilon, value normalisation and prediction-delta vf clipping "
-            f"-- five extra variables in a one-variable ablation")    
+def test_happo_uses_the_strict_native_joint_transition_backend():
+    spec = get_algo("happo")
+    assert spec.status == "supported"
+    assert spec.backend == "native"
+    assert spec.family == "on_policy_ppo_sequential"
+    assert spec.critic_input == "global"
+    assert spec.execution == "decentralized"
+    assert spec.learner_class is None
 
 
 def test_algo_table_renders():
@@ -139,10 +115,10 @@ def test_compound_factor_is_detached_from_the_graph():
     assert not m.requires_grad
 
 
-def test_compound_factor_is_clamped_both_ways():
-    huge = torch.full((4,), 50.0)
-    assert compound_log_factor_update(torch.zeros(4), huge, torch.zeros(4)).max() < 2.31
-    assert compound_log_factor_update(torch.zeros(4), -huge, torch.zeros(4)).min() > -2.31
+def test_compound_factor_is_not_changed_by_a_nonpaper_clamp():
+    after = torch.tensor([-3.0, 3.0])
+    actual = compound_log_factor_update(torch.zeros(2), after, torch.zeros(2))
+    torch.testing.assert_close(actual, after)
 
 
 def test_clipping_still_bounds_the_update_under_a_large_factor():

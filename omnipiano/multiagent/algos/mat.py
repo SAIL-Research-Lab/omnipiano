@@ -17,8 +17,8 @@ register_algo(
         needs_global_state=True,
         rl_module="joint_autoregressive",
         execution="sequential_autoregressive",
+        backend="native",
         rl_module_class="omnipiano.multiagent.algos._mat_module:MATEncoder",
-        learner_class="omnipiano.multiagent.algos._happo_learner:HAPPOTorchLearner",
         status="planned",
         blocking=(
             "The network exists and is unit tested; the RLlib integration does "

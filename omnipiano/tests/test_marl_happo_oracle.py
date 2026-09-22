@@ -1,14 +1,9 @@
-"""Numerically compare our HAPPO surrogate against the reference implementation.
+"""Numerically compare our HAPPO surrogate against HARL's implementation.
 
 This is the test that answers "is your HAPPO really HAPPO?" with a number
 instead of a paragraph. It runs on CPU in milliseconds and needs no MuJoCo, no
-Ray and no GPU -- so it can gate every launch.
-
-It SKIPS (never fails) when external/ has not been populated, so a fresh clone
-of this repo still has a green test suite; CI populates external/ and the skip
-turns into a real assertion.
-
-Marked `oracle`:  pytest -m oracle
+Ray and no GPU -- so it can gate every launch.  The independent reference
+transcription pins the exact HARL commit and ``prod`` aggregation convention.
 """
 
 from __future__ import annotations
@@ -18,15 +13,7 @@ import torch
 
 from omnipiano.multiagent.algos._happo_math import happo_surrogate, ppo_surrogate
 
-pytestmark = pytest.mark.oracle
-
-REFERENCE = pytest.importorskip(
-    "omnipiano.multiagent.external.harl._adapter",
-    reason=("HARL is not vendored. Run:\n"
-            "  bash scripts/fetch_external.sh clone harl\n"
-            "  bash scripts/fetch_external.sh locate harl\n"
-            "  bash scripts/fetch_external.sh vendor harl"),
-)
+from omnipiano.multiagent.external.harl_happo import _adapter as REFERENCE
 
 # Tolerance rationale: both sides are float32 and compute exp/clamp/min in a
 # different order, so bit-equality is not achievable. 1e-6 is ~100x the float32

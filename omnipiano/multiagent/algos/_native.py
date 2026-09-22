@@ -16,6 +16,10 @@ from torch.nn import functional as F
 from torch.distributions import Normal
 
 from omnipiano.multiagent.algos._facmac_mixer import FactoredMixer
+from omnipiano.multiagent.algos._happo_math import (
+    compound_log_factor_update,
+    happo_surrogate,
+)
 
 
 def ranges(widths):
@@ -220,52 +224,50 @@ class NativeModel(nn.Module):
 
 
 class PPO(NativeModel):
-    """Strict sequential HAPPO, or one centralized PPO policy."""
+    """Strict HAPPO, or the one-policy centralized PPO control.
+
+    HAPPO uses one independent actor per agent and one shared ``V(s)`` critic.
+    The shared critic is HARL's environment-provided-state (EP) formulation:
+    OmniPiano exposes one identical physical global state to every agent and a
+    shared team reward, so neither agent identity nor duplicated critics belong
+    in the value input.  The critic is deliberately updated only after every
+    actor has completed its sequential update.
+    """
     on_policy = True
 
     def __init__(self, args, meta, options):
         super().__init__(args, meta, options)
         self.central = args.algo == "ppo-monolithic"
-        self.nvalues = 1 if self.central else self.n
+        self.nactors = 1 if self.central else self.n
         actor_inputs = [self.sd] if self.central else self.od
         action_dims = [sum(self.ad)] if self.central else self.ad
         self.actors = nn.ModuleList(
             Gaussian(inp, dim, args) for inp, dim in zip(actor_inputs, action_dims))
-        critic_dim = self.sd if self.central else self.sd + self.n
-        self.critics = nn.ModuleList(
-            mlp(critic_dim, 1, args) for _ in range(self.nvalues))
-        self.normalizers = nn.ModuleList(
-            ValueNorm(args) for _ in range(self.nvalues))
-        self.register_buffer("agent_identity", torch.eye(self.n))
+        self.critic = mlp(self.sd, 1, args)
+        self.normalizer = ValueNorm(args)
 
     def build_optimizers(self):
-        for i in range(self.nvalues):
+        for i in range(self.nactors):
             self.optimizers[f"actor_{i}"] = torch.optim.Adam(
                 self.actors[i].parameters(), lr=self.args.lr,
                 eps=self.args.adam_epsilon)
-            self.optimizers[f"critic_{i}"] = torch.optim.Adam(
-                self.critics[i].parameters(), lr=self.args.critic_lr,
-                eps=self.args.adam_epsilon)
+        self.optimizers["critic"] = torch.optim.Adam(
+            self.critic.parameters(), lr=self.args.critic_lr,
+            eps=self.args.adam_epsilon)
 
     def actor_input(self, batch, i):
         return batch["s"] if self.central else self.local(batch, i)
 
-    def critic_input(self, batch, i):
-        if self.central:
-            return batch["s"]
-        identity = self.agent_identity[i].expand(len(batch["s"]), -1)
-        return torch.cat((batch["s"], identity), -1)
-
     def values(self, batch):
-        normalized = torch.stack([
-            critic(self.critic_input(batch, i)).squeeze(-1)
-            for i, critic in enumerate(self.critics)
-        ], -1)
-        values = torch.stack([
-            self.normalizers[i].denormalize(normalized[:, i])
-            for i in range(self.nvalues)
-        ], -1)
-        return normalized, values
+        normalized = self.critic(batch["s"]).squeeze(-1)
+        values = self.normalizer.denormalize(normalized)
+        # The rollout transport stores one value column per environment agent.
+        # EP HAPPO has one shared value, so columns are identical by design.
+        columns = 1 if self.central else self.n
+        return (
+            normalized[:, None].expand(-1, columns),
+            values[:, None].expand(-1, columns),
+        )
 
     def act(self, batch, deterministic=False):
         pairs = [
@@ -287,18 +289,47 @@ class PPO(NativeModel):
             distribution.entropy().sum(-1),
         )
 
+    def agent_update_order(self):
+        """Sample one fresh HAPPO permutation (split out for audit tests)."""
+        return torch.randperm(self.nactors).tolist()
+
     def learn(self, batch):
         args = self.args
         size = len(batch["a"])
-        advantages = batch["adv"]
-        advantages = (
-            advantages - advantages.mean(0, keepdim=True)
-        ) / (advantages.std(0, unbiased=False, keepdim=True) + 1e-5)
-        order = torch.randperm(self.nvalues).tolist()
-        log_factor = torch.zeros(size, device=batch["a"].device)
-        stats = {"agent_update_order": order}
+        if batch["lp"].shape != (size, self.nactors):
+            raise ValueError("HAPPO rollout log-probability layout changed")
+        expected_value_shape = (size, 1 if self.central else self.n)
+        for name in ("vn", "v", "nv", "adv", "ret"):
+            if batch[name].shape != expected_value_shape:
+                raise ValueError(
+                    f"HAPPO rollout {name!r} has shape {tuple(batch[name].shape)}, "
+                    f"expected {expected_value_shape}"
+                )
 
-        for i in order:
+        # Environment-provided global state + shared reward => one advantage.
+        # Repeated rollout columns must remain bit-identical; accepting drift
+        # would silently turn EP HAPPO into an undocumented FP variant.
+        shared_advantage = batch["adv"][:, 0]
+        shared_return = batch["ret"][:, 0]
+        if not self.central:
+            for name, value in (("adv", batch["adv"]), ("ret", batch["ret"])):
+                reference = value[:, :1].expand_as(value)
+                if not torch.equal(value, reference):
+                    raise RuntimeError(
+                        f"EP HAPPO requires shared {name} columns across agents"
+                    )
+        advantages = (
+            shared_advantage - shared_advantage.mean()
+        ) / (shared_advantage.std(unbiased=False) + 1e-5)
+
+        order = self.agent_update_order()
+        if sorted(order) != list(range(self.nactors)):
+            raise RuntimeError("HAPPO agent_update_order is not a permutation")
+        log_factor = torch.zeros(size, device=batch["a"].device)
+        stats = {}
+        all_actor_losses, all_actor_norms, all_entropies = [], [], []
+
+        for position, i in enumerate(order):
             with torch.no_grad():
                 before, _ = self.evaluate_actor(batch, i)
                 before = before.clone()
@@ -306,45 +337,72 @@ class PPO(NativeModel):
                     before, batch["lp"][:, i], atol=1e-4, rtol=1e-4
                 ):
                     raise RuntimeError("Stale rollout or inconsistent stored-action logp")
-            stats[f"factor_before_actor_{i}"] = float(log_factor.exp().mean())
+            factor = log_factor.exp()
+            stats[f"actor_{i}_update_position"] = float(position)
+            stats[f"actor_{i}_factor_mean"] = float(factor.mean())
+            stats[f"actor_{i}_factor_min"] = float(factor.min())
+            stats[f"actor_{i}_factor_max"] = float(factor.max())
+
+            actor_losses, actor_norms, entropies, ratios = [], [], [], []
 
             for indices in self.minibatches(size):
                 minibatch = {k: v[indices] for k, v in batch.items()}
                 logp, entropy = self.evaluate_actor(minibatch, i)
-                ratio = (logp - minibatch["lp"][:, i]).exp()
-                adv = advantages[indices, i]
-                surrogate = torch.minimum(
-                    ratio * adv,
-                    ratio.clamp(1 - args.clip_param, 1 + args.clip_param) * adv,
+                surrogate = happo_surrogate(
+                    logp,
+                    minibatch["lp"][:, i],
+                    advantages[indices],
+                    log_factor[indices].detach(),
+                    args.clip_param,
                 )
-                loss = -(
-                    log_factor[indices].detach().exp() * surrogate
-                ).mean() - args.entropy_coeff * entropy.mean()
+                loss = -surrogate.mean() - args.entropy_coeff * entropy.mean()
                 loss_value, norm = optimize(
                     self.optimizers[f"actor_{i}"], loss,
                     self.actors[i].parameters(), args.grad_clip)
-                stats[f"actor_{i}_loss"] = loss_value
-                stats[f"actor_{i}_grad_norm"] = norm
+                actor_losses.append(loss_value)
+                actor_norms.append(norm)
+                entropies.append(float(entropy.detach().mean()))
+                ratios.append(float(
+                    (logp.detach() - minibatch["lp"][:, i]).exp().mean()
+                ))
+
+            updates = len(actor_losses)
+            stats[f"actor_{i}_loss"] = sum(actor_losses) / updates
+            stats[f"actor_{i}_grad_norm"] = sum(actor_norms) / updates
+            stats[f"actor_{i}_entropy"] = sum(entropies) / updates
+            stats[f"actor_{i}_ratio"] = sum(ratios) / updates
+            all_actor_losses.append(stats[f"actor_{i}_loss"])
+            all_actor_norms.append(stats[f"actor_{i}_grad_norm"])
+            all_entropies.append(stats[f"actor_{i}_entropy"])
 
             with torch.no_grad():
                 after, _ = self.evaluate_actor(batch, i)
-                log_factor += after - before
-                if not bool(torch.isfinite(log_factor.exp()).all()):
-                    raise FloatingPointError("Non-finite HAPPO compound factor")
+                log_factor = compound_log_factor_update(
+                    log_factor, after, before)
 
-        for i in range(self.nvalues):
-            for indices in self.minibatches(size):
-                minibatch = {k: v[indices] for k, v in batch.items()}
-                prediction = self.critics[i](
-                    self.critic_input(minibatch, i)).squeeze(-1)
-                loss = args.vf_loss_coeff * value_loss(
-                    prediction, minibatch["vn"][:, i], minibatch["ret"][:, i],
-                    self.normalizers[i], args.vf_clip_param)
-                value, norm = optimize(
-                    self.optimizers[f"critic_{i}"], loss,
-                    self.critics[i].parameters(), args.grad_clip)
-                stats[f"critic_{i}_loss"] = value
-                stats[f"critic_{i}_grad_norm"] = norm
+        critic_losses, critic_norms = [], []
+        for indices in self.minibatches(size):
+            prediction = self.critic(batch["s"][indices]).squeeze(-1)
+            loss = args.vf_loss_coeff * value_loss(
+                prediction,
+                batch["vn"][indices, 0],
+                shared_return[indices],
+                self.normalizer,
+                args.vf_clip_param,
+            )
+            value, norm = optimize(
+                self.optimizers["critic"], loss,
+                self.critic.parameters(), args.grad_clip)
+            critic_losses.append(value)
+            critic_norms.append(norm)
+        updates = len(critic_losses)
+        stats["critic_loss"] = sum(critic_losses) / updates
+        stats["critic_grad_norm"] = sum(critic_norms) / updates
+        stats["actor_loss"] = sum(all_actor_losses) / len(all_actor_losses)
+        stats["actor_grad_norm"] = sum(all_actor_norms) / len(all_actor_norms)
+        stats["entropy"] = sum(all_entropies) / len(all_entropies)
+        stats["compound_factor_abs_log_mean"] = float(log_factor.abs().mean())
+        stats["compound_factor_abs_log_max"] = float(log_factor.abs().max())
         return stats
 
 

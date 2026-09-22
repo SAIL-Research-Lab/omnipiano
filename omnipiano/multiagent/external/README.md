@@ -1,4 +1,4 @@
-# Vendored reference implementations
+# Reference implementations and pinned equation oracles
 
 Three rules. They exist so that "we match the reference implementation" is a
 claim a reviewer can check in one command instead of taking on trust.
@@ -21,11 +21,12 @@ claim a reviewer can check in one command instead of taking on trust.
 ## Why not just run HARL / PyMARL end to end?
 
 For HAPPO we do not, and the reason is the whole point of the benchmark. Our
-IPPO/MAPPO runs share one sampler, one reward, one evaluation protocol and one
-metrics path. Running HAPPO inside HARL would change all four at once, so a
-HAPPO-vs-MAPPO difference could no longer be attributed to the update rule. We
-therefore implement the update rule in our own Learner and prove numerical
-agreement with the reference (see `omnipiano/tests/test_marl_happo_oracle.py`).
+IPPO/MAPPO runs share one task, reward, evaluation protocol and metrics path.
+Running HAPPO inside another framework would change all four at once. We use
+OmniPiano's aligned joint-transition backend for strict sequential updates and
+prove numerical agreement with HARL's HAPPO surrogate and ``prod`` action
+aggregation (see
+`omnipiano/tests/test_marl_happo_oracle.py`).
 
 FACMAC uses OmniPiano's native joint-transition backend: it keeps the same task,
 sampler, evaluation, metrics and checkpoint lifecycle as the other baselines,
@@ -38,7 +39,7 @@ commit in every configuration and has architecture/equation/gradient tests.
 
 | dir | upstream | commit | license | used as |
 |---|---|---|---|---|
-| `harl/` | PKU-MARL/HARL | see PROVENANCE.json | see UPSTREAM_LICENSE | HAPPO + HASAC oracle |
+| `harl_happo/` | PKU-MARL/HARL | pinned in `_adapter.py` | source transcription only | HAPPO equation oracle |
 | `mat/` | PKU-MARL/Multi-Agent-Transformer | " | " | MAT module (runtime) + oracle |
 | FACMAC (not vendored) | oxwhirl/facmac | `d7e62b8...` | no licence found | read-only specification/oracle |
 | `on_policy/` | marlbenchmark/on-policy | " | " | MAPPO retro-oracle |

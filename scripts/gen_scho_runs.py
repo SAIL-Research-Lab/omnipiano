@@ -11,7 +11,8 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 ALL_ALGOS = ("ippo", "mappo", "happo", "mat", "facmac", "masac")
-RUNNABLE_ALGOS = ("ippo", "mappo", "facmac")
+RUNNABLE_ALGOS = ("ippo", "mappo", "happo", "facmac")
+NATIVE_ALGOS = ("happo", "facmac")
 
 
 def digest(value):
@@ -212,7 +213,7 @@ def main():
                 num_cpus_per_env_runner=1,
                 num_learners=1,
                 num_gpus_per_learner=1.0,
-                ray_num_cpus=(None if algo == "facmac" else a.workers + 2),
+                ray_num_cpus=(None if algo in NATIVE_ALGOS else a.workers + 2),
                 smoke_test=False,
                 checkpoint_freq=(
                     10_000 if preflight else a.checkpoint_freq
@@ -290,8 +291,8 @@ def main():
             "total_train_env_steps": 10_000_000,
             "collision_coef": 0.1,
             "implementation": (
-                "existing backend; needs suite validation"
-                if algo in ("ippo", "mappo")
+                "supported backend; needs suite validation"
+                if algo in RUNNABLE_ALGOS
                 else "not released for this suite"
             ),
         }

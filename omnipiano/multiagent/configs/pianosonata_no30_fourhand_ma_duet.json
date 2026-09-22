@@ -121,6 +121,11 @@
     "ippo": {},
     "mappo": {},
     "mappo-own-critic": {},
+    "happo": {
+      "compute": {
+        "ray_num_cpus": null
+      }
+    },
     "ippo-rllib-module": {
       "ppo": {
         "vf_clip_param": 1000.0

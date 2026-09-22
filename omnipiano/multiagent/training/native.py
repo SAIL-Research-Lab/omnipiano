@@ -374,6 +374,25 @@ class NativeAlgorithm(NativePolicy):
                     "joint_actor_value_optimizer": True,
                 } if self.args.algo == "mat" else None
             ),
+            "happo_specifics": (
+                {
+                    "state_type": "EP",
+                    "actor_parameter_sharing": False,
+                    "critic": "single shared V(global_state)",
+                    "value_normalizer": "single shared ValueNorm",
+                    "agent_update_order": "fresh random permutation per rollout",
+                    "actor_update": (
+                        "finish all PPO epochs/minibatches, then recompute the "
+                        "updated actor probability before advancing"
+                    ),
+                    "compound_factor": (
+                        "exact product of already-updated joint-action density "
+                        "ratios; detached; no non-paper clamp"
+                    ),
+                    "action_aggregation": "product over action dimensions",
+                    "critic_update_order": "after every actor",
+                } if self.args.algo == "happo" else None
+            ),
         }
 
     def collect(self, count):

@@ -97,6 +97,11 @@
     "ippo": {},
     "mappo": {},
     "mappo-own-critic": {},
+    "happo": {
+      "compute": {
+        "ray_num_cpus": null
+      }
+    },
     "facmac": {
       "compute": {
         "num_workers": 3,

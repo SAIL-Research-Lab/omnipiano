@@ -142,14 +142,16 @@ class AlgoSpec:
                 f"{self.name}: an off-policy actor-critic needs a Q critic "
                 f"(critic_head='q' or 'q_mixed'), not a state-value head")
 
-        # A custom update rule or a custom topology must SAY which class implements
-        # it, otherwise train.py would silently fall back to plain PPO and produce
-        # numbers labelled HAPPO that are really MAPPO. This is the single most
-        # dangerous failure mode in a benchmark paper.
-        if self.family == "on_policy_ppo_sequential" and not self.learner_class:
+        # RLlib needs an explicit Learner class for a sequential update rule;
+        # otherwise it silently falls back to simultaneous PPO.  Native
+        # sequential algorithms select their implementation in ``make_model``
+        # and therefore intentionally have no RLlib Learner dotted path.
+        if (self.family == "on_policy_ppo_sequential"
+                and self.backend == "rllib" and not self.learner_class):
             raise ValueError(
-                f"{self.name}: family='on_policy_ppo_sequential' requires "
-                f"learner_class, else the sequential update is silently dropped")
+                f"{self.name}: an RLlib family='on_policy_ppo_sequential' "
+                f"algorithm requires learner_class, else the sequential update "
+                f"is silently dropped")
         if self.rl_module in ("joint_autoregressive", "joint_actor_critic") \
                 and not self.rl_module_class:
             raise ValueError(f"{self.name}: rl_module={self.rl_module!r} requires rl_module_class")

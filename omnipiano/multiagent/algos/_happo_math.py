@@ -1,45 +1,23 @@
-"""Pure-tensor HAPPO mathematics, deliberately free of RLlib imports.
+"""Pure-tensor HAPPO mathematics, deliberately free of framework imports.
 
 The part of an algorithm that can be *wrong in a way no smoke test catches* is
-the loss. Keeping it here -- and the RLlib plumbing in ``_happo_learner.py`` --
-means it is unit tested on synthetic tensors in milliseconds, on CPU, with no
-MuJoCo, no Ray and no GPU. It is also what an oracle test can compare against
-the reference implementation (see ``external/README.md``).
+the loss. Keeping it here means it is unit tested on synthetic tensors in
+milliseconds, on CPU, with no MuJoCo, no Ray and no GPU. It is also what an
+oracle test can compare against the reference implementation.
 
 Reference: Kuba et al. (2022), "Trust Region Policy Optimisation in Multi-Agent
 Reinforcement Learning", ICLR (arXiv:2109.11251), Sec. 4 / Eq. (10).
 
-ORDERING MATTERS IN THIS FILE. Python evaluates default-argument expressions at
-``def`` time, so every constant used as a default must be defined ABOVE the
-functions that reference it. Moving DEFAULT_MAX_ABS_LOG_FACTOR below
-clamp_log_factor raises NameError at import, taking the whole registry with it.
 """
 
 from __future__ import annotations
 
 import torch
 
-# The compound ratio is a PRODUCT over already-updated agents, so it explodes
-# geometrically in the number of agents. HARL clamps it; we clamp in log space,
-# which keeps the bound symmetric (a factor of 10 and of 1/10 are equidistant)
-# and makes the clamp hit rate a directly interpretable trust-region diagnostic.
-DEFAULT_MAX_ABS_LOG_FACTOR = 2.302585092994046  # ln(10) -> factor in [0.1, 10]
-
-
-def clamp_log_factor(
-    log_factor: torch.Tensor,
-    max_abs_log_factor: float = DEFAULT_MAX_ABS_LOG_FACTOR,
-) -> torch.Tensor:
-    """Bound the compound factor symmetrically in log space, detached."""
-    return torch.clamp(log_factor.detach(),
-                       min=-max_abs_log_factor, max=max_abs_log_factor)
-
-
 def compound_log_factor_update(
     prev_log_factor: torch.Tensor,
     logp_after_update: torch.Tensor,
     logp_before_update: torch.Tensor,
-    max_abs_log_factor: float = DEFAULT_MAX_ABS_LOG_FACTOR,
 ) -> torch.Tensor:
     """Fold one just-updated agent into the running compound factor M.
 
@@ -49,8 +27,18 @@ def compound_log_factor_update(
     agent i_m responsible for agent i_1's parameters, which is exactly the
     cross-agent coupling the sequential scheme exists to avoid.
     """
-    delta = (logp_after_update - logp_before_update).detach()
-    return clamp_log_factor(prev_log_factor + delta, max_abs_log_factor)
+    updated = (
+        prev_log_factor
+        + logp_after_update.detach()
+        - logp_before_update.detach()
+    ).detach()
+    # The official HAPPO implementations do not add a second clamp to M.  A
+    # bespoke clamp changes the objective, so fail loudly instead of silently
+    # training a different algorithm if the product overflows.
+    if not bool(torch.isfinite(updated).all()) \
+            or not bool(torch.isfinite(updated.exp()).all()):
+        raise FloatingPointError("Non-finite HAPPO compound factor")
+    return updated
 
 
 def happo_surrogate(
@@ -68,9 +56,8 @@ def happo_surrogate(
     With ``compound_log_factor == 0`` (M == 1: the first agent in the
     permutation, or a single-agent problem) this reduces EXACTLY to PPO. That
     identity is the cheapest available test of this function and is asserted in
-    ``algos_test.py`` -- but note it holds BY CONSTRUCTION and therefore proves
-    nothing about the learner that calls it. See happo-m1-control for the test
-    that does.
+    the unit tests -- but note it holds BY CONSTRUCTION and therefore does not
+    by itself prove that the learner performs strict sequential optimizer steps.
     """
     ratio = torch.exp(logp_new - logp_old)
     weighted_adv = torch.exp(compound_log_factor) * advantages

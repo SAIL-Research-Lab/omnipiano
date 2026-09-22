@@ -31,6 +31,8 @@ _LEARNER_KEYS: Sequence[str] = (
     # Native off-policy backends (FACMAC/MASAC).
     "actor_loss", "critic_loss", "actor_grad_norm", "critic_grad_norm",
     "replay_size", "gradient_updates",
+    # Native HAPPO sequential-update diagnostics.
+    "compound_factor_abs_log_mean", "compound_factor_abs_log_max",
 )
 
 

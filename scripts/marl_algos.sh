@@ -6,8 +6,7 @@
 #   bash scripts/marl_algos.sh flags                  # what CLI flags exist
 #   DRY=1 bash scripts/marl_algos.sh smoke happo      # print commands, run none
 #   bash scripts/marl_algos.sh smoke happo
-#   PIECES=WinterWind bash scripts/marl_algos.sh pilot happo happo-m1-control \
-#                                                mappo-noshuffle mappo
+#   PIECES=WinterWind bash scripts/marl_algos.sh pilot happo mappo
 #   PIECES="WinterWind PicturesGreatKiev" bash scripts/marl_algos.sh run happo
 #   bash scripts/marl_algos.sh status
 #   bash scripts/marl_algos.sh stop
@@ -57,7 +56,7 @@ HELPCACHE=$(mktemp); trap 'rm -f "$HELPCACHE"' EXIT
 _help () { $PY -m "$MODULE" --help >"$HELPCACHE" 2>&1 || true; }
 
 _needs_experimental () {  # keep in sync with AlgoSpec.status
-  case "$1" in happo|happo-m1-control|mappo-noshuffle|happo-*) return 0;; esac
+  case "$1" in mat|masac|ppo-monolithic) return 0;; esac
   return 1
 }
 
@@ -140,7 +139,7 @@ smoke|pilot|run)
       nohup "${cmd[@]}" >"$log" 2>&1 &
       echo $! > "$pidf"
       launched=$((launched+1))
-      sleep 5   # stagger Ray head startup; simultaneous inits race on ports
+      sleep 5   # stagger runtime startup and environment construction
     done
   done
   echo "[ok] launched $launched job(s). Detach freely -- nohup survives SSH drop."

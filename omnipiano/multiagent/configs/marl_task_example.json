@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "description": "Fully specified WinterWind four-hand, two-agent IPPO experiment; change experiment.algo to mappo for the matched comparison.",
+  "description": "Fully specified WinterWind four-hand, two-agent experiment; change experiment.algo to ippo, mappo, happo, or another registered baseline.",
   "task": {
     "name": "winterwind-4h-2a-overlap",
     "song": "WinterWind",
@@ -121,6 +121,11 @@
     "ippo": {},
     "mappo": {},
     "mappo-own-critic": {},
+    "happo": {
+      "compute": {
+        "ray_num_cpus": null
+      }
+    },
     "ippo-rllib-module": {
       "ppo": {
         "vf_clip_param": 1000.0
