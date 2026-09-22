@@ -10,6 +10,7 @@ import torch
 from omnipiano.multiagent import train
 from omnipiano.multiagent.algos import get_algo
 from omnipiano.multiagent.algos._native import make_model
+from omnipiano.multiagent.training.runner import _training_telemetry
 
 
 def _args(**overrides):
@@ -225,3 +226,20 @@ def test_happo_model_optimizer_valuenorm_and_rng_round_trip():
     expected = restored.agent_update_order()
     torch.set_rng_state(state)
     assert restored.agent_update_order() == expected
+
+
+def test_happo_compound_factor_is_persisted_in_training_telemetry():
+    result = {
+        "learners": {
+            "__all_modules__": {
+                "compound_factor_abs_log_mean": 0.125,
+                "compound_factor_abs_log_max": 0.75,
+            }
+        },
+        "env_runners": {},
+    }
+
+    telemetry = _training_telemetry(result)
+
+    assert telemetry["learner/__all__/compound_factor_abs_log_mean"] == 0.125
+    assert telemetry["learner/__all__/compound_factor_abs_log_max"] == 0.75

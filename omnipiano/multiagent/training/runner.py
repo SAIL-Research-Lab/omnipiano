@@ -190,16 +190,23 @@ def _finite_or_none(value: Any) -> Optional[float]:
 
 
 def _training_telemetry(result: Mapping[str, Any]) -> Dict[str, Any]:
+    from omnipiano.multiagent.training.tracking import learner_metrics
+
     runners = result.get("env_runners", result)
     if not isinstance(runners, Mapping):
         runners = {}
     # RLlib sums simultaneously-acting agents here. The explicit name prevents
     # misreporting it as the one-copy shared team return (they differ by ~N).
     agent_sum = runners.get("episode_return_mean", runners.get("episode_reward_mean"))
-    return {
+    telemetry = {
         "rllib_agent_sum_return_mean": _finite_or_none(agent_sum),
         "episode_length_mean": _finite_or_none(runners.get("episode_len_mean")),
     }
+    # Keep local progress.jsonl as diagnostically complete as W&B.  This is
+    # especially important for HAPPO: the compound factor is the observable
+    # proof that the sequential update did not silently degrade to MAPPO.
+    telemetry.update(learner_metrics(result))
+    return telemetry
 
 
 def _build_run_config(
