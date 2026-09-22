@@ -34,6 +34,9 @@ _LEARNER_KEYS: Sequence[str] = (
     # Native HAPPO sequential-update diagnostics.
     "compound_factor_abs_log_mean", "compound_factor_abs_log_max",
 )
+_SEQUENTIAL_DETAIL_PREFIXES: Sequence[str] = (
+    "actor_", "critic_", "preceding_",
+)
 
 
 def _finite(value: Any) -> Optional[float]:
@@ -54,7 +57,18 @@ def learner_metrics(result: Mapping[str, Any]) -> Dict[str, float]:
         if not isinstance(stats, Mapping):
             continue
         label = "__all__" if module_id == "__all_modules__" else str(module_id)
-        for key in _LEARNER_KEYS:
+        # A2PO's per-agent order, PreOPC and preceding-ratio telemetry is part
+        # of the evidence that its sequential update did not silently degrade
+        # to ordinary MAPPO. Keep those explicit prefixes in addition to the
+        # stable allow-list; do not forward every scalar in RLlib's large result
+        # dictionary merely because it also uses ``__all_modules__``.
+        keys = list(_LEARNER_KEYS)
+        if module_id == "__all_modules__":
+            keys.extend(
+                key for key in stats
+                if str(key).startswith(_SEQUENTIAL_DETAIL_PREFIXES)
+            )
+        for key in keys:
             number = _finite(stats.get(key))
             if number is not None:
                 out[f"learner/{label}/{key}"] = number

@@ -22,7 +22,7 @@ from omnipiano.multiagent.algos._mat_module import MATDecoder, MATEncoder
 def test_expected_algorithms_are_registered():
     assert set(list_algos()) == {
         "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic",
-        "happo",
+        "happo", "a2po",
         "mat", "facmac", "masac", "ppo-monolithic"}
 
 
@@ -30,7 +30,7 @@ def test_only_validated_algorithms_are_supported():
     """A 'supported' algo must be launchable with no extra flags."""
     assert set(list_algos(status="supported")) == {
         "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic",
-        "happo", "facmac", "ppo-monolithic"}
+        "happo", "a2po", "facmac", "ppo-monolithic"}
     for name in list_algos(status="supported"):
         get_algo(name).assert_launchable()
 

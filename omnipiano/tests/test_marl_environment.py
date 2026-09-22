@@ -12,7 +12,7 @@ from omnipiano.multiagent.compile.schema import ResolvedTask
 
 ALGOS = (
     "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic",
-    "happo", "facmac",
+    "happo", "a2po", "facmac",
 )
 
 

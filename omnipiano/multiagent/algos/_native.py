@@ -1,7 +1,7 @@
 """Native, feed-forward MARL learners.
 
 No Ray dependency. All batches contain aligned JOINT environment transitions.
-HAPPO/central PPO use raw Gaussian actions with execution-time clipping.
+HAPPO/A2PO/central PPO use raw Gaussian actions with execution-time clipping.
 MAT masks heterogeneous action padding before conditioning and loss reduction.
 """
 from __future__ import annotations
@@ -15,6 +15,14 @@ from torch import nn
 from torch.nn import functional as F
 from torch.distributions import Normal
 
+from omnipiano.multiagent.algos._a2po_math import (
+    adaptive_clip,
+    a2po_surrogate,
+    clipped_preceding_ratio,
+    official_order_scores,
+    preopc_advantages,
+    semi_greedy_order,
+)
 from omnipiano.multiagent.algos._facmac_mixer import FactoredMixer
 from omnipiano.multiagent.algos._happo_math import (
     compound_log_factor_update,
@@ -209,9 +217,13 @@ class NativeModel(nn.Module):
 
     def minibatches(self, size):
         for _ in range(self.args.num_epochs):
-            order = torch.randperm(size, device=next(self.parameters()).device)
-            for start in range(0, size, self.args.minibatch_size):
-                yield order[start:start + self.args.minibatch_size]
+            yield from self.epoch_minibatches(size)
+
+    def epoch_minibatches(self, size):
+        """Yield one independently shuffled epoch of minibatch indices."""
+        order = torch.randperm(size, device=next(self.parameters()).device)
+        for start in range(0, size, self.args.minibatch_size):
+            yield order[start:start + self.args.minibatch_size]
 
     def optimizer_state(self):
         return {name: opt.state_dict() for name, opt in self.optimizers.items()}
@@ -403,6 +415,277 @@ class PPO(NativeModel):
         stats["entropy"] = sum(all_entropies) / len(all_entropies)
         stats["compound_factor_abs_log_mean"] = float(log_factor.abs().mean())
         stats["compound_factor_abs_log_max"] = float(log_factor.abs().max())
+        return stats
+
+
+class A2PO(NativeModel):
+    """Canonical A2PO on aligned joint rollouts.
+
+    The non-shared continuous-control path in the public A2PO repository owns
+    one actor and one global-state critic per agent. That is also the only
+    topology compatible with OmniPiano's heterogeneous action sizes without
+    padding policy outputs. PreOPC targets are detached return estimators;
+    gradients flow only through the current actor and its own critic.
+    """
+
+    on_policy = True
+
+    def __init__(self, args, meta, options):
+        super().__init__(args, meta, options)
+        self.actors = nn.ModuleList(
+            Gaussian(inp, dim, args) for inp, dim in zip(self.od, self.ad)
+        )
+        self.critics = nn.ModuleList(mlp(self.sd, 1, args) for _ in range(self.n))
+        self.normalizers = nn.ModuleList(ValueNorm(args) for _ in range(self.n))
+
+    def build_optimizers(self):
+        for i in range(self.n):
+            self.optimizers[f"actor_{i}"] = torch.optim.Adam(
+                self.actors[i].parameters(), lr=self.args.lr,
+                eps=self.args.adam_epsilon)
+            self.optimizers[f"critic_{i}"] = torch.optim.Adam(
+                self.critics[i].parameters(), lr=self.args.critic_lr,
+                eps=self.args.adam_epsilon)
+
+    def values(self, batch):
+        normalized = torch.stack([
+            critic(batch["s"]).squeeze(-1) for critic in self.critics
+        ], dim=-1)
+        values = torch.stack([
+            normalizer.denormalize(normalized[:, i])
+            for i, normalizer in enumerate(self.normalizers)
+        ], dim=-1)
+        return normalized, values
+
+    def act(self, batch, deterministic=False):
+        pairs = [
+            actor.sample(self.local(batch, i), deterministic)
+            for i, actor in enumerate(self.actors)
+        ]
+        normalized, values = self.values(batch)
+        return {
+            "a": torch.cat([pair[0] for pair in pairs], dim=-1),
+            "lp": torch.stack([pair[1] for pair in pairs], dim=-1),
+            "vn": normalized,
+            "v": values,
+        }
+
+    def evaluate_actor(self, batch, index):
+        distribution = self.actors[index].distribution(self.local(batch, index))
+        actions = batch["a"][:, self.ac[index]]
+        return (
+            distribution.log_prob(actions).sum(-1),
+            distribution.entropy().sum(-1),
+        )
+
+    def agent_update_order(self, advantages, values):
+        scores = official_order_scores(
+            advantages, values, self.options["order_score_epsilon"])
+        return semi_greedy_order(scores.detach().cpu().numpy())
+
+    def _critic_pass(self, batch, agent, targets):
+        losses, norms = [], []
+        for indices in self.epoch_minibatches(len(targets)):
+            prediction = self.critics[agent](batch["s"][indices]).squeeze(-1)
+            loss = self.args.vf_loss_coeff * value_loss(
+                prediction,
+                batch["vn"][indices, agent],
+                targets[indices],
+                self.normalizers[agent],
+                self.args.vf_clip_param,
+            )
+            value, norm = optimize(
+                self.optimizers[f"critic_{agent}"], loss,
+                self.critics[agent].parameters(), self.args.grad_clip)
+            losses.append(value)
+            norms.append(norm)
+        return losses, norms
+
+    def learn(self, batch):
+        args, options = self.args, self.options
+        size = len(batch["a"])
+        expected = (size, self.n)
+        for name in ("lp", "vn", "v", "nv", "adv", "ret"):
+            if batch[name].shape != expected:
+                raise ValueError(
+                    f"A2PO rollout {name!r} has shape {tuple(batch[name].shape)}, "
+                    f"expected {expected}"
+                )
+        for name in ("r", "term", "trunc"):
+            if batch[name].shape != (size,):
+                raise ValueError(f"A2PO rollout {name!r} must have shape {(size,)}")
+        if batch["keys"].shape != (size, 3):
+            raise ValueError("A2PO requires [stream, episode, timestep] rollout keys")
+
+        with torch.no_grad():
+            for i in range(self.n):
+                current, _ = self.evaluate_actor(batch, i)
+                if not torch.allclose(
+                    current, batch["lp"][:, i], atol=1e-4, rtol=1e-4
+                ):
+                    raise RuntimeError(
+                        "Stale rollout or inconsistent stored-action logp"
+                    )
+
+        # The upstream semi-greedy rule scores globally standardized rollout
+        # advantages against the ValueNorm-space predictions stored at sample
+        # time. It deliberately does not use denormalized physical returns.
+        order = self.agent_update_order(batch["adv"], batch["vn"])
+        if sorted(order) != list(range(self.n)):
+            raise RuntimeError("A2PO agent_update_order is not a permutation")
+
+        preceding_log_ratio = torch.zeros(
+            size, device=batch["a"].device, dtype=batch["a"].dtype)
+        stats = {}
+        all_actor_losses, all_actor_norms, all_entropies = [], [], []
+        all_critic_losses, all_critic_norms = [], []
+        all_pretrain_losses = []
+        working_advantages = batch["adv"].clone()
+
+        for position, agent in enumerate(order):
+            with torch.no_grad():
+                before, _ = self.evaluate_actor(batch, agent)
+                if not torch.allclose(
+                    before, batch["lp"][:, agent], atol=1e-4, rtol=1e-4
+                ):
+                    raise RuntimeError(
+                        "A2PO current actor changed before its ordered update"
+                    )
+                corrected_advantage = preopc_advantages(
+                    batch["r"], batch["v"][:, agent], batch["nv"][:, agent],
+                    batch["term"], batch["trunc"], preceding_log_ratio,
+                    batch["keys"], gamma=args.gamma,
+                    trace_lambda=args.gae_lambda,
+                    trace_clip_param=options["trace_clip_param"],
+                )
+                if position == 0 and not torch.allclose(
+                    corrected_advantage, batch["adv"][:, agent],
+                    atol=1e-5, rtol=1e-5,
+                ):
+                    raise RuntimeError(
+                        "A2PO PreOPC with no preceding agents did not reduce to GAE"
+                    )
+                corrected_return = corrected_advantage + batch["v"][:, agent]
+                working_advantages[:, agent] = corrected_advantage
+                normalized_all = (
+                    working_advantages - working_advantages.mean()
+                ) / (working_advantages.std(unbiased=False) + 1e-5)
+                normalized_advantage = normalized_all[:, agent]
+                preceding = clipped_preceding_ratio(
+                    preceding_log_ratio, options["preceding_ratio_clip"])
+
+            adaptive = adaptive_clip(
+                args.clip_param, position + 1, self.n,
+                options["adaptive_clip_weight"])
+            stats[f"actor_{agent}_update_position"] = float(position)
+            stats[f"actor_{agent}_adaptive_clip"] = float(adaptive)
+            stats[f"actor_{agent}_preceding_ratio_mean"] = float(preceding.mean())
+            stats[f"actor_{agent}_preceding_ratio_min"] = float(preceding.min())
+            stats[f"actor_{agent}_preceding_ratio_max"] = float(preceding.max())
+            stats[f"actor_{agent}_preopc_adv_mean"] = float(
+                corrected_advantage.mean())
+            stats[f"actor_{agent}_preopc_adv_std"] = float(
+                corrected_advantage.std(unbiased=False))
+
+            actor_losses, actor_norms, entropies, ratios = [], [], [], []
+            critic_losses, critic_norms = [], []
+            pre_losses, pre_norms = [], []
+            # The upstream agent-loop-first path executes both stages inside
+            # every PPO epoch: one critic-only epoch, immediately followed by
+            # one actor+critic epoch. Running every critic-only epoch up front
+            # would produce a different optimizer trajectory.
+            for _ in range(args.num_epochs):
+                stage_losses, stage_norms = self._critic_pass(
+                    batch, agent, corrected_return)
+                pre_losses.extend(stage_losses)
+                pre_norms.extend(stage_norms)
+
+                for indices in self.epoch_minibatches(size):
+                    minibatch = {
+                        key: value[indices] for key, value in batch.items()
+                    }
+                    logp, entropy = self.evaluate_actor(minibatch, agent)
+                    surrogate = a2po_surrogate(
+                        logp,
+                        minibatch["lp"][:, agent],
+                        normalized_advantage[indices],
+                        preceding_log_ratio[indices],
+                        adaptive,
+                        options["preceding_ratio_clip"],
+                    )
+                    actor_loss = (
+                        -surrogate.mean()
+                        - args.entropy_coeff * entropy.mean()
+                    )
+                    loss_value, norm = optimize(
+                        self.optimizers[f"actor_{agent}"], actor_loss,
+                        self.actors[agent].parameters(), args.grad_clip)
+                    actor_losses.append(loss_value)
+                    actor_norms.append(norm)
+                    entropies.append(float(entropy.detach().mean()))
+                    ratios.append(float(
+                        (logp.detach() - minibatch["lp"][:, agent])
+                        .exp().mean()
+                    ))
+
+                    prediction = self.critics[agent](
+                        minibatch["s"]).squeeze(-1)
+                    critic_loss = args.vf_loss_coeff * value_loss(
+                        prediction,
+                        minibatch["vn"][:, agent],
+                        corrected_return[indices],
+                        self.normalizers[agent],
+                        args.vf_clip_param,
+                    )
+                    value, critic_norm = optimize(
+                        self.optimizers[f"critic_{agent}"], critic_loss,
+                        self.critics[agent].parameters(), args.grad_clip)
+                    critic_losses.append(value)
+                    critic_norms.append(critic_norm)
+
+            stats[f"critic_{agent}_pretrain_loss"] = (
+                sum(pre_losses) / len(pre_losses)
+            )
+            stats[f"critic_{agent}_pretrain_grad_norm"] = (
+                sum(pre_norms) / len(pre_norms)
+            )
+            all_pretrain_losses.extend(pre_losses)
+
+            updates = len(actor_losses)
+            stats[f"actor_{agent}_loss"] = sum(actor_losses) / updates
+            stats[f"actor_{agent}_grad_norm"] = sum(actor_norms) / updates
+            stats[f"actor_{agent}_entropy"] = sum(entropies) / updates
+            stats[f"actor_{agent}_ratio"] = sum(ratios) / updates
+            stats[f"critic_{agent}_loss"] = sum(critic_losses) / updates
+            stats[f"critic_{agent}_grad_norm"] = sum(critic_norms) / updates
+            all_actor_losses.extend(actor_losses)
+            all_actor_norms.extend(actor_norms)
+            all_entropies.extend(entropies)
+            all_critic_losses.extend(critic_losses)
+            all_critic_norms.extend(critic_norms)
+
+            with torch.no_grad():
+                after, _ = self.evaluate_actor(batch, agent)
+                preceding_log_ratio = (
+                    preceding_log_ratio
+                    + after.detach()
+                    - batch["lp"][:, agent].detach()
+                ).detach()
+                if not bool(torch.isfinite(preceding_log_ratio).all()):
+                    raise FloatingPointError(
+                        "Non-finite A2PO preceding-agent log ratio")
+
+        stats["actor_loss"] = sum(all_actor_losses) / len(all_actor_losses)
+        stats["actor_grad_norm"] = sum(all_actor_norms) / len(all_actor_norms)
+        stats["entropy"] = sum(all_entropies) / len(all_entropies)
+        stats["critic_loss"] = sum(all_critic_losses) / len(all_critic_losses)
+        stats["critic_grad_norm"] = sum(all_critic_norms) / len(all_critic_norms)
+        stats["critic_pretrain_loss"] = (
+            sum(all_pretrain_losses) / len(all_pretrain_losses))
+        stats["preceding_log_ratio_abs_mean"] = float(
+            preceding_log_ratio.abs().mean())
+        stats["preceding_log_ratio_abs_max"] = float(
+            preceding_log_ratio.abs().max())
         return stats
 
 
@@ -758,6 +1041,8 @@ def _facmac_compile_mode():
 def make_model(args, meta, options, device):
     if args.algo in ("happo", "ppo-monolithic"):
         model = PPO(args, meta, options)
+    elif args.algo == "a2po":
+        model = A2PO(args, meta, options)
     elif args.algo == "mat":
         model = MAT(args, meta, options)
     elif args.algo in ("facmac", "masac"):

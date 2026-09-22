@@ -17,6 +17,7 @@ REGISTERED_ALGORITHMS = (
     "mappo",
     "mappo-own-critic",
     "happo",
+    "a2po",
     "facmac",
     "ppo-monolithic",
 )

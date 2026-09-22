@@ -102,6 +102,24 @@
         "ray_num_cpus": null
       }
     },
+    "a2po": {
+      "compute": {
+        "ray_num_cpus": null
+      },
+      "native": {
+        "variant": "a2po_preopc_v1",
+        "reference_commit": "28c11e6063bcf80caffc53a791c99dd7be1003b5",
+        "parameter_sharing": false,
+        "order": "semi_greedy",
+        "order_score": "official_normalized_advantage",
+        "order_score_epsilon": 1e-8,
+        "preceding_ratio_clip": 0.1,
+        "trace_clip_param": 1.0,
+        "adaptive_clip_weight": 0.5,
+        "two_stage": true,
+        "agent_block_size": 1
+      }
+    },
     "facmac": {
       "compute": {
         "num_workers": 3,

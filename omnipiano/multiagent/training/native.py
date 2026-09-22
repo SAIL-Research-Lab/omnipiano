@@ -36,7 +36,23 @@ MODEL_FIELDS = (
 
 def native_options(args):
     options = {}
-    if args.algo == "mat":
+    if args.algo == "a2po":
+        options = {
+            "variant": "a2po_preopc_v1",
+            "reference_commit": (
+                "28c11e6063bcf80caffc53a791c99dd7be1003b5"
+            ),
+            "parameter_sharing": False,
+            "order": "semi_greedy",
+            "order_score": "official_normalized_advantage",
+            "order_score_epsilon": 1e-8,
+            "preceding_ratio_clip": 0.1,
+            "trace_clip_param": 1.0,
+            "adaptive_clip_weight": 0.5,
+            "two_stage": True,
+            "agent_block_size": 1,
+        }
+    elif args.algo == "mat":
         options = {
             "embed_dim": 128, "heads": 4, "blocks": 2,
             "std_parameter_init": 1.0,
@@ -105,6 +121,26 @@ def native_options(args):
         raise ValueError("For native jobs set compute.ray_num_cpus=null")
     if args.algo == "mat" and args.critic_lr != args.lr:
         raise ValueError("MAT has a joint optimizer; critic_lr must equal lr")
+    if args.algo == "a2po":
+        if options["variant"] != "a2po_preopc_v1":
+            raise ValueError("Unsupported A2PO definition")
+        if options["reference_commit"] != (
+            "28c11e6063bcf80caffc53a791c99dd7be1003b5"
+        ):
+            raise ValueError("A2PO reference_commit must stay pinned")
+        if options["order"] != "semi_greedy":
+            raise ValueError("Canonical A2PO requires semi_greedy order")
+        if options["order_score"] != "official_normalized_advantage":
+            raise ValueError("Unsupported A2PO order score")
+        if options["parameter_sharing"] is not False:
+            raise ValueError(
+                "Canonical heterogeneous A2PO requires independent policies")
+        if options["trace_clip_param"] != 1.0:
+            raise ValueError("Canonical PreOPC truncates each trace ratio at 1.0")
+        if options["two_stage"] is not True:
+            raise ValueError("Canonical A2PO requires the two-stage value update")
+        if options["agent_block_size"] != 1:
+            raise ValueError("Canonical A2PO updates exactly one agent per block")
     if args.algo == "masac" and options["variant"] != "cooperative_joint_entropy_v1":
         raise ValueError("Unsupported MASAC definition")
     if args.algo == "facmac":
@@ -118,7 +154,7 @@ def native_options(args):
     integers = (
         "embed_dim", "heads", "blocks", "replay_capacity", "batch_size",
         "buffer_warmup", "random_action_steps", "collect_steps", "mixer_embed",
-        "hypernet_embed",
+        "hypernet_embed", "agent_block_size",
     )
     for name in integers:
         if name in options:
@@ -131,9 +167,16 @@ def native_options(args):
                 raise ValueError(f"Non-finite native option: {name}")
     for name in ("updates_per_env_step", "max_replay_gib", "alpha_init",
                  "alpha_lr", "target_entropy_scale", "actor_lr", "critic_lr",
-                 "adam_epsilon", "grad_clip"):
+                 "adam_epsilon", "grad_clip", "order_score_epsilon",
+                 "trace_clip_param"):
         if name in options and options[name] <= 0:
             raise ValueError(f"{name} must be positive")
+    if "preceding_ratio_clip" in options \
+            and not 0 < options["preceding_ratio_clip"] < 1:
+        raise ValueError("preceding_ratio_clip must be in (0,1)")
+    if "adaptive_clip_weight" in options \
+            and not 0 <= options["adaptive_clip_weight"] <= 1:
+        raise ValueError("adaptive_clip_weight must be in [0,1]")
     for name in ("noise_std", "action_l2"):
         if name in options and options[name] < 0:
             raise ValueError(f"{name} must be nonnegative")
@@ -392,6 +435,35 @@ class NativeAlgorithm(NativePolicy):
                     "action_aggregation": "product over action dimensions",
                     "critic_update_order": "after every actor",
                 } if self.args.algo == "happo" else None
+            ),
+            "a2po_specifics": (
+                {
+                    "state_type": (
+                        "independent V_i(global_state), matching the upstream "
+                        "non-shared-policy path"
+                    ),
+                    "actor_parameter_sharing": False,
+                    "critic_parameter_sharing": False,
+                    "agent_update_order": "semi_greedy",
+                    "order_score": self.options["order_score"],
+                    "preopc": {
+                        "lambda": self.args.gae_lambda,
+                        "trace_clip_param": self.options["trace_clip_param"],
+                        "termination": "no bootstrap and no trace continuation",
+                        "truncation": "bootstrap final observation, no cross-reset trace",
+                    },
+                    "ratio": {
+                        "action_aggregation": "product (summed log-probability)",
+                        "preceding_product_clip": self.options[
+                            "preceding_ratio_clip"],
+                        "joint_ratio_clip": "near-linear by update position",
+                        "adaptive_clip_weight": self.options[
+                            "adaptive_clip_weight"],
+                    },
+                    "two_stage_value_update": True,
+                    "agent_block_size": 1,
+                    "reference_commit": self.options["reference_commit"],
+                } if self.args.algo == "a2po" else None
             ),
         }
 

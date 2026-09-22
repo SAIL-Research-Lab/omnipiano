@@ -12,6 +12,7 @@ from omnipiano.multiagent.algos.base import (  # noqa: F401
 from omnipiano.multiagent.algos import ippo as _ippo                    # noqa: F401,E402
 from omnipiano.multiagent.algos import mappo as _mappo                  # noqa: F401,E402
 from omnipiano.multiagent.algos import happo as _happo                  # noqa: F401,E402
+from omnipiano.multiagent.algos import a2po as _a2po                    # noqa: F401,E402
 from omnipiano.multiagent.algos import mat as _mat                      # noqa: F401,E402
 from omnipiano.multiagent.algos import facmac as _facmac                # noqa: F401,E402
 from omnipiano.multiagent.algos import masac as _masac                  # noqa: F401,E402

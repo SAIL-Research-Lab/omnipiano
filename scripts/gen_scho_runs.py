@@ -10,9 +10,11 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-ALL_ALGOS = ("ippo", "mappo", "happo", "mat", "facmac", "masac")
-RUNNABLE_ALGOS = ("ippo", "mappo", "happo", "facmac")
-NATIVE_ALGOS = ("happo", "facmac")
+ALL_ALGOS = (
+    "ippo", "mappo", "happo", "a2po", "mat", "facmac", "masac",
+)
+RUNNABLE_ALGOS = ("ippo", "mappo", "happo", "a2po", "facmac")
+NATIVE_ALGOS = ("happo", "a2po", "facmac")
 
 
 def digest(value):
@@ -300,10 +302,11 @@ def main():
         for setting, t in TASKS.items()
         for seed in (0, 1, 2)
     ]
-    write_json(out / "all_90_runs_plan.json", plan)
+    plan_path = out / "all_runs_plan.json"
+    write_json(plan_path, plan)
 
     print(f"Generated {expected_runs} full configs: {out / 'runs'}")
-    print(f"Generated 90-run plan:    {out / 'all_90_runs_plan.json'}")
+    print(f"Generated {len(plan)}-run plan:    {plan_path}")
     print("No training was launched.")
     print("Review semantic_checks before approving production runs.")
 

@@ -41,7 +41,7 @@ RL_MODULES = ("ctde", "rllib_default", "joint_autoregressive", "joint_actor_crit
 # ``on_policy_ppo*`` families is served by the existing PPOConfig trainer.
 FAMILIES = (
     "on_policy_ppo",             # simultaneous update of every agent (IPPO/MAPPO)
-    "on_policy_ppo_sequential",  # agents updated one at a time (HAPPO/MAT)
+    "on_policy_ppo_sequential",  # agents updated sequentially (HAPPO/A2PO/MAT)
     "off_policy_ddpg",           # replay + target nets + deterministic policy
     "off_policy_sac",            # replay + target nets + squashed Gaussian
 )
