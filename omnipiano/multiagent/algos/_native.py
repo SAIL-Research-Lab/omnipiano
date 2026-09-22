@@ -683,6 +683,20 @@ class OffPolicy(NativeModel):
         return stats
 
 
+def _facmac_compile_mode():
+    if os.environ.get("OMNIPIANO_TORCH_COMPILE", "0") != "1":
+        return None
+    mode = os.environ.get(
+        "OMNIPIANO_TORCH_COMPILE_MODE", "reduce-overhead"
+    )
+    if mode not in {"default", "reduce-overhead"}:
+        raise ValueError(
+            "OMNIPIANO_TORCH_COMPILE_MODE must be 'default' or "
+            "'reduce-overhead'"
+        )
+    return mode
+
+
 def make_model(args, meta, options, device):
     if args.algo in ("happo", "ppo-monolithic"):
         model = PPO(args, meta, options)
@@ -707,14 +721,17 @@ def make_model(args, meta, options, device):
     if (
         args.algo == "facmac"
         and device.type == "cuda"
-        and os.environ.get("OMNIPIANO_TORCH_COMPILE", "0") == "1"
+        and (compile_mode := _facmac_compile_mode()) is not None
     ):
         for module in (model.q, model.target_q):
             module.forward = torch.compile(
                 module.forward,
-                mode="default",
+                mode=compile_mode,
                 fullgraph=False,
                 dynamic=True,
             )
-        print("[facmac] torch.compile enabled for Q forward graphs")
+        print(
+            "[facmac] torch.compile enabled for Q forward graphs "
+            f"(mode={compile_mode})"
+        )
     return model

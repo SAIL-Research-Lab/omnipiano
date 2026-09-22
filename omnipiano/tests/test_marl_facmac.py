@@ -10,7 +10,7 @@ import torch
 from omnipiano.multiagent import train
 from omnipiano.multiagent.algos import get_algo
 from omnipiano.multiagent.algos._facmac_mixer import FactoredMixer
-from omnipiano.multiagent.algos._native import make_model
+from omnipiano.multiagent.algos._native import _facmac_compile_mode, make_model
 from omnipiano.multiagent.training.native import materialize_scalar_stats
 from omnipiano.multiagent.training.native_io import Replay
 
@@ -79,6 +79,20 @@ def test_facmac_is_supported_by_the_native_backend():
     assert spec.status == "supported"
     assert spec.backend == "native"
     spec.assert_launchable()
+
+
+def test_facmac_compile_mode_is_explicit_and_validated(monkeypatch):
+    monkeypatch.delenv("OMNIPIANO_TORCH_COMPILE", raising=False)
+    monkeypatch.delenv("OMNIPIANO_TORCH_COMPILE_MODE", raising=False)
+    assert _facmac_compile_mode() is None
+
+    monkeypatch.setenv("OMNIPIANO_TORCH_COMPILE", "1")
+    assert _facmac_compile_mode() == "reduce-overhead"
+    monkeypatch.setenv("OMNIPIANO_TORCH_COMPILE_MODE", "default")
+    assert _facmac_compile_mode() == "default"
+    monkeypatch.setenv("OMNIPIANO_TORCH_COMPILE_MODE", "max-autotune")
+    with np.testing.assert_raises_regex(ValueError, "must be 'default'"):
+        _facmac_compile_mode()
 
 
 def test_facmac_defaults_match_pinned_mamujoco_reference():
