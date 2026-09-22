@@ -211,6 +211,29 @@ def restore_rng(state):
         torch.cuda.set_rng_state_all(state["cuda"])
 
 
+def materialize_scalar_stats(stats):
+    """Convert learner scalars with at most one device-to-host sync."""
+    result, names, tensors = {}, [], []
+    for name, value in stats.items():
+        if torch.is_tensor(value):
+            if value.numel() != 1:
+                raise ValueError(f"Learner statistic {name} is not scalar")
+            names.append(name)
+            tensors.append(value.detach().reshape(()))
+        else:
+            number = float(value)
+            if not math.isfinite(number):
+                raise FloatingPointError(f"Non-finite learner statistic: {name}")
+            result[name] = number
+    if tensors:
+        numbers = torch.stack(tensors).cpu().tolist()
+        for name, number in zip(names, numbers):
+            if not math.isfinite(number):
+                raise FloatingPointError(f"Non-finite learner statistic: {name}")
+            result[name] = number
+    return result
+
+
 def load_checkpoint(path):
     path = Path(path).expanduser().resolve()
     if path.is_dir():
@@ -428,10 +451,17 @@ class NativeAlgorithm(NativePolicy):
                 self.update_credit += eligible * self.options["updates_per_env_step"]
                 updates = int(self.update_credit)
                 self.update_credit -= updates
-                for _ in range(updates):
-                    stats = self.model.learn(self.tensor(
-                        self.replay.sample(self.options["batch_size"])))
+                sampled = self.tensor(self.replay.sample_many(
+                    updates, self.options["batch_size"]
+                )) if updates else None
+                for update in range(updates):
+                    stats = self.model.learn(
+                        {name: value[update] for name, value in sampled.items()},
+                        sync_stats=False,
+                    )
                     self.gradient_updates += 1
+                if updates:
+                    stats = materialize_scalar_stats(stats)
             stats["replay_size"] = self.replay.size
             stats["gradient_updates"] = self.gradient_updates
         self.iterations += 1

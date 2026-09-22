@@ -294,6 +294,26 @@ class Replay:
         indices = np.random.choice(self.size, size=size, replace=False)
         return {name: array[indices] for name, array in self.arrays.items()}
 
+    def sample_many(self, batches, size):
+        """Sample several independent batches with one array gather.
+
+        Each row is still sampled without replacement, exactly like repeated
+        calls to :meth:`sample`.  Gathering all rows together lets the native
+        learner perform one host-to-device transfer per collection cycle
+        instead of one transfer per gradient update.
+        """
+        if type(batches) is not int or batches <= 0:
+            raise ValueError("batches must be a positive integer")
+        if size > self.size:
+            raise ValueError(
+                f"cannot sample {size} unique transitions from replay size {self.size}"
+            )
+        indices = np.stack([
+            np.random.choice(self.size, size=size, replace=False)
+            for _ in range(batches)
+        ])
+        return {name: array[indices] for name, array in self.arrays.items()}
+
     def state(self, max_transitions=None):
         if max_transitions is not None and (
             type(max_transitions) is not int or max_transitions < 0

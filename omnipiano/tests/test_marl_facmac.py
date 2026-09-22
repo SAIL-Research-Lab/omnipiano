@@ -11,6 +11,7 @@ from omnipiano.multiagent import train
 from omnipiano.multiagent.algos import get_algo
 from omnipiano.multiagent.algos._facmac_mixer import FactoredMixer
 from omnipiano.multiagent.algos._native import make_model
+from omnipiano.multiagent.training.native import materialize_scalar_stats
 from omnipiano.multiagent.training.native_io import Replay
 
 
@@ -166,6 +167,15 @@ def test_one_update_changes_every_actor_critic_and_soft_target():
         )
 
 
+def test_deferred_facmac_statistics_materialize_as_finite_scalars():
+    model = _model(seed=8)
+    pending = model.learn(_batch(seed=11), sync_stats=False)
+    assert pending and all(torch.is_tensor(value) for value in pending.values())
+    stats = materialize_scalar_stats(pending)
+    assert set(stats) == set(pending)
+    assert np.isfinite(list(stats.values())).all()
+
+
 def test_true_termination_blocks_bootstrap_but_truncation_does_not():
     model = _model(seed=5)
     batch = _batch(size=3, seed=2)
@@ -197,6 +207,15 @@ def test_replay_sampling_is_unique_and_round_trips():
     replay.add(batch)
     sampled = replay.sample(10)
     assert len(np.unique(sampled["r"])) == 10
+
+    np.random.seed(13)
+    expected = [replay.sample(6) for _ in range(4)]
+    np.random.seed(13)
+    grouped = replay.sample_many(4, 6)
+    for name in replay.arrays:
+        np.testing.assert_array_equal(
+            grouped[name], np.stack([batch[name] for batch in expected])
+        )
 
     restored = Replay(codec, capacity=16, maximum_gib=0.01)
     restored.restore(replay.state())

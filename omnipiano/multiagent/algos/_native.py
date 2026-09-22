@@ -132,16 +132,32 @@ class Gaussian(nn.Module):
         return raw, logp.sum(-1)
 
 
-def optimize(optimizer, loss, parameters, maximum_norm):
+def _assert_finite_async(value, message):
+    """Queue a CUDA-side finite check without synchronizing the host."""
+    check = torch.isfinite(value).all()
+    if value.device.type == "cuda" and hasattr(torch, "_assert_async"):
+        torch._assert_async(check, message)
+    elif not bool(check):
+        raise FloatingPointError(message)
+
+
+def optimize(optimizer, loss, parameters, maximum_norm, *, sync_stats=True):
     parameters = list(parameters)
-    if not bool(torch.isfinite(loss)):
-        raise FloatingPointError("Non-finite native learner loss")
+    if sync_stats:
+        if not bool(torch.isfinite(loss)):
+            raise FloatingPointError("Non-finite native learner loss")
+    else:
+        _assert_finite_async(loss, "Non-finite native learner loss")
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
     norm = nn.utils.clip_grad_norm_(
-        parameters, maximum_norm, error_if_nonfinite=True)
+        parameters, maximum_norm, error_if_nonfinite=sync_stats)
+    if not sync_stats:
+        _assert_finite_async(norm, "Non-finite native learner gradient norm")
     optimizer.step()
-    return float(loss.detach()), float(norm.detach())
+    if sync_stats:
+        return float(loss.detach()), float(norm.detach())
+    return loss.detach(), norm.detach()
 
 
 def value_loss(prediction, old_prediction, target, normalizer, clip):
@@ -156,10 +172,18 @@ def value_loss(prediction, old_prediction, target, normalizer, clip):
 
 @torch.no_grad()
 def soft_update(target, source, tau):
-    for destination, current in zip(target.parameters(), source.parameters()):
-        destination.lerp_(current, tau)
-    for destination, current in zip(target.buffers(), source.buffers()):
-        destination.copy_(current)
+    destination_parameters = list(target.parameters())
+    source_parameters = list(source.parameters())
+    if len(destination_parameters) != len(source_parameters):
+        raise ValueError("Target/source parameter layouts differ")
+    if destination_parameters:
+        torch._foreach_lerp_(destination_parameters, source_parameters, tau)
+    destination_buffers = list(target.buffers())
+    source_buffers = list(source.buffers())
+    if len(destination_buffers) != len(source_buffers):
+        raise ValueError("Target/source buffer layouts differ")
+    if destination_buffers:
+        torch._foreach_copy_(destination_buffers, source_buffers)
 
 
 class NativeModel(nn.Module):
@@ -599,7 +623,7 @@ class OffPolicy(NativeModel):
                 target_q -= (self.log_alpha.exp() * next_logp).sum(-1)
             return batch["r"] + self.args.gamma * (1 - batch["term"]) * target_q
 
-    def learn(self, batch):
+    def learn(self, batch, *, sync_stats=True):
         args, options = self.args, self.options
         target = self.td_target(batch)
         predictions = self.q(batch, batch["a"])
@@ -607,7 +631,8 @@ class OffPolicy(NativeModel):
         qloss, qnorm = optimize(
             self.optimizers["critic"], critic_loss,
             self.q.parameters(),
-            args.grad_clip if self.sac else options["grad_clip"])
+            args.grad_clip if self.sac else options["grad_clip"],
+            sync_stats=sync_stats)
 
         self.q.requires_grad_(False)
         try:
@@ -622,7 +647,8 @@ class OffPolicy(NativeModel):
             ploss, pnorm = optimize(
                 self.optimizers["actors"], actor_loss,
                 self.actors.parameters(),
-                args.grad_clip if self.sac else options["grad_clip"])
+                args.grad_clip if self.sac else options["grad_clip"],
+                sync_stats=sync_stats)
         finally:
             self.q.requires_grad_(True)
 
@@ -635,13 +661,21 @@ class OffPolicy(NativeModel):
                 self.log_alpha * (logp.detach() + self.target_entropy)
             ).sum(-1).mean()
             aloss, _ = optimize(
-                self.optimizers["alpha"], alpha_loss, [self.log_alpha], args.grad_clip)
+                self.optimizers["alpha"], alpha_loss, [self.log_alpha],
+                args.grad_clip, sync_stats=sync_stats)
             alpha = self.log_alpha.detach().exp()
-            if not bool(torch.isfinite(alpha).all()):
-                raise FloatingPointError("Non-finite entropy temperature")
+            if sync_stats:
+                if not bool(torch.isfinite(alpha).all()):
+                    raise FloatingPointError("Non-finite entropy temperature")
+            else:
+                _assert_finite_async(
+                    alpha, "Non-finite entropy temperature"
+                )
             stats["alpha_loss"] = aloss
             for i in range(self.n):
-                stats[f"alpha_{i}"] = float(alpha[i])
+                stats[f"alpha_{i}"] = (
+                    float(alpha[i]) if sync_stats else alpha[i].detach()
+                )
         else:
             soft_update(self.target_actors, self.actors, options["tau"])
         soft_update(self.target_q, self.q, options["tau"])
