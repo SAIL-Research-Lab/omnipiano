@@ -323,8 +323,8 @@ def compile_task(raw: Any) -> ResolvedTask:
             )
     elif mode == "balanced":
         m = raw.get("num_agents")
-        if type(m) is not int or not 2 <= m <= n:
-            raise ValueError("task.num_agents must be an integer in [2, num_hands]")
+        if type(m) is not int or not 1 <= m <= n:
+            raise ValueError("task.num_agents must be an integer in [1, num_hands]")
         q, remainder = divmod(n, m)
         cursor = 0
         groups_list = []
@@ -342,8 +342,8 @@ def compile_task(raw: Any) -> ResolvedTask:
         m = raw.get("num_agents", len(groups))
         if type(m) is not int or m != len(groups):
             raise ValueError("task.num_agents must match task.agents length")
-        if m < 2:
-            raise ValueError("a multi-agent task requires at least two agents")
+        if m < 1:
+            raise ValueError("a compiled control task requires at least one agent")
 
     entries = raw.get("agents", [])
     if not isinstance(entries, list):

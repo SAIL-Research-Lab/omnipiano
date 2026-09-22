@@ -30,14 +30,13 @@ def test_only_validated_algorithms_are_supported():
     """A 'supported' algo must be launchable with no extra flags."""
     assert set(list_algos(status="supported")) == {
         "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic",
-        "happo", "facmac"}
+        "happo", "facmac", "ppo-monolithic"}
     for name in list_algos(status="supported"):
         get_algo(name).assert_launchable()
 
 
 def test_unimplemented_algorithms_refuse_to_launch():
-    # ppo-monolithic joins this set: num_agents is not an env_config knob here.
-    for name in ("mat", "masac", "ppo-monolithic"):
+    for name in ("mat", "masac"):
         with pytest.raises(ValueError, match="NOT IMPLEMENTED"):
             get_algo(name).assert_launchable(allow_experimental=True)
 
@@ -45,7 +44,7 @@ def test_unimplemented_algorithms_refuse_to_launch():
 def test_ippo_and_mappo_differ_only_in_the_critic():
     ippo, mappo = get_algo("ippo"), get_algo("mappo")
     for f in ("family", "rl_module", "execution", "critic_head",
-              "learner_class", "num_agents_override"):
+              "learner_class", "required_num_agents"):
         assert getattr(ippo, f) == getattr(mappo, f), f
     assert (ippo.critic_input, mappo.critic_input) == ("own", "global")
     assert dict(ippo.training_overrides) == dict(mappo.training_overrides) == {}
@@ -81,6 +80,19 @@ def test_happo_uses_the_strict_native_joint_transition_backend():
     assert spec.critic_input == "global"
     assert spec.execution == "decentralized"
     assert spec.learner_class is None
+
+
+def test_monolithic_ppo_is_the_single_agent_rllib_ppo_control():
+    spec = get_algo("ppo-monolithic")
+    spec.assert_launchable()
+    spec.assert_agent_count(1)
+    with pytest.raises(ValueError, match="requires exactly 1"):
+        spec.assert_agent_count(2)
+    assert spec.backend == "rllib"
+    assert spec.family == "on_policy_ppo"
+    assert spec.critic_input == "own"
+    assert spec.required_num_agents == 1
+    assert spec.execution == "centralized"
 
 
 def test_algo_table_renders():

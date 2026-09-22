@@ -18,6 +18,7 @@ REGISTERED_ALGORITHMS = (
     "mappo-own-critic",
     "happo",
     "facmac",
+    "ppo-monolithic",
 )
 
 
@@ -166,6 +167,32 @@ def test_balanced_assignment_and_explicit_noncontiguous_assignment() -> None:
     })
     assert explicit.agents[0].hand_ids == (0, 3)
     assert explicit.agents[0].visible_teammate_hands == ("rh_b", "lh_t")
+
+
+def test_single_agent_monolithic_task_owns_all_hands_and_full_keyboard() -> None:
+    task = compile_task({
+        "name": "winterwind-4h-1a-monolithic",
+        "song": "WinterWind",
+        "num_hands": 4,
+        "num_agents": 1,
+        "assignment": "explicit",
+        "sustain_owner": "agent_1",
+        "agents": [{
+            "name": "agent_1",
+            "hand_ids": [0, 1, 2, 3],
+            "action_key_range": [1, 88],
+            "observation_key_range": [1, 88],
+            "visible_teammate_hands": [],
+        }],
+    })
+
+    assert len(task.agents) == 1
+    agent = task.agents[0]
+    assert agent.hand_ids == (0, 1, 2, 3)
+    assert agent.action_key_range == (0, 87)
+    assert agent.observation_key_range == (0, 87)
+    assert agent.visible_teammate_hands == ()
+    assert agent.is_sustain_owner
 
 
 @pytest.mark.parametrize("task,match", [

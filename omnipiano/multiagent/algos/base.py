@@ -98,8 +98,10 @@ class AlgoSpec:
     # Dotted paths, resolved by train.py only when this algo is actually run.
     learner_class: Optional[str] = None
     rl_module_class: Optional[str] = None
-    # Forces the env's agent count (ppo-monolithic := one agent owning all hands).
-    num_agents_override: Optional[int] = None
+    # Structural precondition checked against the COMPILED environment.  This
+    # never mutates an env: ppo-monolithic's one-agent ownership must be
+    # explicit in the task JSON so artifacts describe what was actually run.
+    required_num_agents: Optional[int] = None
     # PPO kwargs this algorithm forces regardless of CLI. Empty for IPPO/MAPPO:
     # the whole point is that they share identical hyperparameters.
     training_overrides: Mapping[str, Any] = field(default_factory=dict)
@@ -164,8 +166,8 @@ class AlgoSpec:
                 f"replacement for IPPO/MAPPO; document it in notes=")
         if self.status != "supported" and not self.blocking:
             raise ValueError(f"{self.name}: status={self.status!r} requires blocking=")
-        if self.num_agents_override is not None and self.num_agents_override < 1:
-            raise ValueError(f"{self.name}: num_agents_override must be >= 1")
+        if self.required_num_agents is not None and self.required_num_agents < 1:
+            raise ValueError(f"{self.name}: required_num_agents must be >= 1")
 
     # --- derived ------------------------------------------------------------
     @property
@@ -209,6 +211,16 @@ class AlgoSpec:
                 f"backend={self.backend!r} cannot run it.\n"
                 f"  Blocking work: {self.blocking}")
 
+    def assert_agent_count(self, count: int) -> None:
+        """Reject an algorithm/task mismatch before starting Ray or a learner."""
+        if self.required_num_agents is not None and count != self.required_num_agents:
+            raise ValueError(
+                f"--algo {self.name!r} requires exactly "
+                f"{self.required_num_agents} compiled environment agent(s), "
+                f"but this task has {count}. Use a matching task JSON; the "
+                "algorithm never rewrites task ownership silently."
+            )
+
     def metadata(self) -> Dict[str, Any]:
         """Copied verbatim into run_config.json so every artifact is self-describing."""
         return {
@@ -224,7 +236,7 @@ class AlgoSpec:
             "status": self.status,
             "learner_class": self.learner_class,
             "rl_module_class": self.rl_module_class,
-            "num_agents_override": self.num_agents_override,
+            "required_num_agents": self.required_num_agents,
             "training_overrides": dict(self.training_overrides),
             "reference": self.reference,
             "blocking": self.blocking,

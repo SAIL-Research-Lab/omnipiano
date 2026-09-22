@@ -401,6 +401,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 spec.needs_global_state,
                 task=args._resolved_task,
             )
+        spec.assert_agent_count(len(agents))
         print(json.dumps({
             "status": "ok",
             "mode": "dry-run",
@@ -524,6 +525,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args.env_id, args.seed, spec.needs_global_state,
         task=getattr(args, "_resolved_task", None),
     )
+    spec.assert_agent_count(len(agents))
     run_config.update({
         "agents": list(agents),
         "policy_mapping": {a: a for a in agents},

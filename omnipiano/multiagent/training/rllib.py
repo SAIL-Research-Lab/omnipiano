@@ -148,12 +148,7 @@ def build_ppo_config(
     if spec.training_overrides:
         config = config.training(**dict(spec.training_overrides))
 
-    if spec.num_agents_override is not None:
-        raise NotImplementedError(
-            f"--algo {spec.name} declares num_agents_override="
-            f"{spec.num_agents_override}, but the environment/evaluation path "
-            "does not thread it. Refusing a silent no-op."
-        )
+    spec.assert_agent_count(len(agents))
 
     if spec.rl_module == "ctde":
         from omnipiano.multiagent.algos.ppo_module import (
