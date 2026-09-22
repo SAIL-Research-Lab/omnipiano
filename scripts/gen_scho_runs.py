@@ -222,6 +222,11 @@ def main():
                 # Freeze the complete native recipe into every run instead of
                 # relying on whichever defaults happen to be installed later.
                 cfg["native"] = copy.deepcopy(facmac_defaults)
+                # FACMAC updates every 24 environment steps.  Logging every
+                # update would create ~417k W&B/JSONL rows per 10M run while
+                # adding no training information.  25 update blocks still
+                # retain ~16.7k learner points and every 50k evaluation point.
+                cfg["compute"]["log_every_iters"] = 25
             if preflight:
                 cfg["protocol"]["eval_freq"] = 10_000
                 cfg["compute"]["log_every_iters"] = 1

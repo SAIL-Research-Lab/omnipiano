@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import math
+import os
 import numpy as np
 import torch
 from torch import nn
@@ -694,4 +695,26 @@ def make_model(args, meta, options, device):
     model.to(device)
     # Construct optimizers AFTER moving Parameters to their final device.
     model.build_optimizers()
+    # FACMAC's 400-wide MLPs launch many small CUDA kernels.  Compiling only
+    # their forward methods is stable with the cluster PyTorch build and keeps
+    # optimizer/checkpoint semantics unchanged.  Compiling the complete
+    # ``learn`` method is deliberately avoided: it captures optimizer state
+    # and has proved brittle across PyTorch releases.  This is an explicit
+    # runtime opt-in so checkpoints remain portable to eager execution.
+    if (
+        args.algo == "facmac"
+        and device.type == "cuda"
+        and os.environ.get("OMNIPIANO_TORCH_COMPILE", "0") == "1"
+    ):
+        modules = [
+            *model.actors,
+            *model.target_actors,
+            model.q,
+            model.target_q,
+        ]
+        for module in modules:
+            module.forward = torch.compile(
+                module.forward, mode="default", fullgraph=False
+            )
+        print("[facmac] torch.compile enabled for actor/Q forward graphs")
     return model

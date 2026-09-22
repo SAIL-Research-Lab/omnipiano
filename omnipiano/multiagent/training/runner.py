@@ -713,9 +713,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             telemetry = _training_telemetry(result)
             row = {"iteration": iterations, "env_steps": total_steps,
                    "wall_seconds": round(time.time() - start, 3), **telemetry}
-            append_jsonl(run_dir / "progress.jsonl", row)
-            wandb_run.log_train(total_steps, row, result)
-            if iterations == 1 or iterations % args.log_every_iters == 0:
+            should_log = (
+                iterations == 1
+                or iterations % args.log_every_iters == 0
+                or total_steps >= args.total_steps
+            )
+            if should_log:
+                # Shared-filesystem JSONL and W&B calls are observability, not
+                # part of the learner.  Respect the configured cadence instead
+                # of performing both on every native 24-step update block.
+                append_jsonl(run_dir / "progress.jsonl", row)
+                wandb_run.log_train(total_steps, row, result)
                 elapsed = max(time.time() - start, 1e-9)
                 sps = (total_steps - session_start_steps) / elapsed
                 eta_h = ((args.total_steps - total_steps) / sps / 3600.0
