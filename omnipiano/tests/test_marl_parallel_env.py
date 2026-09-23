@@ -9,16 +9,20 @@ Covered sub-phases:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Dict
 
 import numpy as np
 import pytest
 
+from omnipiano.configs import RobustConfig
 from omnipiano.multiagent import (
     AGENT_ASSIGNMENTS,
     list_parallel_envs,
     make_parallel,
+    make_parallel_from_task,
 )
+from omnipiano.multiagent.compile.environment import resolve_registered_task
 from omnipiano.multiagent.compile.env_runtime.metrics import (
     BASE_TEAM_RETURN,
     COMMON_AREA_DUPLICATE_PRESS_RATE,
@@ -30,6 +34,7 @@ from omnipiano.multiagent.compile.env_runtime.metrics import (
     OBSERVED_STEP_COUNT,
     SHAPED_TEAM_RETURN,
 )
+from omnipiano.utils.info_keys import InfoKeys
 
 
 # Sub-phase 1A: 4-hand Duet.
@@ -56,6 +61,88 @@ _FIVE_HAND_MA_ENVS = (
 
 # Aggregate for tests that should cover every registered MA env.
 _ALL_MA_ENVS = _FOUR_HAND_MA_ENVS + _THREE_HAND_MA_ENVS + _FIVE_HAND_MA_ENVS
+
+
+def _debug_four_hand_task():
+    """Four-hand MA contract backed by a MIDI bundled with RoboPianist."""
+    task = resolve_registered_task(
+        "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0"
+    )
+    return replace(
+        task,
+        name="test-four-hand-observation-noise",
+        song="TwinkleTwinkleLittleStar",
+        base_env_name="RoboPianist-debug-TwinkleTwinkleLittleStar-v0",
+        legacy_env_id=None,
+    )
+
+
+def test_observation_noise_override_is_seeded_and_reported() -> None:
+    env = make_parallel_from_task(
+        _debug_four_hand_task(),
+        seed=7,
+        robust_config=RobustConfig(
+            noise_dist="gaussian",
+            obs_noise_std=0.05,
+        ),
+    )
+    try:
+        def one_step(seed: int) -> float:
+            env.reset(seed=seed)
+            actions = {
+                agent: np.zeros(
+                    env.action_space(agent).shape, dtype=np.float32
+                )
+                for agent in env.agents
+            }
+            _, _, _, _, infos = env.step(actions)
+            values = [
+                infos[agent][InfoKeys.ROBUST_NOISE_OBS_L2]
+                for agent in env.possible_agents
+            ]
+            assert values[0] > 0.0
+            assert all(value == values[0] for value in values)
+            return float(values[0])
+
+        first = one_step(7)
+        repeated = one_step(7)
+        different_seed = one_step(8)
+
+        assert repeated == first
+        assert different_seed != first
+    finally:
+        env.close()
+
+
+def test_clean_environment_reports_zero_observation_noise() -> None:
+    env = make_parallel_from_task(_debug_four_hand_task(), seed=0)
+    try:
+        env.reset(seed=0)
+        actions = {
+            agent: np.zeros(env.action_space(agent).shape, dtype=np.float32)
+            for agent in env.agents
+        }
+        _, _, _, _, infos = env.step(actions)
+        assert all(
+            infos[agent][InfoKeys.ROBUST_NOISE_OBS_L2] == 0.0
+            for agent in env.possible_agents
+        )
+    finally:
+        env.close()
+
+
+def test_runtime_action_or_reward_noise_fails_fast() -> None:
+    task = _debug_four_hand_task()
+    with pytest.raises(ValueError, match="observation noise only"):
+        make_parallel_from_task(
+            task,
+            robust_config=RobustConfig(action_noise_std=0.05),
+        )
+    with pytest.raises(ValueError, match="observation noise only"):
+        make_parallel_from_task(
+            task,
+            robust_config=RobustConfig(reward_noise_std=0.05),
+        )
 
 
 # ===========================================================================
@@ -145,7 +232,6 @@ class TestLayoutRegression:
         # `shared` mode: all agents receive the same scalar.
         vals = list(rewards.values())
         assert all(v == vals[0] for v in vals), f"reward not shared: {rewards}"
-
 
 # ===========================================================================
 # 3-hand MainSolo layout regression — pins 1-hand agent edge case

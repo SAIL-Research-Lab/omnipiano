@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional, Tuple, Union
 
 from omnipiano.multiagent.compile.schema import ResolvedAgent, ResolvedHand, ResolvedTask
 
 if TYPE_CHECKING:
+    from omnipiano.configs import RobustConfig
     from omnipiano.multiagent.compile.env_runtime.parallel_env import (
         OmniPianoParallelEnv,
     )
@@ -19,7 +20,7 @@ _RUNTIME_BYPASS_FIELDS = frozenset({
 _MA_RUNTIME_KWARGS = frozenset({
     "obs_visibility", "reward_mode",
     "inter_agent_collision_penalty_coef", "flatten_obs", "sustain_owner",
-    "include_global_state",
+    "include_global_state", "robust_config",
 })
 
 
@@ -194,12 +195,21 @@ def prepare_task(task: ResolvedTask) -> ResolvedTask:
     for spec in specs:
         updated = dataclasses.replace(spec, key_range=action_ranges[spec.name])
         serialized.append(_serialize_hand_spec(updated))
+    # Preserve an explicitly supplied robustness snapshot.  Historically this
+    # path replaced it with a clean RobustConfig, which made custom MARL tasks
+    # silently lose observation noise while their registered-env counterparts
+    # retained it.  Round-trip through RobustConfig so malformed snapshots fail
+    # before worker processes are launched.
+    if isinstance(task.robust_config, RobustConfig):
+        robust_config = task.robust_config
+    else:
+        robust_config = RobustConfig(**dict(task.robust_config or {}))
     return dataclasses.replace(
         task,
         hand_specs=tuple(serialized),
         env_config=_plain(BenchmarkEnvConfig(disable_fingering_reward=True)),
         task_config=_plain(TaskVariantConfig()),
-        robust_config=_plain(RobustConfig()),
+        robust_config=_plain(robust_config),
     )
 
 
@@ -217,8 +227,16 @@ def make_parallel_from_task(
     obs_visibility: str = "own_plus_boundary",
     reward_mode: str = "shared",
     sustain_owner: Optional[str] = None,
+    robust_config: Optional[
+        Union["RobustConfig", Mapping[str, Any]]
+    ] = None,
 ):
-    """Build a custom task without mutating either process-local registry."""
+    """Build a custom task without mutating either process-local registry.
+
+    ``robust_config`` is a runtime-only override of the resolved task snapshot.
+    The MARL chain currently implements observation noise only.  Action and
+    reward channels fail fast instead of being silently ignored.
+    """
     if not isinstance(task, ResolvedTask):
         task = ResolvedTask.from_dict(task)
     task = prepare_task(task)
@@ -256,10 +274,30 @@ def make_parallel_from_task(
     )
     env_config = BenchmarkEnvConfig(**dict(task.env_config or {}))
     task_config = TaskVariantConfig(**dict(task.task_config or {}))
-    robust_config = RobustConfig(**dict(task.robust_config or {}))
+    if robust_config is None:
+        effective_robust_config = RobustConfig(**dict(task.robust_config or {}))
+    elif isinstance(robust_config, RobustConfig):
+        effective_robust_config = robust_config
+    elif isinstance(robust_config, Mapping):
+        effective_robust_config = RobustConfig(**dict(robust_config))
+    else:
+        raise TypeError(
+            "robust_config must be RobustConfig, a mapping, or None; "
+            f"got {type(robust_config).__name__}"
+        )
+    unsupported_channels = [
+        channel for channel in ("action", "reward")
+        if effective_robust_config.is_channel_active(channel)
+    ]
+    if unsupported_channels:
+        raise ValueError(
+            "multi-agent environments currently support observation noise "
+            "only; unsupported active robust channels: "
+            f"{unsupported_channels}"
+        )
     env_builder = _make_dm_env_chain_builder(
         base_env_name=task.base_env_name, env_config=env_config,
-        task_config=task_config, robust_config=robust_config,
+        task_config=task_config, robust_config=effective_robust_config,
         hand_specs=hand_specs, record_dir=record_dir, record_every=record_every,
         record_resolution=record_resolution, camera_id=camera_id,
     )
@@ -280,6 +318,7 @@ def make_parallel_from_task(
         agent_reaches=reaches, seed=seed, flatten_obs=flatten_obs,
         include_global_state=include_global_state,
         inter_agent_collision_penalty_coef=inter_agent_collision_penalty_coef,
+        obs_noise_active=effective_robust_config.is_channel_active("obs"),
         obs_visibility=obs_visibility, reward_mode=reward_mode,
         sustain_owner=sustain_owner,
         observation_key_ranges=observation_ranges,

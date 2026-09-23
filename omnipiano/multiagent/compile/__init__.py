@@ -17,6 +17,7 @@ from omnipiano.multiagent.compile.environment import (
 )
 from omnipiano.multiagent.compile.schema import (
     CONFIG_FIELDS,
+    ROBUST_OBSERVATION_FIELDS,
     TASK_CONFIG_SCHEMA_VERSION,
     TRAIN_CONFIG_SCHEMA_VERSION,
     ExperimentRequest,
@@ -28,6 +29,7 @@ from omnipiano.multiagent.compile.schema import (
 
 __all__ = [
     "CONFIG_FIELDS",
+    "ROBUST_OBSERVATION_FIELDS",
     "DEFAULT_TRAIN_CONFIG_PATH",
     "ExperimentRequest",
     "ResolvedAgent",

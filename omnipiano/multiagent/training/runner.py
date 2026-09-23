@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import json
 import math
 import os
@@ -387,7 +388,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if getattr(args, "_resolved_task", None) is None:
         prepared = resolve_registered_task(args.env_id)
     else:
-        prepared = prepare_task(ResolvedTask.from_dict(args._resolved_task))
+        prepared = ResolvedTask.from_dict(args._resolved_task)
+    if getattr(args, "_robust_config", None) is not None:
+        prepared = dataclasses.replace(
+            prepared, robust_config=dict(args._robust_config)
+        )
+    prepared = prepare_task(prepared)
     args._resolved_task = prepared.to_dict()
 
     if args.dry_run:

@@ -68,6 +68,12 @@ INTER_AGENT_COLLISION_PENALTY_COEF = (
     "episode_reward/inter_agent_collision_penalty_coef"
 )
 
+# Observation-robustness telemetry.  The dm_env wrapper reports one L2 norm
+# over the global raw observation before it is split across agents, so these
+# values are team/environment metrics rather than per-agent sums.
+OBS_NOISE_L2_SUM = "episode_robust/obs_noise_l2_sum"
+OBS_NOISE_L2_MEAN = "episode_robust/obs_noise_l2_mean"
+
 
 def apply_inter_agent_collision_penalty(
     base_reward: float,

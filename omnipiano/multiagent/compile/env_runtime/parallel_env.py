@@ -36,10 +36,13 @@ from omnipiano.multiagent.compile.env_runtime.metrics import (
     BASE_TEAM_RETURN,
     INTER_AGENT_COLLISION_PENALTY_COEF,
     INTER_AGENT_COLLISION_PENALTY_RETURN,
+    OBS_NOISE_L2_MEAN,
+    OBS_NOISE_L2_SUM,
     SHAPED_TEAM_RETURN,
     CoordinationMetricsTracker,
     apply_inter_agent_collision_penalty,
 )
+from omnipiano.utils.info_keys import InfoKeys
 
 
 # Phase 1 supported modes.
@@ -141,6 +144,9 @@ class OmniPianoParallelEnv(ParallelEnv):
         inter_agent_collision_penalty_coef: Per-control-step shared penalty for
             any physical contact between collision geoms owned by different
             agents. Zero preserves the original reward exactly.
+        obs_noise_active: Whether the dm_env chain is expected to contain an
+            active DmEnvObsNoiseWrapper. Used to fail fast on broken wiring and
+            to expose the shared perturbation magnitude through ``info``.
         flatten_obs: if True, each agent's observation_space and obs values
             are flattened to a single Box via gymnasium.spaces.utils.flatten.
             Default False (Dict preserved).
@@ -162,6 +168,7 @@ class OmniPianoParallelEnv(ParallelEnv):
         sustain_owner: Optional[str] = None,
         include_global_state: bool = False,
         inter_agent_collision_penalty_coef: float = 0.0,
+        obs_noise_active: bool = False,
         observation_key_ranges: Optional[Mapping[str, Tuple[int, int]]] = None,
         visible_teammate_hands: Optional[Mapping[str, Sequence[str]]] = None,
     ) -> None:
@@ -187,6 +194,7 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._obs_visibility = obs_visibility
         self._reward_mode = reward_mode
         self._flatten_obs = flatten_obs
+        self._obs_noise_active = bool(obs_noise_active)
         penalty_coef = float(inter_agent_collision_penalty_coef)
         if not np.isfinite(penalty_coef) or penalty_coef < 0.0:
             raise ValueError(
@@ -289,6 +297,8 @@ class OmniPianoParallelEnv(ParallelEnv):
         self._coordination_task = None
         self._episode_base_team_return = 0.0
         self._episode_collision_penalty_return = 0.0
+        self._episode_obs_noise_l2_sum = 0.0
+        self._episode_step_count = 0
 
         # Build per-agent action spaces first (needed for obs space construction
         # when OAR adds a prev_action slice).
@@ -346,6 +356,8 @@ class OmniPianoParallelEnv(ParallelEnv):
         )
         self._episode_base_team_return = 0.0
         self._episode_collision_penalty_return = 0.0
+        self._episode_obs_noise_l2_sum = 0.0
+        self._episode_step_count = 0
         obs = self._split_observation(ts.observation)
         infos = self._build_per_agent_infos()
         return obs, infos
@@ -361,6 +373,9 @@ class OmniPianoParallelEnv(ParallelEnv):
     ]:
         flat_action = self._reassemble_action(actions)
         ts = self._env.step(flat_action)
+        obs_noise_l2 = self._read_obs_noise_l2()
+        self._episode_obs_noise_l2_sum += obs_noise_l2
+        self._episode_step_count += 1
 
         if self._coordination_task is None:
             raise RuntimeError("multi-agent environment must be reset before step")
@@ -407,7 +422,7 @@ class OmniPianoParallelEnv(ParallelEnv):
         terminations = {a: terminated for a in self.agents}
         truncations = {a: truncated for a in self.agents}
 
-        infos = self._build_per_agent_infos()
+        infos = self._build_per_agent_infos(obs_noise_l2=obs_noise_l2)
         for agent_info in infos.values():
             agent_info["step_coordination/inter_agent_collision"] = bool(
                 inter_agent_collision
@@ -439,6 +454,11 @@ class OmniPianoParallelEnv(ParallelEnv):
                 INTER_AGENT_COLLISION_PENALTY_COEF: float(
                     self._inter_agent_collision_penalty_coef
                 ),
+                OBS_NOISE_L2_SUM: float(self._episode_obs_noise_l2_sum),
+                OBS_NOISE_L2_MEAN: float(
+                    self._episode_obs_noise_l2_sum
+                    / max(self._episode_step_count, 1)
+                ),
             })
             try:
                 midi_eval = _find_wrapper(self._env, self._midi_eval_wrapper_cls)
@@ -462,14 +482,41 @@ class OmniPianoParallelEnv(ParallelEnv):
 
         return obs, rewards, terminations, truncations, infos
 
-    def _build_per_agent_infos(self) -> Dict[str, dict]:
-        """Construct per-agent info dict. Currently includes only `agent_key_range`
-        (constant, used by user code to decode agent-local key indices back to
-        global piano key indices)."""
+    def _build_per_agent_infos(
+        self,
+        *,
+        obs_noise_l2: Optional[float] = None,
+    ) -> Dict[str, dict]:
+        """Construct per-agent info, including shared obs-noise telemetry."""
+        if obs_noise_l2 is None:
+            obs_noise_l2 = self._read_obs_noise_l2()
         return {
-            a: {"agent_key_range": self._agent_reaches[a]}
+            a: {
+                "agent_key_range": self._agent_reaches[a],
+                InfoKeys.ROBUST_NOISE_OBS_L2: float(obs_noise_l2),
+            }
             for a in self.agents
         }
+
+    def _read_obs_noise_l2(self) -> float:
+        """Read the current global observation-noise norm from the dm_env chain.
+
+        Explicit ``reset(seed=...)`` rebuilds that chain, so the wrapper must be
+        rediscovered instead of cached.  Clean environments return zero; an
+        active configuration without its wrapper is a wiring error.
+        """
+        from omnipiano.envs.dm_env_obs_noise import DmEnvObsNoiseWrapper
+
+        try:
+            wrapper = _find_wrapper(self._env, DmEnvObsNoiseWrapper)
+        except RuntimeError:
+            if self._obs_noise_active:
+                raise RuntimeError(
+                    "observation noise is active but DmEnvObsNoiseWrapper is "
+                    "missing from the multi-agent dm_env chain"
+                )
+            return 0.0
+        return float(wrapper.last_step_noise_l2)
 
     def close(self) -> None:
         if hasattr(self._env, "close"):

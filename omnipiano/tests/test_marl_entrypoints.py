@@ -89,6 +89,40 @@ def test_dry_run_exits_before_training_side_effects(monkeypatch, capsys) -> None
     assert report["resolved_task"]["legacy_env_id"] == report["env_id"]
 
 
+def test_registered_env_dry_run_applies_json_observation_noise(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    config = json.loads(train.DEFAULT_TRAIN_CONFIG_PATH.read_text())
+    config["robust"] = {
+        "noise_dist": "gaussian",
+        "obs_noise_std": 0.05,
+    }
+    path = tmp_path / "registered-obs-noise.json"
+    path.write_text(json.dumps(config))
+    space = SimpleNamespace(shape=(3,), dtype=np.dtype(np.float32))
+    monkeypatch.setattr(
+        train,
+        "probe_agent_spaces",
+        lambda *args, **kwargs: (
+            ["secondo", "primo"],
+            {"secondo": space, "primo": space},
+            {"secondo": space, "primo": space},
+            {
+                "secondo": {"own": (0, 3), "global_state": (0, 0)},
+                "primo": {"own": (0, 3), "global_state": (0, 0)},
+            },
+        ),
+    )
+
+    assert train.main([str(path), "--dry-run"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    robust = report["resolved_task"]["robust_config"]
+    assert robust["noise_dist"] == "gaussian"
+    assert robust["obs_noise_std"] == 0.05
+    assert robust["action_noise_std"] == 0.0
+    assert robust["reward_noise_std"] == 0.0
+
+
 def test_json_algorithm_defaults_then_cli_overrides(tmp_path: Path) -> None:
     config = json.loads(train.DEFAULT_TRAIN_CONFIG_PATH.read_text())
     config["ppo"]["entropy_coeff"] = 0.0001

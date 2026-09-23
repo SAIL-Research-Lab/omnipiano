@@ -92,6 +92,26 @@ The relevant schema-v2 fields are:
   and follow the preset's physical left-to-right order.
 - Action ranges may overlap. Observation ranges may differ from action ranges.
 
+Optional observation noise is configured at the top level. It is sampled in
+the shared dm_env observation stream before observations are split per agent,
+so every agent receives its configured local slice of the same perturbed world
+state. For example, Gaussian sensor noise with standard deviation 0.05 is:
+
+```json
+{
+  "robust": {
+    "noise_dist": "gaussian",
+    "obs_noise_std": 0.05
+  }
+}
+```
+
+Supported distributions are `gaussian` (`obs_noise_std`), `uniform`
+(`obs_noise_uniform_low` and `obs_noise_uniform_high`), and `shift`
+(`obs_noise_shift`). The block is optional; omitting it preserves the clean
+environment. Action and reward noise are rejected at compile time because the
+current MARL runtime implements the observation channel only.
+
 The compiler validates the request without Ray or MuJoCo. At launch,
 `prepare_task` snapshots the exact physical hand and environment settings.
 Training workers and deterministic evaluation then rebuild from this same

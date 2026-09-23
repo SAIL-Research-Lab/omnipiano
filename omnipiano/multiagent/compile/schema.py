@@ -103,6 +103,19 @@ CONFIG_FIELDS: Dict[str, Dict[str, str]] = {
     },
 }
 
+# Robustness is part of the environment identity rather than a trainer CLI
+# default.  MARL currently implements the observation channel only, so the
+# public JSON contract deliberately does not accept action/reward fields that
+# the runtime would otherwise have to ignore.
+ROBUST_OBSERVATION_FIELDS = frozenset({
+    "noise_dist",
+    "obs_noise_dist",
+    "obs_noise_std",
+    "obs_noise_uniform_low",
+    "obs_noise_uniform_high",
+    "obs_noise_shift",
+})
+
 
 @dataclass(frozen=True)
 class ExperimentRequest:
@@ -205,6 +218,7 @@ class ResolvedExperiment:
     smoke_test_overrides: Mapping[str, Any]
     native_options: Mapping[str, Any]
     task: Optional[ResolvedTask] = None
+    robust_config: Optional[Mapping[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a fully JSON-serializable description of this compile result."""
@@ -215,6 +229,10 @@ class ResolvedExperiment:
             "values": deepcopy(dict(self.values)),
             "smoke_test_overrides": deepcopy(dict(self.smoke_test_overrides)),
             "native_options": deepcopy(dict(self.native_options)),
+            "robust_config": (
+                deepcopy(dict(self.robust_config))
+                if self.robust_config is not None else None
+            ),
             "request": self.request.snapshot(),
             "task": self.task.to_dict() if self.task is not None else None,
         }

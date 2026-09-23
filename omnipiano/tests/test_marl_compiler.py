@@ -150,6 +150,103 @@ def test_v2_task_inherits_training_defaults_and_resolves_ranges() -> None:
     assert ResolvedTask.from_dict(compiled.task.to_dict()) == compiled.task
 
 
+def test_v2_observation_noise_is_normalized_into_resolved_task(
+    tmp_path: Path,
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent" / "configs" / "marl_task_example.json"
+    )
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["robust"] = {
+        "noise_dist": "gaussian",
+        "obs_noise_std": 0.05,
+    }
+    path = tmp_path / "obs-noise.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    compiled = _compile(path)
+
+    assert compiled.robust_config is not None
+    assert compiled.robust_config["noise_dist"] == "gaussian"
+    assert compiled.robust_config["obs_noise_std"] == 0.05
+    assert compiled.robust_config["action_noise_std"] == 0.0
+    assert compiled.robust_config["reward_noise_std"] == 0.0
+    assert compiled.task is not None
+    assert compiled.task.robust_config == compiled.robust_config
+    assert compiled.to_dict()["robust_config"]["obs_noise_std"] == 0.05
+
+
+def test_v2_observation_noise_changes_generated_environment_identity(
+    tmp_path: Path,
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent" / "configs" / "marl_task_example.json"
+    )
+    clean_raw = json.loads(source.read_text(encoding="utf-8"))
+    clean_path = tmp_path / "clean.json"
+    clean_path.write_text(json.dumps(clean_raw), encoding="utf-8")
+    noisy_raw = json.loads(json.dumps(clean_raw))
+    noisy_raw["robust"] = {
+        "noise_dist": "gaussian",
+        "obs_noise_std": 0.05,
+    }
+    noisy_path = tmp_path / "noisy.json"
+    noisy_path.write_text(json.dumps(noisy_raw), encoding="utf-8")
+
+    clean = _compile(clean_path)
+    noisy = _compile(noisy_path)
+
+    assert clean.values["env_id"] != noisy.values["env_id"]
+
+
+def test_v1_observation_noise_survives_compilation_for_registered_env(
+    tmp_path: Path,
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent" / "configs" / "marl_train_config_default.json"
+    )
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["robust"] = {
+        "noise_dist": "uniform",
+        "obs_noise_uniform_low": -0.05,
+        "obs_noise_uniform_high": 0.05,
+    }
+    path = tmp_path / "registered-obs-noise.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    compiled = _compile(path)
+
+    assert compiled.task is None
+    assert compiled.robust_config is not None
+    assert compiled.robust_config["noise_dist"] == "uniform"
+    assert compiled.robust_config["obs_noise_uniform_low"] == -0.05
+    assert compiled.robust_config["obs_noise_uniform_high"] == 0.05
+
+
+@pytest.mark.parametrize("robust,match", [
+    ({"action_noise_std": 0.05}, "observation noise only"),
+    ({"noise_dist": "gaussian", "obs_noise_std": 0.0}, "inactive"),
+    ({"noise_dist": "uniform", "obs_noise_std": 0.05}, "invalid robust"),
+])
+def test_invalid_or_unsupported_robust_json_fails_during_compilation(
+    tmp_path: Path, robust, match: str,
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent" / "configs" / "marl_task_example.json"
+    )
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["robust"] = robust
+    path = tmp_path / "invalid-robust.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        _compile(path)
+
+
 def test_balanced_assignment_and_explicit_noncontiguous_assignment() -> None:
     balanced = compile_task({
         "song": "WinterWind", "num_hands": 5, "num_agents": 3,

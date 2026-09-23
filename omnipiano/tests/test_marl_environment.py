@@ -1,5 +1,6 @@
 """Tests for resolved-task preparation and registered-env translation."""
 
+from dataclasses import replace
 from pathlib import Path
 
 from omnipiano.multiagent.compile.compiler import compile_experiment
@@ -33,6 +34,31 @@ def test_prepared_task_snapshot_contains_physics_inputs() -> None:
     assert [tuple(h["key_range"]) for h in prepared.hand_specs] == [
         (0, 51), (0, 51), (36, 87), (36, 87)
     ]
+
+
+def test_prepare_task_preserves_explicit_observation_noise() -> None:
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent"
+        / "configs"
+        / "marl_task_example.json"
+    )
+    compiled = compile_experiment(path, registered_algorithms=ALGOS)
+    task = replace(
+        compiled.task,
+        robust_config={
+            "noise_dist": "gaussian",
+            "obs_noise_std": 0.05,
+        },
+    )
+
+    prepared = prepare_task(task)
+
+    assert prepared.robust_config is not None
+    assert prepared.robust_config["noise_dist"] == "gaussian"
+    assert prepared.robust_config["obs_noise_std"] == 0.05
+    assert prepared.robust_config["action_noise_std"] == 0.0
+    assert prepared.robust_config["reward_noise_std"] == 0.0
 
 
 def test_registered_four_hand_env_resolves_to_same_explicit_contract() -> None:

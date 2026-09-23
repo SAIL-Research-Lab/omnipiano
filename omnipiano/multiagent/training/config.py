@@ -37,6 +37,10 @@ def build_arg_parser(
         _training_config_snapshot=compiled.request.snapshot(),
         _training_config_path=str(compiled.config_path),
         _resolved_task=(compiled.task.to_dict() if compiled.task is not None else None),
+        _robust_config=(
+            dict(compiled.robust_config)
+            if compiled.robust_config is not None else None
+        ),
         _native_options=dict(compiled.native_options),
     )
     p.add_argument(

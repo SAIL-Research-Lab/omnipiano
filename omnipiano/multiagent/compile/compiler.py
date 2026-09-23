@@ -12,11 +12,15 @@ import json
 import os
 import re
 from copy import deepcopy
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional
 
+from omnipiano.configs import RobustConfig
+
 from omnipiano.multiagent.compile.schema import (
     CONFIG_FIELDS,
+    ROBUST_OBSERVATION_FIELDS,
     TRAIN_CONFIG_SCHEMA_VERSION,
     TASK_CONFIG_SCHEMA_VERSION,
     ExperimentRequest,
@@ -35,6 +39,36 @@ DEFAULT_TRAIN_CONFIG_PATH = (
     / "configs"
     / "marl_train_config_default.json"
 )
+
+
+def _compile_observation_robust(raw: Any) -> Optional[Dict[str, Any]]:
+    """Validate and normalize the optional observation-noise JSON block.
+
+    The full :class:`RobustConfig` also models action and reward noise.  Those
+    channels are intentionally absent here because the MARL dm_env chain does
+    not implement them yet.  Accepting them in JSON would make a request look
+    valid while silently changing no trajectory.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ValueError("robust must be an object")
+    unknown = sorted(set(raw) - ROBUST_OBSERVATION_FIELDS)
+    if unknown:
+        raise ValueError(
+            "robust has unsupported fields "
+            f"{unknown}; MARL JSON currently supports observation noise only"
+        )
+    try:
+        config = RobustConfig(**dict(raw))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid robust observation-noise config: {exc}") from exc
+    if not config.is_channel_active("obs"):
+        raise ValueError(
+            "robust is present but observation noise is inactive; set the "
+            "magnitude matching noise_dist, or omit the robust block"
+        )
+    return asdict(config)
 
 
 def resolve_train_config_path(path: os.PathLike[str] | str) -> Path:
@@ -84,6 +118,7 @@ def compile_experiment(
         "native",
         "smoke_test_overrides",
         "algorithm_overrides",
+        "robust",
     }
     if version == TASK_CONFIG_SCHEMA_VERSION:
         allowed_top.update({"task", "extends"})
@@ -92,6 +127,7 @@ def compile_experiment(
         raise ValueError(f"{config_path}: unknown top-level keys {unknown_top}")
 
     task = None
+    robust_config = None
     if version == TASK_CONFIG_SCHEMA_VERSION:
         task = compile_task(raw.get("task"))
         if raw.get("experiment", {}).get("env_id") is not None:
@@ -115,10 +151,16 @@ def compile_experiment(
                     raise ValueError(f"{section} must be an object")
                 inherited.setdefault(section, {}).update(raw[section])
         for key in (
-            "description", "smoke_test_overrides", "algorithm_overrides", "native"
+            "description", "smoke_test_overrides", "algorithm_overrides", "native",
+            "robust",
         ):
             if key in raw:
                 if key == "description":
+                    inherited[key] = raw[key]
+                elif key == "robust":
+                    # Robustness identifies the environment and replaces the
+                    # parent's block atomically; distribution parameters must
+                    # never be partially inherited from a different noise law.
                     inherited[key] = raw[key]
                 elif key == "native":
                     if not isinstance(raw[key], dict):
@@ -140,10 +182,15 @@ def compile_experiment(
                         else:
                             target[item] = value
         raw = inherited
+        robust_config = _compile_observation_robust(raw.get("robust"))
+        if robust_config is not None:
+            task = replace(task, robust_config=robust_config)
         digest = hashlib.sha256(
             json.dumps(task.to_dict(), sort_keys=True).encode()
         ).hexdigest()[:10]
         raw["experiment"]["env_id"] = f"OmniPiano-Custom-{task.name}-{digest}-v0"
+    else:
+        robust_config = _compile_observation_robust(raw.get("robust"))
 
     defaults: Dict[str, Any] = {}
 
@@ -284,6 +331,7 @@ def compile_experiment(
         smoke_test_overrides=dict(smoke_overrides),
         native_options=native_options,
         task=task,
+        robust_config=robust_config,
     )
 
 
