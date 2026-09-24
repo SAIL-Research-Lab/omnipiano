@@ -15,7 +15,7 @@ from typing import Dict
 import numpy as np
 import pytest
 
-from omnipiano.configs import RobustConfig
+from omnipiano.configs import RobustConfig, RobustEnvConfig
 from omnipiano.multiagent import (
     AGENT_ASSIGNMENTS,
     list_parallel_envs,
@@ -142,6 +142,13 @@ def test_runtime_action_or_reward_noise_fails_fast() -> None:
         make_parallel_from_task(
             task,
             robust_config=RobustConfig(reward_noise_std=0.05),
+        )
+    with pytest.raises(ValueError, match="gravity"):
+        make_parallel_from_task(
+            task,
+            robust_config=RobustConfig(
+                environment_noise=RobustEnvConfig(gravity_noise_std=0.2),
+            ),
         )
 
 
@@ -797,6 +804,23 @@ def test_make_parallel_rejects_action_robust_sa_env():
         )
     try:
         with pytest.raises(ValueError, match="robust channel"):
+            make_parallel(ma_id)
+    finally:
+        ma_reg._ma_registry.pop(ma_id, None)
+
+
+def test_make_parallel_rejects_physical_robust_sa_env():
+    from omnipiano.multiagent.compile.env_runtime import registry as ma_reg
+
+    ma_id = "OmniPianoTest-MA-GuardRobustGravity-v0"
+    if ma_id not in ma_reg._ma_registry:
+        ma_reg.register_parallel(
+            id=ma_id,
+            sa_env_id="OmniPiano-ClairDeLune-G-Gauss-P200-v0",
+            morphology="ThreeHand",
+        )
+    try:
+        with pytest.raises(ValueError, match="gravity"):
             make_parallel(ma_id)
     finally:
         ma_reg._ma_registry.pop(ma_id, None)
