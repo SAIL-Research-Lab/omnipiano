@@ -3,6 +3,8 @@
 This directory is self-contained against `main` commit `8a1545a`. No changes to
 the main configuration, registry, wrappers, tasks, examples, or dependencies are required.
 The existing `constraints.py` is preserved for compatibility with main's legacy registrations.
+The isolated installation profile and its NumPy 1.x compatibility guard are
+documented in [Safety Quick Start](QUICKSTART.md); no root files are patched.
 
 ## Safety semantics × cost setting
 
@@ -135,12 +137,13 @@ a distinct environment ID. A PPO reference is trained locally at the default bud
 
 ## Installation and execution
 
-Use the repository README's Linux/system setup (FluidSynth, soundfont, MuJoCo),
-install/preprocess the PIG repertoire, then from the repository root:
+Follow [Safety Quick Start](QUICKSTART.md) to create a **separate Python 3.10
+Conda environment**, install the pinned safety dependencies and preprocess PIG.
+Do not install OmniSafe directly into the general benchmark's environment.
+The guide documents the upstream Safety-Gymnasium/MuJoCo dependency exception.
+After installation, run from the repository root:
 
 ```bash
-pip install -e .
-pip install 'omnisafe==0.5.0' pytest matplotlib
 python -m pytest omnipiano/safety/tests -q
 python -m omnipiano.safety.smoke --steps 2 --out safety_smoke.json
 ```

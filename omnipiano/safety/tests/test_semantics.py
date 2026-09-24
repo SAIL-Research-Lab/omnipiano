@@ -12,6 +12,16 @@ from omnipiano.safety.runtime import algorithm_config
 from omnipiano.wrappers.safety_wrapper import SafetyWrapper
 
 
+def test_numpy1_native_array_compatibility():
+    if np.__version__.split(".")[0] != "1":
+        pytest.skip("The safety installation profile pins NumPy 1.x")
+    source = np.arange(3)
+    result = np.array(source, copy=False, subok=True, ndmin=2)
+    assert result.shape == (1, 3)
+    assert np.shares_memory(source, result)
+    assert np.broadcast_to(source, (2, 3)).tolist() == [[0, 1, 2], [0, 1, 2]]
+
+
 def test_matrix():
     assert sum(map(len, SETTINGS.values())) == 12
     assert len(EXTENSIONS) == 48
