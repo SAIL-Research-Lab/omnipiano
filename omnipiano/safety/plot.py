@@ -15,7 +15,7 @@ def load_records(root, group, source="replay"):
     for path in (Path(root) / group).glob("*/cell.json"):
         cell = json.loads(path.read_text())
         status = path.parent / "status.json"
-        if cell["smoke"] or cell["steps"] != 5_000_000 or not status.exists():
+        if cell.get("custom") or cell["smoke"] or cell["steps"] != 5_000_000 or not status.exists():
             continue
         state = json.loads(status.read_text())
         if state["status"] != "complete":

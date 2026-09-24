@@ -6,6 +6,8 @@ import re
 
 import numpy as np
 
+from omnipiano.safety.algorithms import evaluation_budget
+
 
 def replay(save_dir, cell, output, episodes=10):
     import torch
@@ -25,10 +27,14 @@ def replay(save_dir, cell, output, episodes=10):
         if match:
             checkpoints.append((int(match[1]), path.name))
     checkpoints.sort()
-    expected = list(range(cell["steps"] // interval + 1))
+    frequency = cell.get("save_model_freq", 1)
+    if config["logger_cfgs"]["save_model_freq"] != frequency:
+        raise ValueError("Checkpoint save frequency mismatch")
+    expected = list(range(0, cell["steps"] // interval + 1, frequency))
     if [n for n, _ in checkpoints] != expected:
         raise ValueError("Missing/unexpected checkpoints; refusing a partial learning curve")
     rows, returns, costs, f1s, lengths = [], [], [], [], []
+    safety_budget = evaluation_budget(cell["algorithm"], config["algo_cfgs"])
     for epoch, filename in checkpoints:
         evaluator = omnisafe.Evaluator()
         try:
@@ -38,13 +44,18 @@ def replay(save_dir, cell, output, episodes=10):
             for ep in range(episodes):
                 seed = cell["seed"] + 10_000 + ep
                 obs, _ = env.reset(seed=seed)
+                safety_state = 1.0
                 ret = cost = 0.0
                 for length in range(1, 100_001):
                     with torch.no_grad():
-                        action = actor.predict(obs, deterministic=True)
+                        actor_obs = obs if safety_budget is None else torch.cat(
+                            (obs, obs.new_full((*obs.shape[:-1], 1), safety_state)), dim=-1)
+                        action = actor.predict(actor_obs, deterministic=True)
                     obs, rew, c, done, trunc, info = env.step(action)
                     ret += float(rew.item())
                     cost += float(c.item())
+                    if safety_budget is not None:
+                        safety_state = (safety_state - float(c.item()) / safety_budget) / config["algo_cfgs"]["saute_gamma"]
                     if bool(done.item() or trunc.item()):
                         terminal = info.get("final_info", info)
                         if isinstance(terminal, (list, tuple, np.ndarray)):

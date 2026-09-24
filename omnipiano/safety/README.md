@@ -6,6 +6,10 @@ The existing `constraints.py` is preserved for compatibility with main's legacy 
 The isolated installation profile and its NumPy 1.x compatibility guard are
 documented in [Safety Quick Start](QUICKSTART.md); no root files are patched.
 
+To run additional native OmniSafe methods, see [Algorithm interface](ALGORITHMS.md):
+32 online model-free choices (the original five plus 27), with explicit task,
+algorithm and seed selection. The original paper matrices remain unchanged.
+
 ## Safety semantics × cost setting
 
 Let `e_i >= 0` be normalized excess for each measurement unit, and `N` the fixed

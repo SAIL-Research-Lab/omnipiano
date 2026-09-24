@@ -1,5 +1,6 @@
 """One manifested run; used by safety.run, with replay-only retry after training."""
 import argparse
+import copy
 import json
 import os
 from pathlib import Path
@@ -38,8 +39,9 @@ def run(directory):
         if state["status"] == "new":
             if (directory / "logs").exists():
                 raise RuntimeError("Unexpected existing logs; refusing overwrite")
-            cfg = algorithm_config(cell["algorithm"], cell["task"]["budget"], cell["steps"],
-                                   cell["seed"], cell["device"], smoke=cell["smoke"])
+            cfg = (copy.deepcopy(cell["algorithm_config"]) if "algorithm_config" in cell else
+                   algorithm_config(cell["algorithm"], cell["task"]["budget"], cell["steps"],
+                                    cell["seed"], cell["device"], smoke=cell["smoke"]))
             cfg["logger_cfgs"]["log_dir"] = str(directory / "logs")
             atomic_json(directory / "overrides.json", cfg)
             atomic_json(status_path, {"status": "training"})

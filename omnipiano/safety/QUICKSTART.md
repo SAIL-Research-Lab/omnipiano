@@ -185,6 +185,11 @@ uses **1**. This installation change does not alter experiment defaults or impor
 the separate eval-1 handoff packages. See [README.md](README.md) for the matrices,
 cost definitions, evaluation details and plotting commands.
 
+For additional algorithms (FOCOPS, CPPOPID, SACLag, Saute/Simmer, etc.), use the
+same installed environment and follow [Algorithm interface](ALGORITHMS.md).
+Its `--algorithms ... --eval-episodes 1` interface supports custom comparisons
+without changing the original five-algorithm experiment defaults.
+
 ## Optional: higher-quality soundfont
 
 ```bash
