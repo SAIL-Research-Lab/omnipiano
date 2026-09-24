@@ -31,6 +31,11 @@ Coverage
 ``omnipiano_omnisafe`` conda env (``import omnisafe`` at module scope), so
 it is skipped here and must be checked in that env. It was verified BOUND
 on all four fields it exposes on 2026-08-02.
+
+The MARL entry point is intentionally not in ``SCRIPTS``: its defaults come
+from the selected experiment JSON, and the checked-in paper configuration
+uses a 10M budget instead of the 5M cross-library protocol budget.  That
+contract, including CLI precedence, is covered by ``test_marl_entrypoints``.
 """
 from __future__ import annotations
 
@@ -99,17 +104,6 @@ SCRIPTS = [
             "total_env_steps": "total_steps",
             "seed": "seed",                  # was hardcoded 0; bound 2026-08-02
             "num_eval_eps": "num_eval_eps",  # was hardcoded 1; bound 2026-08-02
-            "gamma": "gamma",
-            "eval_freq_env_steps": "eval_freq",
-        },
-    ),
-    (
-        "omnipiano.multiagent.train",
-        [],
-        {
-            "total_env_steps": "total_steps",
-            "seed": "seed",
-            "num_eval_eps": "num_eval_eps",
             "gamma": "gamma",
             "eval_freq_env_steps": "eval_freq",
         },

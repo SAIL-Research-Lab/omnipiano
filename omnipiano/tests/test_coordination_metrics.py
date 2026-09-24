@@ -16,6 +16,7 @@ _METRICS_PATH = (
     Path(__file__).resolve().parents[1]
     / "multiagent"
     / "compile"
+    / "env_runtime"
     / "metrics.py"
 )
 _SPEC = importlib.util.spec_from_file_location(
@@ -29,7 +30,7 @@ _SPEC.loader.exec_module(metrics)
 _WANDB_PATH = (
     Path(__file__).resolve().parents[1]
     / "multiagent"
-    / "compile"
+    / "training"
     / "tracking.py"
 )
 _WANDB_SPEC = importlib.util.spec_from_file_location(
