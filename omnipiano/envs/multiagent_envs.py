@@ -19,7 +19,7 @@ from omnipiano.multiagent import register_parallel
 # Sub-phase 1A: 4-hand Territorial Duet
 # ===========================================================================
 # AgentSetup = "Duet" → agents = (secondo, primo); see
-# `omnipiano.multiagent.assignment.AGENT_ASSIGNMENTS["FourHand"]`.
+# `omnipiano.multiagent.AGENT_ASSIGNMENTS["FourHand"]`.
 # Underlying SA envs: OmniPiano-{Piece}-FourHand-StaticPartition-v0.
 
 _FOUR_HAND_PIECES = (
@@ -40,7 +40,7 @@ for _piece in _FOUR_HAND_PIECES:
 # Sub-phase 1B: 3-hand Territorial MainSolo
 # ===========================================================================
 # AgentSetup = "MainSolo" → agents = (secondo, treble_soloist); see
-# `omnipiano.multiagent.assignment.AGENT_ASSIGNMENTS["ThreeHand"]`.
+# `omnipiano.multiagent.AGENT_ASSIGNMENTS["ThreeHand"]`.
 #   secondo        (sustain owner): lh + rh_c → action dim 45 (2×22 + 1)
 #   treble_soloist (1-hand agent):  rh        → action dim 22
 # Underlying SA envs: OmniPiano-{Piece}-ThreeHand-StaticPartition-v0.
@@ -68,7 +68,7 @@ for _piece in _THREE_HAND_PIECES:
 # Sub-phase 1C: 5-hand Territorial Trio
 # ===========================================================================
 # AgentSetup = "Trio" → agents = (left_secondo, center_soloist, right_primo);
-# see `omnipiano.multiagent.assignment.AGENT_ASSIGNMENTS["FiveHand"]`.
+# see `omnipiano.multiagent.AGENT_ASSIGNMENTS["FiveHand"]`.
 #   left_secondo  (sustain owner): lh_b + rh_b → action dim 45 (2×22 + 1)
 #   center_soloist (1-hand agent): rh_c        → action dim 22
 #   right_primo                  : lh_t + rh_t → action dim 44

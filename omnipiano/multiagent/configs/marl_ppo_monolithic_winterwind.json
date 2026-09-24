@@ -1,0 +1,33 @@
+{
+  "schema_version": 2,
+  "description": "Centralized monolithic PPO control: one policy observes and commands all four WinterWind hands over the full keyboard.",
+  "task": {
+    "name": "winterwind-4h-1a-monolithic",
+    "song": "WinterWind",
+    "num_hands": 4,
+    "num_agents": 1,
+    "assignment": "explicit",
+    "sustain_owner": "agent_1",
+    "agents": [
+      {
+        "name": "agent_1",
+        "hand_ids": [0, 1, 2, 3],
+        "action_key_range": [1, 88],
+        "observation_key_range": [1, 88],
+        "visible_teammate_hands": []
+      }
+    ]
+  },
+  "experiment": {
+    "algo": "ppo-monolithic",
+    "env_id": null,
+    "seed": 0,
+    "run_dir": null
+  },
+  "wandb": {
+    "group": "scho-v2-winterwind-4h-monolithic-ppo-10M",
+    "name": null,
+    "tags": "scho-v2,WinterWind,4hands,1agent,ppo-monolithic,full-observation,full-action-range,10M",
+    "notes": "Privileged centralized control baseline. Compare base_team_return and musical metrics; cross-agent collision shaping/metrics are inapplicable with one logical agent."
+  }
+}

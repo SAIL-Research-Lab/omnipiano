@@ -20,6 +20,7 @@ setup(
     description="A Safety and Robustness Benchmark for Robot Piano Playing",
     packages=omni_pkgs + rp_pkgs,
     package_dir=pkg_dir,
+    package_data={"omnipiano.multiagent": ["configs/*.json"]},
     include_package_data=True,
     python_requires=">=3.10",
     install_requires=[
@@ -33,7 +34,7 @@ setup(
         "scikit-learn",
         "shimmy[dm_control]",
         "gymnasium",
-        "pettingzoo",
+        "pettingzoo==1.24.3",
         "numpy",
         "stable-baselines3",
         "openai>=1.0",
@@ -45,6 +46,12 @@ setup(
             "torch>=2.10,<2.11",
             "torchrl>=0.13,<0.14",
             "tensordict>=0.13,<0.14",
+        ],
+        # Exact RLlib target used by the reproducible MARL baselines. Keeping
+        # this optional avoids forcing Ray and W&B onto single-agent users.
+        "marl": [
+            "ray[rllib]==2.55.1",
+            "wandb>=0.17",
         ],
     },
     entry_points={

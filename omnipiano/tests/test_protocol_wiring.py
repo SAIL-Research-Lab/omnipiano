@@ -103,6 +103,17 @@ SCRIPTS = [
             "eval_freq_env_steps": "eval_freq",
         },
     ),
+    (
+        "omnipiano.multiagent.train",
+        [],
+        {
+            "total_env_steps": "total_steps",
+            "seed": "seed",
+            "num_eval_eps": "num_eval_eps",
+            "gamma": "gamma",
+            "eval_freq_env_steps": "eval_freq",
+        },
+    ),
 ]
 
 
@@ -113,6 +124,14 @@ def _load(modname):
         pytest.skip(f"{modname} not importable here: {e}")
 
 
+def _build_parser(mod):
+    """Support canonical modules and legacy modules during migration."""
+    builder = getattr(mod, "build_arg_parser", None)
+    if builder is None:
+        builder = getattr(mod, "_build_arg_parser")
+    return builder()
+
+
 @pytest.mark.parametrize("modname,argv,mapping", SCRIPTS,
                          ids=[s[0] for s in SCRIPTS])
 def test_protocol_defaults_are_bound(modname, argv, mapping):
@@ -121,7 +140,7 @@ def test_protocol_defaults_are_bound(modname, argv, mapping):
     real = BenchmarkProtocolConfig()
 
     # 1. Unpatched: defaults equal the real protocol values.
-    args = mod._build_arg_parser().parse_args(argv)
+    args = _build_parser(mod).parse_args(argv)
     for field, dest in mapping.items():
         assert getattr(args, dest) == getattr(real, field), (
             f"{modname}: --{dest.replace('_', '-')} default "
@@ -133,7 +152,7 @@ def test_protocol_defaults_are_bound(modname, argv, mapping):
     #    coincidentally equal.
     mod.BenchmarkProtocolConfig = _StubProto
     try:
-        args = mod._build_arg_parser().parse_args(argv)
+        args = _build_parser(mod).parse_args(argv)
     finally:
         mod.BenchmarkProtocolConfig = BenchmarkProtocolConfig
     for field, dest in mapping.items():
@@ -190,5 +209,5 @@ def test_explicit_cli_still_overrides_protocol(modname, argv, mapping):
     """Binding must not make the protocol value unoverridable — ablations
     (e.g. ``--gamma 0.99`` to reproduce library defaults) depend on this."""
     mod = _load(modname)
-    args = mod._build_arg_parser().parse_args(argv + ["--gamma", "0.99"])
+    args = _build_parser(mod).parse_args(argv + ["--gamma", "0.99"])
     assert args.gamma == 0.99

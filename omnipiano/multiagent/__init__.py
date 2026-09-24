@@ -7,11 +7,12 @@ This package wraps the registered single-agent N-hand envs into PettingZoo
 
 Public entrypoints:
     make_parallel(env_id, **kwargs) → pettingzoo.ParallelEnv
+    make_parallel_from_task(resolved_task, **kwargs) → pettingzoo.ParallelEnv
     register_parallel(id, *, sa_env_id, morphology)        → registers an MA env id
     AGENT_ASSIGNMENTS                                       → morphology → agent layout
 """
 
-from omnipiano.multiagent.assignment import (
+from omnipiano.multiagent.compile.env_runtime.topology import (
     AGENT_ASSIGNMENTS,
     AgentDef,
     MorphologyAssignment,
@@ -19,10 +20,13 @@ from omnipiano.multiagent.assignment import (
     compute_boundary_hands,
     compute_inter_agent_boundaries,
 )
-from omnipiano.multiagent.registration import (
+from omnipiano.multiagent.compile.env_runtime.registry import (
     list_parallel_envs,
-    make_parallel,
     register_parallel,
+)
+from omnipiano.multiagent.compile.environment import (
+    make_parallel,
+    make_parallel_from_task,
 )
 
 __all__ = [
@@ -34,5 +38,6 @@ __all__ = [
     "compute_inter_agent_boundaries",
     "list_parallel_envs",
     "make_parallel",
+    "make_parallel_from_task",
     "register_parallel",
 ]

@@ -31,6 +31,7 @@ from omnipiano.safety.constraints import (
 from omnipiano.tasks.hand_spec import (
     HandSpec,
     default_two_hand_specs,
+    default_partitioned_hand_specs,
     default_three_hand_specs,
     default_four_hand_specs,
     default_five_hand_specs,
@@ -835,30 +836,13 @@ register(
 # ===========================================================================
 
 
-def _three_hand_partition_specs():
-    """Inline 3-hand partition specs (29/30/29 keys, positions at
-    bucket centers per the N-hand morphology axiom; spec order = spatial
-    left→right per the N-hand action-layout axiom for N≥3)."""
-    return (
-        HandSpec(name="lh", side=HandSide.LEFT,
-                 position=(0.4, -0.4051, 0.13), key_range=(0, 28),
-                 group="bass"),
-        HandSpec(name="rh_c", side=HandSide.RIGHT,
-                 position=(0.4, 0.0, 0.13), key_range=(29, 58),
-                 group="middle"),
-        HandSpec(name="rh", side=HandSide.RIGHT,
-                 position=(0.4, +0.4056, 0.13), key_range=(59, 87),
-                 group="treble"),
-    )
-
-
 # WinterWind 3-hand StaticPartition — morphology-ladder anchor (314 steps,
 # eq3=0%); see Task 10 WinterWind comment.
 register(
     id="OmniPiano-WinterWind-ThreeHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
-    hand_specs=_three_hand_partition_specs(),
+    hand_specs=default_partitioned_hand_specs(3),
 )
 # PicturesGreatKiev 3-hand StaticPartition — cross-ladder stress-test
 # (720 steps, eq3=34.9% ⭐); see Task 10 PicturesGreatKiev comment.
@@ -866,7 +850,7 @@ register(
     id="OmniPiano-PicturesGreatKiev-ThreeHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-PicturesAtAnExhibitionGreatKiev-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
-    hand_specs=_three_hand_partition_specs(),
+    hand_specs=default_partitioned_hand_specs(3),
 )
 # PolonaiseOp40No1 3-hand StaticPartition — high-eq3 alternative
 # (563 steps, eq3=26.8%, poly=4.81); see Task 10 PolonaiseOp40No1 comment.
@@ -874,7 +858,7 @@ register(
     id="OmniPiano-PolonaiseOp40No1-ThreeHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-PolonaiseOp40No1-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
-    hand_specs=_three_hand_partition_specs(),
+    hand_specs=default_partitioned_hand_specs(3),
 )
 # PianoSonataNo281StMov 3-hand StaticPartition — short fast-iteration
 # (301 steps, eq3=22.6%); see Task 10 PianoSonataNo281StMov comment.
@@ -882,7 +866,7 @@ register(
     id="OmniPiano-PianoSonataNo281StMov-ThreeHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-PianoSonataNo281StMov-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
-    hand_specs=_three_hand_partition_specs(),
+    hand_specs=default_partitioned_hand_specs(3),
 )
 
 
@@ -1071,53 +1055,13 @@ register(
 # shares these positions exactly, so L-3 Prototype vs L-1 StaticPartition
 # differs ONLY in the partition constraint.
 # ===========================================================================
-def _four_hand_partition_specs():
-    """Inline 4-hand partition specs (22 keys each, positions at bucket
-    centers per the N-hand morphology axiom)."""
-    return (
-        HandSpec(name="lh_b", side=HandSide.LEFT,
-                 position=(0.4, -0.4521, 0.13), key_range=(0, 21),
-                 group="bass"),
-        HandSpec(name="rh_b", side=HandSide.RIGHT,
-                 position=(0.4, -0.1527, 0.13), key_range=(22, 43),
-                 group="mid_bass"),
-        HandSpec(name="lh_t", side=HandSide.LEFT,
-                 position=(0.4, +0.1528, 0.13), key_range=(44, 65),
-                 group="mid_treble"),
-        HandSpec(name="rh_t", side=HandSide.RIGHT,
-                 position=(0.4, +0.4526, 0.13), key_range=(66, 87),
-                 group="treble"),
-    )
-
-
-def _five_hand_partition_specs():
-    """Inline 5-hand partition specs (18/18/17/18/17 keys)."""
-    return (
-        HandSpec(name="lh_b", side=HandSide.LEFT,
-                 position=(0.4, -0.4817, 0.13), key_range=(0, 17),
-                 group="bass"),
-        HandSpec(name="rh_b", side=HandSide.RIGHT,
-                 position=(0.4, -0.2345, 0.13), key_range=(18, 35),
-                 group="low_mid"),
-        HandSpec(name="rh_c", side=HandSide.RIGHT,
-                 position=(0.4, 0.0061, 0.13), key_range=(36, 52),
-                 group="middle"),
-        HandSpec(name="lh_t", side=HandSide.LEFT,
-                 position=(0.4, 0.2468, 0.13), key_range=(53, 70),
-                 group="high_mid"),
-        HandSpec(name="rh_t", side=HandSide.RIGHT,
-                 position=(0.4, 0.4879, 0.13), key_range=(71, 87),
-                 group="treble"),
-    )
-
-
 # WinterWind 4-hand StaticPartition — morphology-ladder anchor (314 steps,
 # min_bkt=8.5%, geq3=19.1%); see Task 11 WinterWind comment.
 register(
     id="OmniPiano-WinterWind-FourHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
-    hand_specs=_four_hand_partition_specs(),
+    hand_specs=default_partitioned_hand_specs(4),
 )
 # PianoSonataNo301StMov 4-hand StaticPartition — diversity (571 steps,
 # min_bkt=4.2%, eq4=2.45%); see Task 11 PianoSonataNo301StMov comment.
@@ -1127,7 +1071,7 @@ register(
     id="OmniPiano-PianoSonataNo301StMov-FourHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-PianoSonataNo301StMov-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
-    hand_specs=_four_hand_partition_specs(),
+    hand_specs=default_partitioned_hand_specs(4),
 )
 # PicturesGreatKiev 4-hand StaticPartition — cross-ladder stress-test
 # (720 steps, min_bkt=12.1%, eq4=10.1% ⭐ — only piece in PIG-150 with
@@ -1136,7 +1080,7 @@ register(
     id="OmniPiano-PicturesGreatKiev-FourHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-PicturesAtAnExhibitionGreatKiev-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
-    hand_specs=_four_hand_partition_specs(),
+    hand_specs=default_partitioned_hand_specs(4),
 )
 
 
@@ -1183,23 +1127,7 @@ register(
     id="OmniPiano-WinterWind-FiveHand-StaticPartition-v0",
     base_env_name="RoboPianist-repertoire-150-EtudeOp25No11-v0",
     env_config=BenchmarkEnvConfig(disable_fingering_reward=True),
-    hand_specs=(
-        HandSpec(name="lh_b", side=HandSide.LEFT,
-                 position=(0.4, -0.4817, 0.13), key_range=(0, 17),
-                 group="bass"),
-        HandSpec(name="rh_b", side=HandSide.RIGHT,
-                 position=(0.4, -0.2345, 0.13), key_range=(18, 35),
-                 group="low_mid"),
-        HandSpec(name="rh_c", side=HandSide.RIGHT,
-                 position=(0.4, +0.0061, 0.13), key_range=(36, 52),
-                 group="middle"),
-        HandSpec(name="lh_t", side=HandSide.LEFT,
-                 position=(0.4, +0.2468, 0.13), key_range=(53, 70),
-                 group="high_mid"),
-        HandSpec(name="rh_t", side=HandSide.RIGHT,
-                 position=(0.4, +0.4879, 0.13), key_range=(71, 87),
-                 group="treble"),
-    ),
+    hand_specs=default_partitioned_hand_specs(5),
 )
 
 
@@ -1650,9 +1578,9 @@ def _register_general_rl_forelise() -> None:
         hand_specs=default_two_hand_specs(),
     )
     for hands, specs in (
-        ("Three", _three_hand_partition_specs()),
-        ("Four", _four_hand_partition_specs()),
-        ("Five", _five_hand_partition_specs()),
+        ("Three", default_partitioned_hand_specs(3)),
+        ("Four", default_partitioned_hand_specs(4)),
+        ("Five", default_partitioned_hand_specs(5)),
     ):
         register(
             id=f"OmniPiano-ForElise-{hands}Hand-StaticPartition-GeneralRL-v0",
@@ -1676,9 +1604,21 @@ def _register_general_rl_song_ladder(song, base_env):
         env_config=config, hand_specs=default_two_hand_specs(),
     )
     for name, prototype, partition in (
-        ("ThreeHand", default_three_hand_specs(), _three_hand_partition_specs()),
-        ("FourHand", default_four_hand_specs(), _four_hand_partition_specs()),
-        ("FiveHand", default_five_hand_specs(), _five_hand_partition_specs()),
+        (
+            "ThreeHand",
+            default_three_hand_specs(),
+            default_partitioned_hand_specs(3),
+        ),
+        (
+            "FourHand",
+            default_four_hand_specs(),
+            default_partitioned_hand_specs(4),
+        ),
+        (
+            "FiveHand",
+            default_five_hand_specs(),
+            default_partitioned_hand_specs(5),
+        ),
     ):
         register(
             id=f"{prefix}{name}Prototype-GeneralRL-v0",

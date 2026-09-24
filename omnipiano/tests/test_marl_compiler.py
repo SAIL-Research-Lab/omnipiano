@@ -1,0 +1,337 @@
+"""Fast regression tests for the pure MARL configuration compiler."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
+from pathlib import Path
+
+import pytest
+
+from omnipiano.configs import RobustConfig, RobustEnvConfig
+from omnipiano.multiagent.compile.compiler import (
+    assert_marl_robust_supported,
+    coerce_marl_robust_config,
+    compile_experiment,
+    compile_task,
+    serialize_marl_robust_config,
+)
+from omnipiano.multiagent.compile.schema import CONFIG_FIELDS, ResolvedTask
+
+
+REGISTERED_ALGORITHMS = (
+    "ippo",
+    "ippo-rllib-module",
+    "mappo",
+    "mappo-own-critic",
+    "happo",
+    "a2po",
+    "facmac",
+    "ppo-monolithic",
+)
+
+
+def _compile(path: Path, *, algo: str | None = None):
+    return compile_experiment(
+        path,
+        registered_algorithms=REGISTERED_ALGORITHMS,
+        algo_override=algo,
+    )
+
+
+def test_canonical_config_compiles_without_changing_any_default() -> None:
+    path = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    compiled = _compile(path)
+
+    assert compiled.algorithm == raw["experiment"]["algo"] == "ippo"
+    assert compiled.config_path == path.resolve()
+    assert compiled.request.snapshot() == raw
+    for section, fields in CONFIG_FIELDS.items():
+        for json_key, destination in fields.items():
+            assert compiled.values[destination] == raw[section][json_key]
+    assert dict(compiled.smoke_test_overrides) == raw["smoke_test_overrides"]
+    assert dict(compiled.native_options) == {}
+
+
+def test_selected_algorithm_override_precedes_shared_defaults(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["ppo"]["num_epochs"] = 5
+    raw["algorithm_overrides"]["mappo"] = {
+        "ppo": {"num_epochs": 7},
+    }
+    path = tmp_path / "variant.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    compiled = _compile(path, algo="mappo")
+
+    assert compiled.algorithm == "mappo"
+    assert compiled.values["algo"] == "mappo"
+    assert compiled.values["num_epochs"] == 7
+    assert compiled.request.snapshot()["experiment"]["algo"] == "ippo"
+
+
+def test_facmac_native_options_are_selected_and_can_be_overridden(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["native"] = {"noise_std": 0.2}
+    path = tmp_path / "facmac.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    compiled = _compile(path, algo="facmac")
+
+    assert compiled.native_options["reference_commit"].startswith("d7e62b8")
+    assert compiled.native_options["actor_hidden_sizes"] == [400, 400]
+    # Algorithm-specific settings have higher precedence than shared native
+    # settings, preventing a generic block from silently changing a baseline.
+    assert compiled.native_options["noise_std"] == 0.1
+
+
+def test_happo_selects_native_compute_without_unrelated_native_options() -> None:
+    path = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    compiled = _compile(path, algo="happo")
+
+    assert compiled.values["ray_num_cpus"] is None
+    assert dict(compiled.native_options) == {}
+
+
+def test_legacy_config_without_reward_keeps_zero_penalty(tmp_path: Path) -> None:
+    source = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    del raw["reward"]
+    path = tmp_path / "legacy.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    compiled = _compile(path)
+
+    assert compiled.values["inter_agent_collision_penalty_coef"] == 0.0
+    assert "reward" not in compiled.request.snapshot()
+
+
+def test_unknown_field_fails_before_runtime_initialization(tmp_path: Path) -> None:
+    source = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["ppo"]["typo_num_epoch"] = 5
+    path = tmp_path / "invalid.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unknown fields.*typo_num_epoch"):
+        _compile(path)
+
+
+def test_resolved_experiment_is_json_serializable_and_snapshot_isolated() -> None:
+    path = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_train_config_default.json"
+    compiled = _compile(path)
+
+    serialized = json.loads(json.dumps(compiled.to_dict()))
+    assert serialized["selected_algorithm"] == "ippo"
+    assert serialized["source_config"] == str(path.resolve())
+
+    copied = compiled.request.snapshot()
+    copied["ppo"]["num_epochs"] = 999
+    assert compiled.request.snapshot()["ppo"]["num_epochs"] != 999
+
+
+def test_v2_task_inherits_training_defaults_and_resolves_ranges() -> None:
+    path = Path(__file__).resolve().parents[1] / "multiagent" / "configs" / "marl_task_example.json"
+    compiled = _compile(path)
+
+    assert compiled.request.schema_version == 2
+    assert compiled.values["total_steps"] == 10_000_000
+    assert compiled.values["env_id"].startswith("OmniPiano-Custom-")
+    assert compiled.task is not None
+    assert [h.name for h in compiled.task.hands] == [
+        "lh_b", "rh_b", "lh_t", "rh_t"
+    ]
+    secondo, primo = compiled.task.agents
+    # User-facing 1..88 ranges become internal 0..87 exactly once.
+    assert secondo.action_key_range == (0, 51)
+    assert secondo.observation_key_range == (0, 59)
+    assert primo.action_key_range == (36, 87)
+    assert secondo.visible_teammate_hands == ("lh_t",)
+    assert primo.visible_teammate_hands == ("rh_b",)
+    assert ResolvedTask.from_dict(compiled.task.to_dict()) == compiled.task
+
+
+def test_v2_observation_noise_is_normalized_into_resolved_task(
+    tmp_path: Path,
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent" / "configs" / "marl_task_example.json"
+    )
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["robust"] = {
+        "noise_dist": "gaussian",
+        "obs_noise_std": 0.05,
+    }
+    path = tmp_path / "obs-noise.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    compiled = _compile(path)
+
+    assert compiled.robust_config is not None
+    assert compiled.robust_config["noise_dist"] == "gaussian"
+    assert compiled.robust_config["obs_noise_std"] == 0.05
+    assert compiled.robust_config["action_noise_std"] == 0.0
+    assert compiled.robust_config["reward_noise_std"] == 0.0
+    assert "environment_noise" not in compiled.robust_config
+    assert compiled.task is not None
+    assert compiled.task.robust_config == compiled.robust_config
+    assert compiled.to_dict()["robust_config"]["obs_noise_std"] == 0.05
+
+
+def test_current_core_robust_snapshot_round_trips_without_schema_drift() -> None:
+    snapshot = asdict(RobustConfig(obs_noise_std=0.05))
+
+    restored = coerce_marl_robust_config(snapshot)
+    serialized = serialize_marl_robust_config(restored)
+
+    assert isinstance(restored.environment_noise, RobustEnvConfig)
+    assert restored.obs_noise_std == 0.05
+    assert "environment_noise" not in serialized
+
+
+def test_physical_environment_noise_fails_closed_for_marl() -> None:
+    config = RobustConfig(
+        environment_noise=RobustEnvConfig(gravity_noise_std=0.2),
+    )
+
+    with pytest.raises(ValueError, match="gravity"):
+        assert_marl_robust_supported(config)
+
+
+def test_v2_observation_noise_changes_generated_environment_identity(
+    tmp_path: Path,
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent" / "configs" / "marl_task_example.json"
+    )
+    clean_raw = json.loads(source.read_text(encoding="utf-8"))
+    clean_path = tmp_path / "clean.json"
+    clean_path.write_text(json.dumps(clean_raw), encoding="utf-8")
+    noisy_raw = json.loads(json.dumps(clean_raw))
+    noisy_raw["robust"] = {
+        "noise_dist": "gaussian",
+        "obs_noise_std": 0.05,
+    }
+    noisy_path = tmp_path / "noisy.json"
+    noisy_path.write_text(json.dumps(noisy_raw), encoding="utf-8")
+
+    clean = _compile(clean_path)
+    noisy = _compile(noisy_path)
+
+    assert clean.values["env_id"] != noisy.values["env_id"]
+
+
+def test_v1_observation_noise_survives_compilation_for_registered_env(
+    tmp_path: Path,
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent" / "configs" / "marl_train_config_default.json"
+    )
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["robust"] = {
+        "noise_dist": "uniform",
+        "obs_noise_uniform_low": -0.05,
+        "obs_noise_uniform_high": 0.05,
+    }
+    path = tmp_path / "registered-obs-noise.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    compiled = _compile(path)
+
+    assert compiled.task is None
+    assert compiled.robust_config is not None
+    assert compiled.robust_config["noise_dist"] == "uniform"
+    assert compiled.robust_config["obs_noise_uniform_low"] == -0.05
+    assert compiled.robust_config["obs_noise_uniform_high"] == 0.05
+
+
+@pytest.mark.parametrize("robust,match", [
+    ({"action_noise_std": 0.05}, "observation noise only"),
+    ({"noise_dist": "gaussian", "obs_noise_std": 0.0}, "inactive"),
+    ({"noise_dist": "uniform", "obs_noise_std": 0.05}, "invalid robust"),
+])
+def test_invalid_or_unsupported_robust_json_fails_during_compilation(
+    tmp_path: Path, robust, match: str,
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "multiagent" / "configs" / "marl_task_example.json"
+    )
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    raw["robust"] = robust
+    path = tmp_path / "invalid-robust.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        _compile(path)
+
+
+def test_balanced_assignment_and_explicit_noncontiguous_assignment() -> None:
+    balanced = compile_task({
+        "song": "WinterWind", "num_hands": 5, "num_agents": 3,
+        "assignment": "balanced",
+    })
+    assert [a.hand_ids for a in balanced.agents] == [(0, 1), (2, 3), (4,)]
+
+    explicit = compile_task({
+        "song": "WinterWind", "num_hands": 4, "num_agents": 2,
+        "assignment": "explicit", "sustain_owner": "outer",
+        "agents": [
+            {"name": "outer", "hand_ids": [0, 3],
+             "visible_teammate_hands": "all"},
+            {"name": "inner", "hand_ids": [1, 2]},
+        ],
+    })
+    assert explicit.agents[0].hand_ids == (0, 3)
+    assert explicit.agents[0].visible_teammate_hands == ("rh_b", "lh_t")
+
+
+def test_single_agent_monolithic_task_owns_all_hands_and_full_keyboard() -> None:
+    task = compile_task({
+        "name": "winterwind-4h-1a-monolithic",
+        "song": "WinterWind",
+        "num_hands": 4,
+        "num_agents": 1,
+        "assignment": "explicit",
+        "sustain_owner": "agent_1",
+        "agents": [{
+            "name": "agent_1",
+            "hand_ids": [0, 1, 2, 3],
+            "action_key_range": [1, 88],
+            "observation_key_range": [1, 88],
+            "visible_teammate_hands": [],
+        }],
+    })
+
+    assert len(task.agents) == 1
+    agent = task.agents[0]
+    assert agent.hand_ids == (0, 1, 2, 3)
+    assert agent.action_key_range == (0, 87)
+    assert agent.observation_key_range == (0, 87)
+    assert agent.visible_teammate_hands == ()
+    assert agent.is_sustain_owner
+
+
+@pytest.mark.parametrize("task,match", [
+    ({"song": "WinterWind", "num_hands": 6}, "3, 4 or 5"),
+    ({"song": "WinterWind", "num_hands": 4, "num_agents": 3,
+      "assignment": "default"}, "conflicts"),
+    ({"song": "WinterWind", "num_hands": 3, "num_agents": 2,
+      "assignment": "explicit", "agents": [
+          {"name": "a", "hand_ids": [0, 1]},
+          {"name": "b", "hand_ids": [1, 2]},
+      ]}, "unique zero-based"),
+])
+def test_invalid_tasks_fail_during_pure_compilation(task, match) -> None:
+    with pytest.raises(ValueError, match=match):
+        compile_task(task)

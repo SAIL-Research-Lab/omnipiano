@@ -1,0 +1,662 @@
+"""Native backend adapter for the existing training lifecycle.
+
+Checkpoint resume restores learning state but resets environment episodes.
+Load only checkpoints produced by trusted code: torch.load(weights_only=False).
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import random
+from pathlib import Path
+
+import numpy as np
+import torch
+
+from omnipiano.multiagent.algos._native import make_model
+from omnipiano.multiagent.training.native_io import (
+    Codec, EnvPool, Replay, add_gae,
+)
+from omnipiano.multiagent.training.runtime import write_json, evaluate_marl
+
+
+FORMAT = "omnipiano-native-v1"
+MODEL_FIELDS = (
+    "algo", "seed", "gamma", "train_batch_size", "minibatch_size", "num_epochs",
+    "lr", "critic_lr", "adam_epsilon", "gae_lambda", "clip_param",
+    "vf_clip_param", "vf_loss_coeff", "entropy_coeff", "grad_clip",
+    "grad_clip_by", "hidden_sizes_parsed", "activation",
+    "hidden_orthogonal_gain", "policy_output_gain", "value_output_gain",
+    "initial_log_std", "log_std_min", "log_std_max", "input_layer_norm",
+    "value_norm", "value_norm_beta", "value_norm_epsilon",
+    "value_norm_variance_floor", "num_workers",
+)
+
+
+def native_options(args):
+    options = {}
+    if args.algo == "a2po":
+        options = {
+            "variant": "a2po_preopc_v1",
+            "reference_commit": (
+                "28c11e6063bcf80caffc53a791c99dd7be1003b5"
+            ),
+            "parameter_sharing": False,
+            "order": "semi_greedy",
+            "order_score": "official_normalized_advantage",
+            "order_score_epsilon": 1e-8,
+            "preceding_ratio_clip": 0.1,
+            "trace_clip_param": 1.0,
+            "adaptive_clip_weight": 0.5,
+            "two_stage": True,
+            "agent_block_size": 1,
+        }
+    elif args.algo == "mat":
+        options = {
+            "embed_dim": 128, "heads": 4, "blocks": 2,
+            "std_parameter_init": 1.0,
+        }
+    elif args.algo in ("facmac", "masac"):
+        options = {
+            "replay_capacity": 50_000,
+            "batch_size": 256,
+            "buffer_warmup": 10_000,
+            "random_action_steps": 10_000,
+            "collect_steps": 24,
+            "updates_per_env_step": 0.25,
+            "tau": 0.005,
+            "max_replay_gib": 4.0,
+        }
+        if args.algo == "facmac":
+            # oxwhirl/facmac's MAMuJoCo defaults. Gamma and total env-step
+            # budget deliberately remain in the shared OmniPiano protocol.
+            options = {
+                "variant": "facmac_continuous_qmix_v1",
+                "reference_commit": (
+                    "d7e62b8c51a5a77330de85f83c10553d0bd18fe5"
+                ),
+                "parameter_sharing": False,
+                "actor_hidden_sizes": [400, 400],
+                "utility_hidden_sizes": [400, 400],
+                "actor_lr": 0.001,
+                "critic_lr": 0.001,
+                "adam_epsilon": 0.01,
+                "grad_clip": 0.5,
+                "replay_capacity": 1_000_000,
+                "batch_size": 100,
+                "buffer_warmup": 1_000,
+                "random_action_steps": 10_000,
+                "collect_steps": 24,
+                "updates_per_env_step": 1.0,
+                "tau": 0.001,
+                "noise_std": 0.1,
+                "action_l2": 0.001,
+                "mixer_embed": 64,
+                "hypernet_embed": 64,
+                "monotonic": True,
+                "max_replay_gib": 32.0,
+                # Checkpointing is deliberately separate from the training
+                # replay capacity.  Keeping only a recent tail makes recovery
+                # useful without copying a ~20 GiB buffer into every snapshot.
+                "checkpoint_replay_transitions": 50_000,
+            }
+        else:
+            options.update(
+                alpha_init=0.1, alpha_lr=0.0003,
+                target_entropy_scale=1.0,
+                variant="cooperative_joint_entropy_v1")
+    supplied = getattr(args, "_native_options", {})
+    if not isinstance(supplied, dict) or set(supplied) - set(options):
+        raise ValueError(f"Unknown native options for {args.algo}: {supplied}")
+    options.update(supplied)
+
+    if args.grad_clip_by != "global_norm":
+        raise ValueError("Native backend currently supports global_norm clipping only")
+    if args.use_kl_loss:
+        raise ValueError("Native backend does not implement PPO KL penalties")
+    if args.num_cpus_per_env_runner != 1:
+        raise ValueError("Native workers currently use one CPU-thread setting")
+    if args.ray_num_cpus is not None:
+        raise ValueError("For native jobs set compute.ray_num_cpus=null")
+    if args.algo == "mat" and args.critic_lr != args.lr:
+        raise ValueError("MAT has a joint optimizer; critic_lr must equal lr")
+    if args.algo == "a2po":
+        if options["variant"] != "a2po_preopc_v1":
+            raise ValueError("Unsupported A2PO definition")
+        if options["reference_commit"] != (
+            "28c11e6063bcf80caffc53a791c99dd7be1003b5"
+        ):
+            raise ValueError("A2PO reference_commit must stay pinned")
+        if options["order"] != "semi_greedy":
+            raise ValueError("Canonical A2PO requires semi_greedy order")
+        if options["order_score"] != "official_normalized_advantage":
+            raise ValueError("Unsupported A2PO order score")
+        if options["parameter_sharing"] is not False:
+            raise ValueError(
+                "Canonical heterogeneous A2PO requires independent policies")
+        if options["trace_clip_param"] != 1.0:
+            raise ValueError("Canonical PreOPC truncates each trace ratio at 1.0")
+        if options["two_stage"] is not True:
+            raise ValueError("Canonical A2PO requires the two-stage value update")
+        if options["agent_block_size"] != 1:
+            raise ValueError("Canonical A2PO updates exactly one agent per block")
+    if args.algo == "masac" and options["variant"] != "cooperative_joint_entropy_v1":
+        raise ValueError("Unsupported MASAC definition")
+    if args.algo == "facmac":
+        if options["variant"] != "facmac_continuous_qmix_v1":
+            raise ValueError("Unsupported FACMAC definition")
+        if options["reference_commit"] != (
+            "d7e62b8c51a5a77330de85f83c10553d0bd18fe5"
+        ):
+            raise ValueError("FACMAC reference_commit must stay pinned")
+
+    integers = (
+        "embed_dim", "heads", "blocks", "replay_capacity", "batch_size",
+        "buffer_warmup", "random_action_steps", "collect_steps", "mixer_embed",
+        "hypernet_embed", "agent_block_size",
+    )
+    for name in integers:
+        if name in options:
+            value = options[name]
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+    for name, value in options.items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if not math.isfinite(value):
+                raise ValueError(f"Non-finite native option: {name}")
+    for name in ("updates_per_env_step", "max_replay_gib", "alpha_init",
+                 "alpha_lr", "target_entropy_scale", "actor_lr", "critic_lr",
+                 "adam_epsilon", "grad_clip", "order_score_epsilon",
+                 "trace_clip_param"):
+        if name in options and options[name] <= 0:
+            raise ValueError(f"{name} must be positive")
+    if "preceding_ratio_clip" in options \
+            and not 0 < options["preceding_ratio_clip"] < 1:
+        raise ValueError("preceding_ratio_clip must be in (0,1)")
+    if "adaptive_clip_weight" in options \
+            and not 0 <= options["adaptive_clip_weight"] <= 1:
+        raise ValueError("adaptive_clip_weight must be in [0,1]")
+    for name in ("noise_std", "action_l2"):
+        if name in options and options[name] < 0:
+            raise ValueError(f"{name} must be nonnegative")
+    checkpoint_replay = options.get("checkpoint_replay_transitions")
+    if checkpoint_replay is not None and (
+        type(checkpoint_replay) is not int or checkpoint_replay < 0
+    ):
+        raise ValueError("checkpoint_replay_transitions must be a non-negative integer")
+    if "tau" in options and not 0 < options["tau"] <= 1:
+        raise ValueError("tau must be in (0,1]")
+    if "monotonic" in options and type(options["monotonic"]) is not bool:
+        raise ValueError("monotonic must be boolean")
+    if "parameter_sharing" in options and options["parameter_sharing"] is not False:
+        raise ValueError(
+            "OmniPiano FACMAC requires independent networks because SCHO permits "
+            "heterogeneous observation/action dimensions"
+        )
+    for name in ("actor_hidden_sizes", "utility_hidden_sizes"):
+        if name in options and (
+            not isinstance(options[name], (list, tuple))
+            or not options[name]
+            or any(type(width) is not int or width <= 0 for width in options[name])
+        ):
+            raise ValueError(f"{name} must be a non-empty list of positive integers")
+    if args.algo == "mat" and options["embed_dim"] % options["heads"]:
+        raise ValueError("MAT embed_dim must be divisible by heads")
+    if "replay_capacity" in options:
+        if args.smoke_test:
+            # Explicitly make the smoke run exercise off-policy updates.
+            options["replay_capacity"] = min(options["replay_capacity"], 2048)
+            options["batch_size"] = min(options["batch_size"], 128)
+            options["buffer_warmup"] = min(options["buffer_warmup"], 128)
+            options["random_action_steps"] = min(
+                options["random_action_steps"], 128)
+            if "checkpoint_replay_transitions" in options:
+                options["checkpoint_replay_transitions"] = min(
+                    options["checkpoint_replay_transitions"],
+                    options["replay_capacity"],
+                )
+        if options["batch_size"] > options["replay_capacity"]:
+            raise ValueError("Replay batch exceeds capacity")
+        if options["buffer_warmup"] >= options["replay_capacity"]:
+            raise ValueError("Replay warm-up must be smaller than capacity")
+        if options["collect_steps"] > options["replay_capacity"]:
+            raise ValueError("Collection size exceeds capacity")
+        if options.get("checkpoint_replay_transitions", 0) > options["replay_capacity"]:
+            raise ValueError("Checkpoint replay tail exceeds replay capacity")
+    return options
+
+
+def identity(args, meta, options):
+    data = {
+        "format": FORMAT, "task": args._resolved_task,
+        "parameters": {key: getattr(args, key) for key in MODEL_FIELDS},
+        "collision_penalty": args.inter_agent_collision_penalty_coef,
+        "meta": meta, "native_options": options,
+    }
+    return hashlib.sha256(
+        json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def rng_state():
+    return {
+        "python": random.getstate(), "numpy": np.random.get_state(),
+        "torch": torch.get_rng_state(),
+        "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
+    }
+
+
+def restore_rng(state):
+    random.setstate(state["python"])
+    np.random.set_state(state["numpy"])
+    torch.set_rng_state(state["torch"])
+    if state["cuda"] and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(state["cuda"])
+
+
+def materialize_scalar_stats(stats):
+    """Convert learner scalars with at most one device-to-host sync."""
+    result, names, tensors = {}, [], []
+    for name, value in stats.items():
+        if torch.is_tensor(value):
+            if value.numel() != 1:
+                raise ValueError(f"Learner statistic {name} is not scalar")
+            names.append(name)
+            tensors.append(value.detach().reshape(()))
+        else:
+            number = float(value)
+            if not math.isfinite(number):
+                raise FloatingPointError(f"Non-finite learner statistic: {name}")
+            result[name] = number
+    if tensors:
+        numbers = torch.stack(tensors).cpu().tolist()
+        for name, number in zip(names, numbers):
+            if not math.isfinite(number):
+                raise FloatingPointError(f"Non-finite learner statistic: {name}")
+            result[name] = number
+    return result
+
+
+def load_checkpoint(path):
+    path = Path(path).expanduser().resolve()
+    if path.is_dir():
+        path = path / "state.pt"
+    marker = json.loads((path.parent / "native_checkpoint.json").read_text())
+    if marker.get("format") != FORMAT:
+        raise ValueError("Not a supported native checkpoint")
+    state = torch.load(path, map_location="cpu", weights_only=False)
+    if state.get("format") != FORMAT:
+        raise ValueError("Native checkpoint payload format mismatch")
+    return state
+
+
+class NativePolicy:
+    def tensor(self, batch):
+        return {
+            key: torch.as_tensor(value, device=self.device)
+            for key, value in batch.items()
+        }
+
+    def compute_joint_actions(self, observations, action_spaces):
+        if set(action_spaces) != set(self.codec.agents):
+            raise ValueError("Evaluation agent set differs from training")
+        for agent, dim in zip(self.codec.agents, self.codec.action_dims):
+            space = action_spaces[agent]
+            if space.shape != (dim,) or not np.all(space.low == -1) \
+                    or not np.all(space.high == 1):
+                raise ValueError("Evaluation action space changed")
+        with torch.inference_mode():
+            batch = self.tensor(self.codec.pack([observations]))
+            actions = self.model.act(batch, deterministic=True)["a"].cpu().numpy()
+        return self.codec.split(actions)[0]
+
+
+class NativeAlgorithm(NativePolicy):
+    def __init__(self, args, meta):
+        self.args, self.meta = args, meta
+        self.options = native_options(args)
+        self.codec = Codec(meta)
+        self.device = torch.device(
+            "cuda:0" if args.num_gpus_per_learner > 0 else "cpu")
+        torch.set_num_threads(1)
+        if torch.get_num_interop_threads() != 1:
+            try:
+                torch.set_num_interop_threads(1)
+            except RuntimeError:
+                # PyTorch only permits this before the first inter-op task.
+                # A prior in-process smoke test may already have frozen it.
+                pass
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        if self.device.type == "cuda":
+            torch.cuda.manual_seed_all(args.seed)
+
+        self.model = make_model(args, meta, self.options, self.device)
+        self.env_steps, self.iterations, self.gradient_updates = 0, 0, 0
+        self.update_credit, self.resume_count = 0.0, 0
+        self.pool, self.replay = None, None
+        if not self.model.on_policy:
+            self.replay = Replay(
+                self.codec, self.options["replay_capacity"],
+                self.options["max_replay_gib"])
+
+        checkpoint = None
+        if args.resume_native:
+            checkpoint = load_checkpoint(args.resume_native)
+            if checkpoint["identity"] != identity(args, meta, self.options):
+                raise ValueError("Resume task, hyperparameters, spaces or workers changed")
+            self.model.load_state_dict(checkpoint["model"])
+            self.model.restore_optimizers(checkpoint["optimizers"])
+            for key in ("env_steps", "iterations", "gradient_updates",
+                        "update_credit", "resume_count"):
+                setattr(self, key, checkpoint[key])
+            self.resume_count += 1
+            if self.env_steps >= args.total_steps:
+                raise ValueError("Checkpoint already reached the requested budget")
+            if self.replay is not None and checkpoint.get("replay") is not None:
+                self.replay.restore(checkpoint["replay"])
+        try:
+            self.pool = EnvPool(
+                args._resolved_task,
+                args.seed + self.resume_count * 1_000_000,
+                args.inter_agent_collision_penalty_coef,
+                args.num_workers, args.sample_timeout_s)
+            if self.pool.meta != meta:
+                raise ValueError("Probe and worker environment layouts disagree")
+            if checkpoint is not None:
+                self.pool.episode = [
+                    value + 1 for value in checkpoint["collector_episodes"]]
+                restore_rng(checkpoint["rng"])
+        except BaseException:
+            self.stop()
+            raise
+
+    def effective_config(self):
+        return {
+            "backend": "native",
+            "backend_format": FORMAT,
+            "ray_cluster_started": False,
+            "algo": self.args.algo,
+            "parameters": {
+                key: getattr(self.args, key) for key in MODEL_FIELDS
+            },
+            "native_options": self.options,
+            "agent_order": self.meta["agents"],
+            "layout": self.meta,
+            "include_global_state": True,
+            "count_steps_by": "env_steps",
+            "reward_mode": "shared",
+            "inter_agent_collision_penalty_coef":
+                self.args.inter_agent_collision_penalty_coef,
+            "eval_freq_env_steps": self.args.eval_freq,
+            "checkpoint_freq_env_steps": self.args.checkpoint_freq,
+            "checkpoint_replay_transitions": self.options.get(
+                "checkpoint_replay_transitions", 0
+            ),
+            "native_resume_source": self.args.resume_native,
+            "resume_semantics": (
+                "learner/optimizer/target/RNG restored; replay restored when "
+                "present (recovery checkpoints retain a recent tail); "
+                "environment episodes reset"
+            ),
+            "on_policy": self.model.on_policy,
+            "off_policy_ignores": (
+                [] if self.model.on_policy else [
+                    "PPO clipping", "GAE", "PPO epochs", "ValueNorm",
+                    "PPO entropy_coeff",
+                ]
+            ),
+            "mat_specifics": (
+                {
+                    "observation_adapters": "independent per-agent LayerNorm/Linear",
+                    "agent_order": "fixed compiled order",
+                    "ratio": "per-valid-action-dimension",
+                    "entropy_reduction": "sum valid dimensions, mean agents/rows",
+                    "std": "0.5*sigmoid(parameter), floor 1e-6",
+                    "joint_actor_value_optimizer": True,
+                } if self.args.algo == "mat" else None
+            ),
+            "happo_specifics": (
+                {
+                    "state_type": "EP",
+                    "actor_parameter_sharing": False,
+                    "critic": "single shared V(global_state)",
+                    "value_normalizer": "single shared ValueNorm",
+                    "agent_update_order": "fresh random permutation per rollout",
+                    "actor_update": (
+                        "finish all PPO epochs/minibatches, then recompute the "
+                        "updated actor probability before advancing"
+                    ),
+                    "compound_factor": (
+                        "exact product of already-updated joint-action density "
+                        "ratios; detached; no non-paper clamp"
+                    ),
+                    "action_aggregation": "product over action dimensions",
+                    "critic_update_order": "after every actor",
+                } if self.args.algo == "happo" else None
+            ),
+            "a2po_specifics": (
+                {
+                    "state_type": (
+                        "independent V_i(global_state), matching the upstream "
+                        "non-shared-policy path"
+                    ),
+                    "actor_parameter_sharing": False,
+                    "critic_parameter_sharing": False,
+                    "agent_update_order": "semi_greedy",
+                    "order_score": self.options["order_score"],
+                    "preopc": {
+                        "lambda": self.args.gae_lambda,
+                        "trace_clip_param": self.options["trace_clip_param"],
+                        "termination": "no bootstrap and no trace continuation",
+                        "truncation": "bootstrap final observation, no cross-reset trace",
+                    },
+                    "ratio": {
+                        "action_aggregation": "product (summed log-probability)",
+                        "preceding_product_clip": self.options[
+                            "preceding_ratio_clip"],
+                        "joint_ratio_clip": "near-linear by update position",
+                        "adaptive_clip_weight": self.options[
+                            "adaptive_clip_weight"],
+                    },
+                    "two_stage_value_update": True,
+                    "agent_block_size": 1,
+                    "reference_commit": self.options["reference_commit"],
+                } if self.args.algo == "a2po" else None
+            ),
+        }
+
+    def collect(self, count):
+        chunks, collected = [], 0
+        while collected < count:
+            k = min(self.pool.n, count - collected)
+            current_step = self.env_steps + collected
+            warmup = (
+                not self.model.on_policy
+                and current_step < self.options["random_action_steps"])
+            if warmup:
+                k = min(k, self.options["random_action_steps"] - current_step)
+            before = self.codec.pack(self.pool.observations[:k])
+            keys = self.pool.keys(k)
+            with torch.no_grad():
+                output = self.model.act(self.tensor(before))
+                output = {key: value.cpu().numpy() for key, value in output.items()}
+            if warmup:
+                output["a"] = np.random.uniform(
+                    -1, 1, (k, self.codec.action_dim)).astype(np.float32)
+            elif self.args.algo == "facmac":
+                noise = np.random.normal(
+                    0, self.options["noise_std"], output["a"].shape)
+                output["a"] = np.clip(output["a"] + noise, -1, 1).astype(np.float32)
+
+            results = self.pool.step(self.codec.split(output["a"]))
+            following = self.codec.pack([row["obs"] for row in results])
+            chunk = {
+                **before, "a": output["a"], "no": following["o"],
+                "ns": following["s"], "keys": keys,
+                "r": np.asarray([row["r"] for row in results], np.float32),
+                "term": np.asarray([row["term"] for row in results], np.float32),
+                "trunc": np.asarray([row["trunc"] for row in results], np.float32),
+            }
+            if self.model.on_policy:
+                with torch.no_grad():
+                    _, nv = self.model.values(self.tensor(following))
+                chunk.update(
+                    lp=output["lp"], vn=output["vn"], v=output["v"],
+                    nv=nv.cpu().numpy())
+            chunks.append(chunk)
+            collected += k
+
+        batch = {
+            key: np.concatenate([chunk[key] for chunk in chunks], axis=0)
+            for key in chunks[0]
+        }
+        if len({tuple(row) for row in batch["keys"]}) != len(batch["keys"]):
+            raise RuntimeError("Duplicate joint rollout row keys")
+        if self.model.on_policy:
+            add_gae(batch, self.args.gamma, self.args.gae_lambda, self.pool.n)
+        return batch
+
+    def train(self):
+        limit = (
+            self.args.train_batch_size if self.model.on_policy
+            else self.options["collect_steps"])
+        count = min(limit, self.args.total_steps - self.env_steps)
+        if count <= 0:
+            raise RuntimeError("Native train called after budget completion")
+        previous = self.env_steps
+        batch = self.collect(count)
+        self.env_steps += count
+        stats = {}
+        if self.model.on_policy:
+            stats = self.model.learn(self.tensor(batch))
+            self.gradient_updates += 1  # rollout-update calls, not optimizer steps
+        else:
+            self.replay.add(batch)
+            eligible = (
+                max(0, self.env_steps - self.options["buffer_warmup"])
+                - max(0, previous - self.options["buffer_warmup"])
+            )
+            if self.replay.size >= self.options["batch_size"]:
+                self.update_credit += eligible * self.options["updates_per_env_step"]
+                updates = int(self.update_credit)
+                self.update_credit -= updates
+                sampled = self.tensor(self.replay.sample_many(
+                    updates, self.options["batch_size"]
+                )) if updates else None
+                for update in range(updates):
+                    stats = self.model.learn(
+                        {name: value[update] for name, value in sampled.items()},
+                        sync_stats=False,
+                    )
+                    self.gradient_updates += 1
+                if updates:
+                    stats = materialize_scalar_stats(stats)
+            stats["replay_size"] = self.replay.size
+            stats["gradient_updates"] = self.gradient_updates
+        self.iterations += 1
+        return {
+            "num_env_steps_sampled_lifetime": self.env_steps,
+            "learners": {"__all_modules__": stats},
+            "env_runners": {},
+        }
+
+    def save_to_path(self, directory, replay_transitions=None):
+        directory = Path(directory).resolve()
+        directory.mkdir(parents=True, exist_ok=False)
+        replay_state = None
+        if self.replay is not None and replay_transitions != 0:
+            replay_state = self.replay.state(max_transitions=replay_transitions)
+        state = {
+            "format": FORMAT,
+            "identity": identity(self.args, self.meta, self.options),
+            "meta": self.meta,
+            "model": self.model.state_dict(),
+            "optimizers": self.model.optimizer_state(),
+            "rng": rng_state(),
+            "replay": replay_state,
+            "collector_episodes": self.pool.episode,
+            **{key: getattr(self, key) for key in (
+                "env_steps", "iterations", "gradient_updates",
+                "update_credit", "resume_count",
+            )},
+        }
+        temporary = directory / "state.pt.tmp"
+        torch.save(state, temporary)
+        temporary.replace(directory / "state.pt")
+        write_json(directory / "native_checkpoint.json", {
+            "format": FORMAT, "algo": self.args.algo,
+            "env_steps": self.env_steps,
+            "contains_replay": replay_state is not None,
+            "replay_transitions": (
+                int(replay_state["size"]) if replay_state is not None else 0
+            ),
+            "replay_original_size": (
+                int(replay_state.get("original_size", replay_state["size"]))
+                if replay_state is not None else 0
+            ),
+            "replay_truncated": (
+                bool(replay_state.get("truncated", False))
+                if replay_state is not None else False
+            ),
+            "exact_environment_resume": False,
+        })
+        return str(directory)
+
+    def stop(self):
+        if self.pool is not None:
+            self.pool.close()
+            self.pool = None
+
+
+class NativeConfig:
+    def __init__(self, args, meta):
+        self.args, self.meta = args, meta
+
+    def build_algo(self):
+        return NativeAlgorithm(self.args, self.meta)
+
+
+def build_native_config(args, spec, agents, obs_spaces, act_spaces, layouts):
+    native_options(args)  # Validate before creating workers.
+    widths = [
+        layouts[a]["global_state"][1] - layouts[a]["global_state"][0]
+        for a in agents
+    ]
+    if len(set(widths)) != 1 or widths[0] <= len(agents):
+        raise ValueError("Native backend requires an AS global-state observation")
+    for agent in agents:
+        if not np.all(act_spaces[agent].low == -1) \
+                or not np.all(act_spaces[agent].high == 1):
+            raise ValueError("Noncanonical action bounds")
+    meta = {
+        "agents": list(agents),
+        "obs_dims": [int(obs_spaces[a].shape[0]) for a in agents],
+        "action_dims": [int(act_spaces[a].shape[0]) for a in agents],
+        "own_slices": [list(layouts[a]["own"]) for a in agents],
+        "state_slices": [list(layouts[a]["global_state"]) for a in agents],
+        "state_dim": widths[0] - len(agents),
+    }
+    return NativeConfig(args, meta), spec.resolve_learner_class()
+
+
+def evaluate_saved(args):
+    state = load_checkpoint(args.eval_native)
+    options = native_options(args)
+    if state["identity"] != identity(args, state["meta"], options):
+        raise ValueError("Evaluation config does not match checkpoint identity")
+    policy = NativePolicy()
+    policy.device = torch.device(
+        "cuda:0" if args.num_gpus_per_learner > 0 else "cpu")
+    policy.codec = Codec(state["meta"])
+    policy.model = make_model(args, state["meta"], options, policy.device)
+    policy.model.load_state_dict(state["model"])
+    result = evaluate_marl(
+        policy, args.env_id, task=args._resolved_task,
+        eval_seed=args.seed + args.eval_seed_offset,
+        num_episodes=args.num_eval_eps, include_global_state=True,
+        inter_agent_collision_penalty_coef=args.inter_agent_collision_penalty_coef,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0

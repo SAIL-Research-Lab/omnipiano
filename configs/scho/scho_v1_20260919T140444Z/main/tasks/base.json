@@ -1,0 +1,48 @@
+{
+  "name": "scho-v1-winterwind-4h-base",
+  "song": "WinterWind",
+  "num_hands": 4,
+  "num_agents": 2,
+  "assignment": "explicit",
+  "sustain_owner": "a0",
+  "agents": [
+    {
+      "name": "a0",
+      "hand_ids": [
+        0,
+        1
+      ],
+      "action_key_range": [
+        1,
+        48
+      ],
+      "observation_key_range": [
+        1,
+        88
+      ],
+      "visible_teammate_hands": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "a1",
+      "hand_ids": [
+        2,
+        3
+      ],
+      "action_key_range": [
+        41,
+        88
+      ],
+      "observation_key_range": [
+        1,
+        88
+      ],
+      "visible_teammate_hands": [
+        0,
+        1
+      ]
+    }
+  ]
+}

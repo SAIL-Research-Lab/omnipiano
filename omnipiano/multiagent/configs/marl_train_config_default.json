@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "description": "Canonical shared training configuration for all OmniPiano MARL baselines. IPPO and MAPPO intentionally differ only through their algorithm registry definitions.",
+  "experiment": {
+    "algo": "ippo",
+    "env_id": "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0",
+    "seed": 0,
+    "run_dir": null
+  },
+  "protocol": {
+    "total_steps": 10000000,
+    "gamma": 0.8,
+    "eval_freq": 50000,
+    "num_eval_eps": 1,
+    "eval_seed_offset": 10000
+  },
+  "reward": {
+    "inter_agent_collision_penalty_coef": 0.1
+  },
+  "ppo": {
+    "train_batch_size": 4000,
+    "minibatch_size": 4000,
+    "num_epochs": 5,
+    "lr": 0.0003,
+    "critic_lr": 0.0003,
+    "adam_epsilon": 0.00001,
+    "gae_lambda": 0.95,
+    "clip_param": 0.2,
+    "vf_clip_param": 0.2,
+    "vf_loss_coeff": 1.0,
+    "entropy_coeff": 0.0,
+    "use_kl_loss": false,
+    "grad_clip": 10.0,
+    "grad_clip_by": "global_norm"
+  },
+  "network": {
+    "hidden_sizes": [256, 256],
+    "activation": "tanh",
+    "hidden_orthogonal_gain": 1.4142135623730951,
+    "policy_output_gain": 0.01,
+    "value_output_gain": 1.0,
+    "initial_log_std": 0.0,
+    "log_std_min": -5.0,
+    "log_std_max": 2.0,
+    "input_layer_norm": true,
+    "value_norm": true,
+    "value_norm_beta": 0.99999,
+    "value_norm_epsilon": 0.00001,
+    "value_norm_variance_floor": 0.01
+  },
+  "compute": {
+    "num_workers": 9,
+    "num_cpus_per_env_runner": 1,
+    "num_learners": 1,
+    "num_gpus_per_learner": 1.0,
+    "ray_num_cpus": 11,
+    "sample_timeout_s": 1800.0,
+    "max_sampling_stalls": 3,
+    "ray_log_to_driver": false,
+    "checkpoint_freq": 500000,
+    "log_every_iters": 5,
+    "smoke_test": false
+  },
+  "video": {
+    "enabled": true,
+    "freq": 500000,
+    "record_final": true,
+    "camera_id": "piano/topdown",
+    "height": 480,
+    "width": 640,
+    "wandb_upload": true
+  },
+  "wandb": {
+    "mode": "online",
+    "entity": "omnipiano",
+    "project": "multiagent",
+    "group": null,
+    "name": null,
+    "tags": "",
+    "notes": null,
+    "upload_artifacts": false
+  },
+  "smoke_test_overrides": {
+    "total_steps": 5000,
+    "eval_freq": 5000,
+    "num_eval_eps": 1,
+    "num_workers": 0,
+    "num_gpus_per_learner": 0.0,
+    "ray_num_cpus": null,
+    "train_batch_size": 512,
+    "minibatch_size": 512,
+    "num_epochs": 2,
+    "checkpoint_freq": 0,
+    "video_enabled": false
+  },
+  "algorithm_overrides": {
+    "ippo": {},
+    "mappo": {},
+    "mappo-own-critic": {},
+    "happo": {
+      "compute": {
+        "ray_num_cpus": null
+      }
+    },
+    "a2po": {
+      "compute": {
+        "ray_num_cpus": null
+      },
+      "native": {
+        "variant": "a2po_preopc_v1",
+        "reference_commit": "28c11e6063bcf80caffc53a791c99dd7be1003b5",
+        "parameter_sharing": false,
+        "order": "semi_greedy",
+        "order_score": "official_normalized_advantage",
+        "order_score_epsilon": 1e-8,
+        "preceding_ratio_clip": 0.1,
+        "trace_clip_param": 1.0,
+        "adaptive_clip_weight": 0.5,
+        "two_stage": true,
+        "agent_block_size": 1
+      }
+    },
+    "facmac": {
+      "compute": {
+        "num_workers": 3,
+        "ray_num_cpus": null
+      },
+      "native": {
+        "variant": "facmac_continuous_qmix_v1",
+        "reference_commit": "d7e62b8c51a5a77330de85f83c10553d0bd18fe5",
+        "parameter_sharing": false,
+        "actor_hidden_sizes": [400, 400],
+        "utility_hidden_sizes": [400, 400],
+        "actor_lr": 0.001,
+        "critic_lr": 0.001,
+        "adam_epsilon": 0.01,
+        "grad_clip": 0.5,
+        "replay_capacity": 1000000,
+        "batch_size": 100,
+        "buffer_warmup": 1000,
+        "random_action_steps": 10000,
+        "collect_steps": 24,
+        "updates_per_env_step": 1.0,
+        "tau": 0.001,
+        "noise_std": 0.1,
+        "action_l2": 0.001,
+        "mixer_embed": 64,
+        "hypernet_embed": 64,
+        "monotonic": true,
+        "max_replay_gib": 32.0,
+        "checkpoint_replay_transitions": 50000
+      }
+    },
+    "ippo-rllib-module": {
+      "ppo": {
+        "vf_clip_param": 1000.0
+      }
+    }
+  }
+}

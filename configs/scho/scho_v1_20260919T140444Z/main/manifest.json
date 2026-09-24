@@ -1,0 +1,212 @@
+{
+  "suite_id": "scho_v1_20260919T140444Z",
+  "phase": "train",
+  "git_commit": "bc6aeecaa73ff1e19e2c269317130d997a31111f",
+  "git_status": "M .gitignore\n M omnipiano/multiagent/training/rllib.py\n?? scripts/check_scho_tasks.py\n?? scripts/gen_scho_runs.py\n?? scripts/marl_jobs.py",
+  "task_hashes": {
+    "base": "ffcbb1bd597d070b13262fbe9958598f5ea2680bc6d7a8d9d7bd97ea8ddcb517",
+    "coupled_partial": "faf0fc0af6df642c80f0feac998183cf026d09b775142f8bb30dbf0855fb9b39",
+    "heterogeneous": "0cfbf65cc002072c80367168f20d09ccf9b64485f42807994edcfee20ee97b84",
+    "scaled": "9a068103f049ede6469df86b783a5f5016c6a59aa6f6d218f23563087131da2e"
+  },
+  "semantic_checks": {
+    "physical_hands_and_midi": "must verify after compilation",
+    "range_fields_affect_runtime": "must verify in compiler/runtime",
+    "partition_invariant_collision_reward": "not established",
+    "heterogeneous_is_H_only": false
+  },
+  "runs": [
+    {
+      "file": "runs/00_scho_v1_20260919T140444Z_base_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "base",
+      "seed": 0,
+      "task_sha256": "ffcbb1bd597d070b13262fbe9958598f5ea2680bc6d7a8d9d7bd97ea8ddcb517",
+      "config_sha256": "ff721f7eea93ffdfa4793f0d2e934dca15e8bca353eed08104e2eb2131306485"
+    },
+    {
+      "file": "runs/01_scho_v1_20260919T140444Z_base_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "base",
+      "seed": 0,
+      "task_sha256": "ffcbb1bd597d070b13262fbe9958598f5ea2680bc6d7a8d9d7bd97ea8ddcb517",
+      "config_sha256": "cdd4c28caf17fdc27a8f771c687bdef6f9cf9533f188ff536ae6287877c9d02a"
+    },
+    {
+      "file": "runs/02_scho_v1_20260919T140444Z_base_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "base",
+      "seed": 1,
+      "task_sha256": "ffcbb1bd597d070b13262fbe9958598f5ea2680bc6d7a8d9d7bd97ea8ddcb517",
+      "config_sha256": "0c3c734a355d82365184253a8675cf8580f696dfbbc11fadef3a220ec2d5a12e"
+    },
+    {
+      "file": "runs/03_scho_v1_20260919T140444Z_base_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "base",
+      "seed": 1,
+      "task_sha256": "ffcbb1bd597d070b13262fbe9958598f5ea2680bc6d7a8d9d7bd97ea8ddcb517",
+      "config_sha256": "a08649ec6383d770a263e5683e236bc2228b81ae890fb63b28adacdcc8db3043"
+    },
+    {
+      "file": "runs/04_scho_v1_20260919T140444Z_base_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "base",
+      "seed": 2,
+      "task_sha256": "ffcbb1bd597d070b13262fbe9958598f5ea2680bc6d7a8d9d7bd97ea8ddcb517",
+      "config_sha256": "0b457baf3c77e64779fa3d077ffe609c65ab8397366139b83966b79ac284f369"
+    },
+    {
+      "file": "runs/05_scho_v1_20260919T140444Z_base_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "base",
+      "seed": 2,
+      "task_sha256": "ffcbb1bd597d070b13262fbe9958598f5ea2680bc6d7a8d9d7bd97ea8ddcb517",
+      "config_sha256": "e0cd68cf989ab6f9958e48bca36e8ca2fad48000a084e9492148285d0ea7948f"
+    },
+    {
+      "file": "runs/06_scho_v1_20260919T140444Z_coupled_partial_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "coupled_partial",
+      "seed": 1,
+      "task_sha256": "faf0fc0af6df642c80f0feac998183cf026d09b775142f8bb30dbf0855fb9b39",
+      "config_sha256": "94d3777e03209bc9b8c8254b62766c6d1921ae4407483a18cb2c81c567f0e2f6"
+    },
+    {
+      "file": "runs/07_scho_v1_20260919T140444Z_coupled_partial_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "coupled_partial",
+      "seed": 1,
+      "task_sha256": "faf0fc0af6df642c80f0feac998183cf026d09b775142f8bb30dbf0855fb9b39",
+      "config_sha256": "42ea4e6ee7cb498bddb76907a1f4ebf0c04bc1ee98b2c7651159514301dfe46e"
+    },
+    {
+      "file": "runs/08_scho_v1_20260919T140444Z_coupled_partial_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "coupled_partial",
+      "seed": 2,
+      "task_sha256": "faf0fc0af6df642c80f0feac998183cf026d09b775142f8bb30dbf0855fb9b39",
+      "config_sha256": "92f9131a70eb5b271e7854d15acf85466266f53a3cbd57a55eefdae3732124ad"
+    },
+    {
+      "file": "runs/09_scho_v1_20260919T140444Z_coupled_partial_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "coupled_partial",
+      "seed": 2,
+      "task_sha256": "faf0fc0af6df642c80f0feac998183cf026d09b775142f8bb30dbf0855fb9b39",
+      "config_sha256": "682db755224b94c9b4b5814126f29cf1bb17e646bfa4f429d674861af373dc6e"
+    },
+    {
+      "file": "runs/10_scho_v1_20260919T140444Z_coupled_partial_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "coupled_partial",
+      "seed": 0,
+      "task_sha256": "faf0fc0af6df642c80f0feac998183cf026d09b775142f8bb30dbf0855fb9b39",
+      "config_sha256": "b2ea22ac151419a485d1c4c99fc2c064933107a894c20864b6173ff1e9545f50"
+    },
+    {
+      "file": "runs/11_scho_v1_20260919T140444Z_coupled_partial_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "coupled_partial",
+      "seed": 0,
+      "task_sha256": "faf0fc0af6df642c80f0feac998183cf026d09b775142f8bb30dbf0855fb9b39",
+      "config_sha256": "bcb24f1aac44892ac845b46f13c2530df9a559ef87a9a2342430dbd1eefbe183"
+    },
+    {
+      "file": "runs/12_scho_v1_20260919T140444Z_heterogeneous_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "heterogeneous",
+      "seed": 2,
+      "task_sha256": "0cfbf65cc002072c80367168f20d09ccf9b64485f42807994edcfee20ee97b84",
+      "config_sha256": "701f3565830455a0c85164f222758295fad8b6e22669a14cf80dfee5281e87f4"
+    },
+    {
+      "file": "runs/13_scho_v1_20260919T140444Z_heterogeneous_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "heterogeneous",
+      "seed": 2,
+      "task_sha256": "0cfbf65cc002072c80367168f20d09ccf9b64485f42807994edcfee20ee97b84",
+      "config_sha256": "7c143d284487531a02fd5f0bd27a67038a55fd36e962a2e8f9f2e74f43847951"
+    },
+    {
+      "file": "runs/14_scho_v1_20260919T140444Z_heterogeneous_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "heterogeneous",
+      "seed": 0,
+      "task_sha256": "0cfbf65cc002072c80367168f20d09ccf9b64485f42807994edcfee20ee97b84",
+      "config_sha256": "4e28cccfee258dbfcf0ab8ec9d6cd61768a6912b974f10a6ba5c2c63227485f5"
+    },
+    {
+      "file": "runs/15_scho_v1_20260919T140444Z_heterogeneous_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "heterogeneous",
+      "seed": 0,
+      "task_sha256": "0cfbf65cc002072c80367168f20d09ccf9b64485f42807994edcfee20ee97b84",
+      "config_sha256": "0dd949d3d647ee7691e259806292cdc770f6548feb57c5da4ec11a0200981fb6"
+    },
+    {
+      "file": "runs/16_scho_v1_20260919T140444Z_heterogeneous_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "heterogeneous",
+      "seed": 1,
+      "task_sha256": "0cfbf65cc002072c80367168f20d09ccf9b64485f42807994edcfee20ee97b84",
+      "config_sha256": "8d50b621576b2e1c8d435872c9b053de7a68424ffd2391044ca10945e0846630"
+    },
+    {
+      "file": "runs/17_scho_v1_20260919T140444Z_heterogeneous_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "heterogeneous",
+      "seed": 1,
+      "task_sha256": "0cfbf65cc002072c80367168f20d09ccf9b64485f42807994edcfee20ee97b84",
+      "config_sha256": "b18d2d203dadf90a18bfab44efd5baa4bdcbfa081ea8e5d8ae3aa07cb841aedd"
+    },
+    {
+      "file": "runs/18_scho_v1_20260919T140444Z_scaled_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "scaled",
+      "seed": 0,
+      "task_sha256": "9a068103f049ede6469df86b783a5f5016c6a59aa6f6d218f23563087131da2e",
+      "config_sha256": "567fd5ad0c1f74f0957f818f02a4e6ad1a518f1a27895f84b7233aa8cd50861c"
+    },
+    {
+      "file": "runs/19_scho_v1_20260919T140444Z_scaled_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "scaled",
+      "seed": 0,
+      "task_sha256": "9a068103f049ede6469df86b783a5f5016c6a59aa6f6d218f23563087131da2e",
+      "config_sha256": "c00cfc3259d9649fff0931385e57249a138e8121e1ba5f17b751130127b65c80"
+    },
+    {
+      "file": "runs/20_scho_v1_20260919T140444Z_scaled_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "scaled",
+      "seed": 1,
+      "task_sha256": "9a068103f049ede6469df86b783a5f5016c6a59aa6f6d218f23563087131da2e",
+      "config_sha256": "ffa5c9b831df7b5e669033c10363a7227a8e97499bb509270bf7d4704ec50e00"
+    },
+    {
+      "file": "runs/21_scho_v1_20260919T140444Z_scaled_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "scaled",
+      "seed": 1,
+      "task_sha256": "9a068103f049ede6469df86b783a5f5016c6a59aa6f6d218f23563087131da2e",
+      "config_sha256": "885bc69d2dea6c1a1e959ac4c9b5db4cb605901ed361633403689467e4864e4d"
+    },
+    {
+      "file": "runs/22_scho_v1_20260919T140444Z_scaled_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "scaled",
+      "seed": 2,
+      "task_sha256": "9a068103f049ede6469df86b783a5f5016c6a59aa6f6d218f23563087131da2e",
+      "config_sha256": "548e1e7921a029445735e84fc9b29bad23ce58e79c23cd7acde0c26609500f19"
+    },
+    {
+      "file": "runs/23_scho_v1_20260919T140444Z_scaled_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "scaled",
+      "seed": 2,
+      "task_sha256": "9a068103f049ede6469df86b783a5f5016c6a59aa6f6d218f23563087131da2e",
+      "config_sha256": "0c21b890763108b4f3b87c5b56f4d60046095924df7d98991004328064e92f88"
+    }
+  ]
+}

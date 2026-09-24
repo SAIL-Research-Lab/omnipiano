@@ -72,7 +72,7 @@ camera so the full 88-key keyboard and every hand are visible at once.
 
 <p align="center">
   <strong><code>OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0</code></strong><br/>
-  <sub>4 hands · <strong>multi-agent: 2 independent policies</strong> (<code>secondo</code> = bass-side LH+RH; <code>primo</code> = treble-side LH+RH) · Territorial series (disjoint per-agent clamps; ~4-key emergent shared zone at center) · RLlib MAPPO 5M · eval reward = 768</sub>
+  <sub>4 hands · <strong>multi-agent: 2 independent policies</strong> (<code>secondo</code> = bass-side LH+RH; <code>primo</code> = treble-side LH+RH) · Territorial series (disjoint per-agent clamps; ~4-key emergent shared zone at center) · RLlib independent PPO (IPPO-style) 5M · historical eval reward = 768</sub>
 </p>
 <p align="center">
   <img src="demos/morphology/4hand_winterwind_ma_duet.gif" alt="4-hand MA Duet WinterWind Territorial demo" width="640"/>
@@ -156,6 +156,13 @@ conda activate pianist
 git clone https://github.com/SafeRL-Lab/omnipiano.git
 cd omnipiano
 pip install -e .
+```
+
+For the RLlib IPPO baseline, install the reproducibility-pinned MARL extra
+instead (`ray[rllib]==2.55.1`):
+
+```bash
+pip install -e '.[marl]'
 ```
 
 **Step 4 — Preprocess the PIG dataset (required)**
@@ -352,14 +359,50 @@ OmniPiano exposes:
 
 The protocol-level constants intended to be **shared across frameworks**
 for fair comparison are in `BenchmarkProtocolConfig`
-(`omnipiano/configs/__init__.py`):
-total env-step budget, evaluation seed, and final-eval episode count.
-Algorithm-specific hyperparameters (`gamma`, `batch_size`, network
-architecture, etc.) belong in each trainer's own configuration —
-OmniPiano deliberately takes no opinion there.
+(`omnipiano/configs/__init__.py`): total env-step budget, replication seeds,
+evaluation cadence and episode count, plus the task-level discount factor.
+Algorithm-specific hyperparameters such as batch size and network architecture
+belong in each trainer's own configuration.
 
 Paper-style N-seed replication: run your trainer N times with distinct
 seeds and aggregate the per-run `eval_summary.json` files offline.
+
+The bundled RLlib multi-agent trainer exposes architecturally matched IPPO and
+MAPPO baselines through one code path. Both actors read only their agent-local
+observation. IPPO uses a local critic `V(o_i)`; MAPPO uses a centralized critic
+`V(s)` during training. Run each protocol seed independently:
+
+```bash
+for seed in 0 1 2; do
+  MUJOCO_GL=egl python -m omnipiano.multiagent.train \
+    --algo ippo --seed "$seed" --wandb-mode disabled
+done
+```
+
+Replace `--algo ippo` with `--algo mappo` for the centralized-critic run.
+Online tracking defaults to W&B entity `omnipiano`, project `marl`; the example
+disables it so the command also works on a machine without W&B credentials.
+
+Defaults come directly from `BenchmarkProtocolConfig`: 5M environment steps,
+`gamma=0.8`, deterministic evaluation every 50k environment steps, and one run
+per seed. Each run writes `run_config.json`, `progress.jsonl`,
+`periodic_eval.jsonl` (F1, one-copy shared team return, and MARL coordination
+metrics), recoverable
+checkpoints every 500k steps, a final RLlib checkpoint, and
+`eval_summary.json`.
+
+The MARL terminal/evaluation metrics include
+`common_area_success_rate`, `common_area_duplicate_press_rate`, and
+`inter_agent_collision_step_rate`. Common-area metrics use target-note onsets
+on keys contained in at least two agents' measured fingertip reach; duplicate
+presses require fingertip contact from at least two distinct agents. The
+collision rate counts control steps with any physical hand contact across
+agents. These metrics are observational and do not change the task reward.
+
+`MUJOCO_GL` must be set before Python starts because importing the top-level
+package initializes the MuJoCo-backed environment registry. The supported
+MARL entrypoint is `omnipiano.multiagent.train`; select IPPO or MAPPO with
+`--algo`.
 
 ## Current Package Layout
 
@@ -385,6 +428,13 @@ omnipiano/
 │                               # Level-1 partition (key_range / y_range) +
 │                               # default_{three,four,five}_hand_specs() +
 │                               # key_index_to_y / key_range_to_y_range
+├── multiagent/                 # PettingZoo ParallelEnv layer + RLlib MARL baselines
+│   ├── algos/                  # AlgoSpec registry + shared algorithm modules
+│   ├── compile/                # JSON → ResolvedTask → environment factory
+│   │   └── env_runtime/        # registry, topology, PettingZoo adapter and metrics
+│   ├── training/               # config, RLlib assembly, runner and shared utilities
+│   ├── train.py                # thin public CLI (--algo selects the baseline)
+│   └── configs/                # default MARL config and task example
 ├── safety/
 │   └── constraints.py          # BaseConstraint + concrete safety rules
 ├── wrappers/
@@ -586,7 +636,8 @@ For a fresh machine, installation should be thought of as three layers:
 
 1. system dependencies such as `fluidsynth`, `portaudio`, and `ffmpeg`,
 2. a Python environment such as a conda env,
-3. `pip install -e .` to install `OmniPiano`.
+3. `pip install -e .` to install `OmniPiano` (or `pip install -e '.[marl]'`
+   for the pinned RLlib IPPO stack).
 
 If you want, this README can be extended further with a concrete installation
 section once the repository-level environment/bootstrap files are finalized.
