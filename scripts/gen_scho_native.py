@@ -6,13 +6,11 @@ import hashlib
 import json
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = Path(
-    "/root/autodl-tmp/omnipiano/configs/scho/"
-    "scho_v1_20260919T140444Z/main/runs"
-)
+ARCHIVE = ROOT / "omnipiano/multiagent/configs/archive"
+SOURCE = ARCHIVE / "scho_v1_20260919T140444Z/main/runs"
 stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 suite = f"scho_native_v1_{stamp}"
-output = ROOT / "configs/scho" / suite
+output = ARCHIVE / suite
 runs = output / "main/runs"
 runs.mkdir(parents=True, exist_ok=False)
 
