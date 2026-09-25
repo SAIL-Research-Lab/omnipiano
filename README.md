@@ -1,4 +1,6 @@
-<h1 align="center">🎹 OmniPiano</h1>
+<p align="center">
+  <a href="https://omnipiano.site/"><img src="docs/_static/images/omnipiano-logo.png" alt="OmniPiano" width="480"></a>
+</p>
 
 <p align="center">
   <b>Diverse Dexterous Piano-Playing Challenges for Standard, Robust, Safe, and Multi-Agent RL</b>
@@ -56,25 +58,63 @@ performance can therefore be attributed to that single design choice.
 
 ## 🎬 Demos
 
+Click any clip to open the full-length video. More rollouts are on the [project website](https://omnipiano.site/#videos).
+
 <table>
   <tr>
-    <td align="center" width="50%">
-      <img src="demos/morphology/5hand_winterwind_l1.gif" width="100%" alt="5-hand Winter Wind"><br>
-      <sub><b>Five hands, restricted</b>: <i>Winter Wind</i>. Each hand is clamped to its own keyboard register.</sub>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/std-sac-furelise-1hand.mp4"><img src="demos/site/std-sac-furelise-1hand.gif" width="100%" alt="One hand, unrestricted"></a><br>
+      <sub><b>One hand, unrestricted</b><br><i>Für Elise</i></sub>
     </td>
-    <td align="center" width="50%">
-      <img src="demos/morphology/4hand_winterwind_l3.gif" width="100%" alt="4-hand Winter Wind unrestricted"><br>
-      <sub><b>Four hands, unrestricted</b>: <i>Winter Wind</i> with fully mobile hands.</sub>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/std-sac-furelise-2hand.mp4"><img src="demos/site/std-sac-furelise-2hand.gif" width="100%" alt="Two hands, unrestricted"></a><br>
+      <sub><b>Two hands, unrestricted</b><br><i>Für Elise</i></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/std-sac-greatkiev-3hand.mp4"><img src="demos/site/std-sac-greatkiev-3hand.gif" width="100%" alt="Three hands, restricted"></a><br>
+      <sub><b>Three hands, restricted</b><br><i>Pictures at an Exhibition</i> (Great Kiev)</sub>
     </td>
   </tr>
   <tr>
-    <td align="center" width="50%">
-      <img src="demos/morphology/4hand_winterwind_ma_duet.gif" width="100%" alt="4-hand multi-agent duet"><br>
-      <sub><b>Multi-agent duet</b>: two decentralized agents (bass side and treble side), each controlling two hands.</sub>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/std-sac-winterwind-4hand.mp4"><img src="demos/site/std-sac-winterwind-4hand.gif" width="100%" alt="Four hands, restricted"></a><br>
+      <sub><b>Four hands, restricted</b><br><i>Winter Wind</i></sub>
     </td>
-    <td align="center" width="50%">
-      <img src="demos/Collision_Safe/preview.gif" width="100%" alt="Collision-aware task"><br>
-      <sub><b>Safe RL</b>: collision-aware playing. Reward and collision cost are exposed separately.</sub>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/five-hand-demo.gif"><img src="demos/site/five-hand-demo.gif" width="100%" alt="Five hands, restricted"></a><br>
+      <sub><b>Five hands, restricted</b><br>Each hand confined to its own keyboard region</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/collision-demo.gif"><img src="demos/site/collision-demo.gif" width="100%" alt="Safe RL: hand collision"></a><br>
+      <sub><b>Safe RL: hand collision</b><br>Limiting contact between neighboring hands</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/rob-clairdelune-2hand-action.mp4"><img src="demos/site/rob-clairdelune-2hand-action.gif" width="100%" alt="Two hands, action noise"></a><br>
+      <sub><b>Two hands, action noise</b><br><i>Clair de Lune</i></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/rob-furelise-3hand-obs-action.mp4"><img src="demos/site/rob-furelise-3hand-obs-action.gif" width="100%" alt="Three hands, observation + action noise"></a><br>
+      <sub><b>Three hands, observation + action noise</b><br><i>Für Elise</i></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/rob-furelise-5hand-obs.mp4"><img src="demos/site/rob-furelise-5hand-obs.gif" width="100%" alt="Five hands, observation noise"></a><br>
+      <sub><b>Five hands, observation noise</b><br><i>Für Elise</i></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/marl-two-agents-four-hands.mp4"><img src="demos/site/marl-two-agents-four-hands.gif" width="100%" alt="Two agents, four hands"></a><br>
+      <sub><b>Two agents, four hands</b><br><i>Winter Wind</i> · Base setting</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/marl-heterogeneity.mp4"><img src="demos/site/marl-heterogeneity.gif" width="100%" alt="One hand vs. three hands"></a><br>
+      <sub><b>One hand vs. three hands</b><br><i>Winter Wind</i> · Heterogeneity setting</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://omnipiano.site/assets/videos/marl-four-agents-one-hand.mp4"><img src="demos/site/marl-four-agents-one-hand.gif" width="100%" alt="Four agents, one hand each"></a><br>
+      <sub><b>Four agents, one hand each</b><br><i>Winter Wind</i> · Scalability setting</sub>
     </td>
   </tr>
 </table>
@@ -498,8 +538,7 @@ We welcome bug reports, new tasks and new baselines. Open an
 
 ## 📖 Citation
 
-The paper is currently under double-blind review. A BibTeX entry will be added
-here once it is public. Until then, please cite the
+A BibTeX entry for OmniPiano will be added here soon. Until then, please cite the
 [project website](https://omnipiano.site/) and RoboPianist, on which OmniPiano
 is built:
 
