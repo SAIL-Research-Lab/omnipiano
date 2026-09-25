@@ -50,9 +50,7 @@ performance can therefore be attributed to that single design choice.
 - [Evaluation protocol and metrics](#-evaluation-protocol-and-metrics)
 - [Repository layout](#-repository-layout)
 - [Contributing](#-contributing)
-- [Citation](#-citation)
 - [Acknowledgements](#-acknowledgements)
-- [License](#-license)
 
 ---
 
@@ -536,23 +534,6 @@ We welcome bug reports, new tasks and new baselines. Open an
 
 ---
 
-## 📖 Citation
-
-A BibTeX entry for OmniPiano will be added here soon. Until then, please cite the
-[project website](https://omnipiano.site/) and RoboPianist, on which OmniPiano
-is built:
-
-```bibtex
-@article{zakka2023robopianist,
-  title   = {{RoboPianist}: Dexterous Piano Playing with Deep Reinforcement Learning},
-  author  = {Zakka, Kevin and Wu, Philipp and Smith, Laura and Gileadi, Nimrod and Howell, Taylor and Peng, Xue Bin and Singh, Sumeet and Tassa, Yuval and Florence, Pete and Zeng, Andy and Abbeel, Pieter},
-  journal = {arXiv preprint arXiv:2304.04150},
-  year    = {2023}
-}
-```
-
----
-
 ## 🙏 Acknowledgements
 
 OmniPiano builds on the work of many open-source projects:
@@ -568,10 +549,3 @@ the [PIG dataset](https://beam.kisarazu.ac.jp/~saito/research/PianoFingeringData
 [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3),
 [RLlib](https://docs.ray.io/en/latest/rllib/) and
 [TorchRL](https://github.com/pytorch/rl).
-
-## 📄 License
-
-The Shadow Hand model files keep their original license
-([`omnipiano/envs/robopianist/models/hands/third_party/shadow_hand/LICENSE`](omnipiano/envs/robopianist/models/hands/third_party/shadow_hand/LICENSE)).
-The vendored RoboPianist code is under its upstream Apache-2.0 license. The PIG
-dataset is **not** redistributed and is subject to its own terms of use.
