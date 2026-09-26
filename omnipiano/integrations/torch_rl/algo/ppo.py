@@ -110,7 +110,7 @@ def train_ppo(
             latest = {}
             updates_per_epoch = max(len(minibatches) // config.batch_size, 1)
             for _ in range(config.n_epochs * updates_per_epoch):
-                losses = loss_module(minibatches.sample())
+                losses = loss_module(minibatches.sample().to(config.device))
                 total_loss = sum(
                     value for key, value in losses.items() if str(key).startswith("loss_")
                 )
