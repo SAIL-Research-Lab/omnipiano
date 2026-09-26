@@ -232,7 +232,7 @@ def run_queue(args):
                 snapshot = state / f"{name}.input.json"
                 shutil.copyfile(cfg_path, snapshot)
 
-                ray_root = Path("/root/autodl-tmp/r")
+                ray_root = Path(os.environ.get("RAY_TMP_ROOT", tempfile.gettempdir())) / "omnipiano_ray"
                 ray_root.mkdir(parents=True, exist_ok=True)
                 ray_tmp = tempfile.mkdtemp(prefix="j-", dir=ray_root)
                 env = os.environ.copy()

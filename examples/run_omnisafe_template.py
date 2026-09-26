@@ -374,7 +374,7 @@ def _final_eval(save_dir: str, num_eval_eps: int, train_seed: int) -> Dict[str, 
          never surface. Our loop captures them.
 
     We do not modify upstream OmniSafe (READ-ONLY clone at
-    ``/home/accelerator/SafeRoboPianist/omnisafe``); bypassing
+    ``./omnisafe``); bypassing
     ``Evaluator.evaluate`` keeps that constraint while delivering both
     fixes in ~15 lines of code.
     """

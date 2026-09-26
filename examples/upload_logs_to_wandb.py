@@ -25,6 +25,7 @@ import csv
 import hashlib
 import json
 import math
+import os
 import re
 import sys
 from collections import Counter, defaultdict
@@ -36,7 +37,7 @@ import numpy as np
 
 
 IMPORTER_VERSION = "1.0"
-DEFAULT_ENTITY = "omnipiano"
+DEFAULT_ENTITY = os.environ.get("WANDB_ENTITY")  # None -> your default W&B entity
 DEFAULT_PROJECTS = ("general", "safe", "robust")
 
 

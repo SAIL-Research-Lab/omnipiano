@@ -5,7 +5,6 @@ the main configuration, registry, wrappers, tasks, examples, or dependencies are
 The existing `constraints.py` is preserved for compatibility with main's legacy registrations.
 The isolated installation profile and its NumPy 1.x compatibility guard are
 documented in [Safety Quick Start](QUICKSTART.md); no root files are patched.
-See [Main integration](MAIN_INTEGRATION.md) for the merge scope and validation.
 
 To run additional native OmniSafe methods, see [Algorithm interface](ALGORITHMS.md):
 32 online model-free choices (the original five plus 27), with explicit task,

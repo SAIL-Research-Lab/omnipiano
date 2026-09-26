@@ -76,7 +76,7 @@ run)
       || { echo "[abort] NOT registered: $(env_id "$p")"; exit 1; }
   done
   for a in $ALGOS; do for p in $PIECES; do launch "$a" "$p"; sleep 8; done; done
-  echo "[ok] W&B    -> https://wandb.ai/omnipiano/$WANDB_PROJECT"
+  echo "[ok] W&B    -> https://wandb.ai/<your-entity>/$WANDB_PROJECT"
   echo "[ok] local  -> tail -f $LOGS/*_seed${SEED}_*/train.log"
   echo "[ok] resume -> run inside tmux/screen so an SSH drop cannot kill it" ;;
 

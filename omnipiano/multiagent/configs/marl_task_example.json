@@ -96,7 +96,7 @@
   },
   "wandb": {
     "mode": "online",
-    "entity": "omnipiano",
+    "entity": null,
     "project": "multiagent",
     "group": null,
     "name": null,

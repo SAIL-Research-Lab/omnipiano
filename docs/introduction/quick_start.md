@@ -25,8 +25,7 @@ conda activate pianist
 ## Clone and install OmniPiano
 
 ```bash
-git clone https://github.com/SafeRL-Lab/omnipiano.git
-cd omnipiano
+cd omnipiano   # repository root
 python -m pip install -e .
 ```
 

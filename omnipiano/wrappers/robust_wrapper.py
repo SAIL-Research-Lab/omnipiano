@@ -41,8 +41,7 @@ in the dm_env chain, so what it naturally records into the flat obs:
   aging/wear means the truly executed action is the noised one, and the
   agent's proprioceptive action memory legitimately reflects it. No
   override is performed — the earlier Method 6 (Option B) clean-``a_cmd``
-  override was REMOVED (see ``robust_task_design.md`` §4.7 supersession
-  note for the history and the old rationale).
+  override was REMOVED.
 * ``obs["reward"]`` = the **clean** task reward — because reward noise
   is injected here at the gym layer, *above* OAR. That is NOT the
   intended semantics ("worn reward sensor": observed = learned = noised),
@@ -120,9 +119,7 @@ class RobustWrapper(gym.Wrapper):
                     "RobustWrapper's obs['reward'] override does not support "
                     "frame_stack > 1: the flat obs interleaves frames, so "
                     "only the newest frame's slot could be fixed. All "
-                    "OmniPiano / RoboPianist protocols use frame_stack=1; "
-                    "see omnipiano/docs/robust_task_design.md §4.7 before "
-                    "enabling stacking on a reward robust task."
+                    "OmniPiano / RoboPianist protocols use frame_stack=1."
                 )
             return None
 

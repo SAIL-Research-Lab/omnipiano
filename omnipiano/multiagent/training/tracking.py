@@ -92,7 +92,7 @@ class WandbRun:
     def __init__(
         self, *,
         mode: str = "online",
-        entity: Optional[str] = "omnipiano",
+        entity: Optional[str] = None,
         project: str = "multiagent",
         name: Optional[str] = None,
         group: Optional[str] = None,

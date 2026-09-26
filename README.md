@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://omnipiano.site/"><img src="docs/_static/images/omnipiano-logo.png" alt="OmniPiano" width="480"></a>
+  <img src="docs/_static/images/omnipiano-logo.png" alt="OmniPiano" width="480">
 </p>
 
 <p align="center">
@@ -7,12 +7,9 @@
 </p>
 
 <p align="center">
-  <a href="https://omnipiano.site/"><img src="https://img.shields.io/badge/Website-omnipiano.site-blue" alt="Website"></a>
-  <a href="https://omnipiano-docs.readthedocs.io/en/latest/"><img src="https://img.shields.io/badge/Tutorial-ReadTheDocs-8CA1AF?logo=readthedocs" alt="Tutorial"></a>
   <img src="https://img.shields.io/badge/python-%E2%89%A53.10-3776AB?logo=python" alt="Python">
   <img src="https://img.shields.io/badge/API-Gymnasium%20%7C%20PettingZoo-0081A5" alt="API">
   <img src="https://img.shields.io/badge/physics-MuJoCo-orange" alt="MuJoCo">
-  <a href="https://github.com/SAIL-Research-Lab/omnipiano/issues"><img src="https://img.shields.io/badge/issues-welcome-brightgreen" alt="Issues"></a>
 </p>
 
 <p align="center">
@@ -56,62 +53,62 @@ performance can therefore be attributed to that single design choice.
 
 ## 🎬 Demos
 
-Click any clip to open the full-length video. More rollouts are on the [project website](https://omnipiano.site/#videos).
+Short rollout clips from trained policies in each track.
 
 <table>
   <tr>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/std-sac-furelise-1hand.mp4"><img src="demos/site/std-sac-furelise-1hand.gif" width="100%" alt="One hand, unrestricted"></a><br>
+      <img src="demos/site/std-sac-furelise-1hand.gif" width="100%" alt="One hand, unrestricted"><br>
       <sub><b>One hand, unrestricted</b><br><i>Für Elise</i></sub>
     </td>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/std-sac-furelise-2hand.mp4"><img src="demos/site/std-sac-furelise-2hand.gif" width="100%" alt="Two hands, unrestricted"></a><br>
+      <img src="demos/site/std-sac-furelise-2hand.gif" width="100%" alt="Two hands, unrestricted"><br>
       <sub><b>Two hands, unrestricted</b><br><i>Für Elise</i></sub>
     </td>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/std-sac-greatkiev-3hand.mp4"><img src="demos/site/std-sac-greatkiev-3hand.gif" width="100%" alt="Three hands, restricted"></a><br>
+      <img src="demos/site/std-sac-greatkiev-3hand.gif" width="100%" alt="Three hands, restricted"><br>
       <sub><b>Three hands, restricted</b><br><i>Pictures at an Exhibition</i> (Great Kiev)</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/std-sac-winterwind-4hand.mp4"><img src="demos/site/std-sac-winterwind-4hand.gif" width="100%" alt="Four hands, restricted"></a><br>
+      <img src="demos/site/std-sac-winterwind-4hand.gif" width="100%" alt="Four hands, restricted"><br>
       <sub><b>Four hands, restricted</b><br><i>Winter Wind</i></sub>
     </td>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/five-hand-demo.gif"><img src="demos/site/five-hand-demo.gif" width="100%" alt="Five hands, restricted"></a><br>
+      <img src="demos/site/five-hand-demo.gif" width="100%" alt="Five hands, restricted"><br>
       <sub><b>Five hands, restricted</b><br>Each hand confined to its own keyboard region</sub>
     </td>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/collision-demo.gif"><img src="demos/site/collision-demo.gif" width="100%" alt="Safe RL: hand collision"></a><br>
+      <img src="demos/site/collision-demo.gif" width="100%" alt="Safe RL: hand collision"><br>
       <sub><b>Safe RL: hand collision</b><br>Limiting contact between neighboring hands</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/rob-clairdelune-2hand-action.mp4"><img src="demos/site/rob-clairdelune-2hand-action.gif" width="100%" alt="Two hands, action noise"></a><br>
+      <img src="demos/site/rob-clairdelune-2hand-action.gif" width="100%" alt="Two hands, action noise"><br>
       <sub><b>Two hands, action noise</b><br><i>Clair de Lune</i></sub>
     </td>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/rob-furelise-3hand-obs-action.mp4"><img src="demos/site/rob-furelise-3hand-obs-action.gif" width="100%" alt="Three hands, observation + action noise"></a><br>
+      <img src="demos/site/rob-furelise-3hand-obs-action.gif" width="100%" alt="Three hands, observation + action noise"><br>
       <sub><b>Three hands, observation + action noise</b><br><i>Für Elise</i></sub>
     </td>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/rob-furelise-5hand-obs.mp4"><img src="demos/site/rob-furelise-5hand-obs.gif" width="100%" alt="Five hands, observation noise"></a><br>
+      <img src="demos/site/rob-furelise-5hand-obs.gif" width="100%" alt="Five hands, observation noise"><br>
       <sub><b>Five hands, observation noise</b><br><i>Für Elise</i></sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/marl-two-agents-four-hands.mp4"><img src="demos/site/marl-two-agents-four-hands.gif" width="100%" alt="Two agents, four hands"></a><br>
+      <img src="demos/site/marl-two-agents-four-hands.gif" width="100%" alt="Two agents, four hands"><br>
       <sub><b>Two agents, four hands</b><br><i>Winter Wind</i> · Base setting</sub>
     </td>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/marl-heterogeneity.mp4"><img src="demos/site/marl-heterogeneity.gif" width="100%" alt="One hand vs. three hands"></a><br>
+      <img src="demos/site/marl-heterogeneity.gif" width="100%" alt="One hand vs. three hands"><br>
       <sub><b>One hand vs. three hands</b><br><i>Winter Wind</i> · Heterogeneity setting</sub>
     </td>
     <td align="center" width="33%">
-      <a href="https://omnipiano.site/assets/videos/marl-four-agents-one-hand.mp4"><img src="demos/site/marl-four-agents-one-hand.gif" width="100%" alt="Four agents, one hand each"></a><br>
+      <img src="demos/site/marl-four-agents-one-hand.gif" width="100%" alt="Four agents, one hand each"><br>
       <sub><b>Four agents, one hand each</b><br><i>Winter Wind</i> · Scalability setting</sub>
     </td>
   </tr>
@@ -139,8 +136,7 @@ sudo apt-get install -y build-essential fluidsynth libfluidsynth-dev portaudio19
 conda create -n pianist python=3.10 -y
 conda activate pianist
 
-git clone https://github.com/SAIL-Research-Lab/omnipiano.git
-cd omnipiano
+cd omnipiano                     # repository root
 pip install -e .                 # core: Gymnasium + PettingZoo envs, SB3 baselines
 ```
 
@@ -453,14 +449,15 @@ timing errors and trajectory diagnostics are fed back to the LLM for the next
 attempt.
 
 ```bash
-export CLAUDE_API_KEY=...        # key for the configured OpenAI-compatible endpoint
+export LLM_API_KEY=...           # key for any OpenAI-compatible endpoint
+export LLM_BASE_URL=...          # optional; unset -> OpenAI default endpoint
+export LLM_MODEL=...             # optional; default claude-opus-5
 python examples/run_keyframes.py --env OmniPiano-ClairDeLune-Clean-v0 --tries 10
 python examples/run_eval.py      --env OmniPiano-ClairDeLune-Clean-v0 --record
 ```
 
-Set the model, endpoint and API-key variable at the top of
-[`examples/run_keyframes.py`](examples/run_keyframes.py). It calls any
-OpenAI-compatible API through the `openai` client.
+[`examples/run_keyframes.py`](examples/run_keyframes.py) calls the endpoint
+through the `openai` client.
 
 ---
 
@@ -515,8 +512,7 @@ docs/                  # Sphinx sources for the tutorial site
 
 ## 🤝 Contributing
 
-We welcome bug reports, new tasks and new baselines. Open an
-[issue](https://github.com/SAIL-Research-Lab/omnipiano/issues) or a pull request.
+We welcome bug reports, new tasks and new baselines.
 
 * **Add a task.** Experiment settings are tied to registered IDs, not to
   `make()` kwargs. Add a `register(id=..., base_env_name=..., safety_config=...,
@@ -544,7 +540,7 @@ the [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) Shad
 the [PIG dataset](https://beam.kisarazu.ac.jp/~saito/research/PianoFingeringDataset/),
 [Gymnasium](https://github.com/Farama-Foundation/Gymnasium),
 [PettingZoo](https://github.com/Farama-Foundation/PettingZoo),
-[Robust-Gymnasium](https://github.com/SAIL-Research-Lab/Robust-Gymnasium),
+Robust-Gymnasium (Gu et al., ICLR 2025),
 [OmniSafe](https://github.com/PKU-Alignment/omnisafe),
 [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3),
 [RLlib](https://docs.ray.io/en/latest/rllib/) and

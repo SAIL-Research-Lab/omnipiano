@@ -1,4 +1,4 @@
-"""OAR slot semantics gate tests — robust_task_design.md §4.7.
+"""OAR slot semantics gate tests.
 
 Decision 2026-07-21 (supersedes Method 6 Option B): under the
 hardware-wear threat model, ``obs["action"]`` keeps upstream OAR's
@@ -36,7 +36,7 @@ Gates:
   reward override cleanly; SB3 DummyVecEnv smoke.
 
 Run:
-    /home/accelerator/miniforge3/envs/pianist/bin/python -m pytest \
+    python -m pytest \
         omnipiano/tests/test_robust_v1_method6.py -v
 """
 import os

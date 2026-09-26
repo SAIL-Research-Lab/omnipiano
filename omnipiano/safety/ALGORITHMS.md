@@ -65,7 +65,7 @@ budget matrix still uses its single default-budget PPO reference.
 Use the exact names above: for example, `OnCRPO`, not `OnCPRO`, and `PPOLag`,
 not `PPO-lag`. Availability means the configuration and environment interface
 are connected; it does **not** mean every algorithm has been empirically validated
-on every OmniPiano task. See [ALGORITHM_TEST.md](ALGORITHM_TEST.md) for test scope.
+on every OmniPiano task.
 
 ## 3. Short test and parameters
 

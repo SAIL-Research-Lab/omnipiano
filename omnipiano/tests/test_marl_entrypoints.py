@@ -61,7 +61,7 @@ def test_canonical_defaults_match_checked_in_project_convention() -> None:
     assert args.ray_num_cpus == 11
     assert Path(args.config).resolve() == train.DEFAULT_TRAIN_CONFIG_PATH.resolve()
     assert args._training_config_snapshot["schema_version"] == 1
-    assert args.wandb_entity == "omnipiano"
+    assert args.wandb_entity is None
     assert args.wandb_project == "multiagent"
     assert inspect.signature(WandbRun).parameters["project"].default == "multiagent"
 

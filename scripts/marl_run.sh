@@ -85,7 +85,7 @@ launch () {  # $1=gpu $2=algo $3=piece $4=seed
       --num-workers "$NUM_WORKERS" --ray-num-cpus "$CPUS_PER_JOB" \
       --num-learners 1 --num-gpus-per-learner 1 \
       --run-dir "$run_dir" \
-      --wandb-mode "$WANDB_MODE" --wandb-entity omnipiano --wandb-project multiagent \
+      --wandb-mode "$WANDB_MODE" ${WANDB_ENTITY:+--wandb-entity "$WANDB_ENTITY"} --wandb-project multiagent \
       --wandb-tags "paper,10M" --wandb-upload-artifacts \
       > "${run_dir}.stdout.log" 2>&1 &
   echo "$!" > "$PIDDIR/${tag}.pid"
@@ -170,7 +170,7 @@ pilot)
   TOTAL_STEPS=100000 EVAL_FREQ=20000 launch 1 mappo "$P" 0
   echo
   echo "Pilot launched. GATE: learner/*/vf_explained_var must rise above ~0.2."
-  echo "  https://wandb.ai/omnipiano/multiagent"
+  echo "  https://wandb.ai/<your-entity>/multiagent"
   ;;
 
 paper)
@@ -190,7 +190,7 @@ paper)
   done
   echo
   echo "All jobs launched."
-  echo "  dashboard : https://wandb.ai/omnipiano/multiagent"
+  echo "  dashboard : https://wandb.ai/<your-entity>/multiagent"
   echo "  progress  : bash scripts/marl_run.sh status"
   echo "  stop      : bash scripts/marl_run.sh stop"
   ;;

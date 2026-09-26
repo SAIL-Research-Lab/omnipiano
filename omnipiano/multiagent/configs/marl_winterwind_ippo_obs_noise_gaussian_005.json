@@ -100,7 +100,7 @@
   },
   "wandb": {
     "mode": "online",
-    "entity": "omnipiano",
+    "entity": null,
     "project": "multiagent",
     "group": "winterwind_base_ippo_obs_gaussian_005_10M",
     "name": null,

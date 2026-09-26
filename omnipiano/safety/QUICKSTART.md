@@ -9,8 +9,6 @@ it is not installed into the general-RL or MARL environment.
 
 The Shadow Hand assets and default `TimGM6mb.sf2` soundfont are bundled. No
 submodule initialization or upstream `install_deps.sh` is required.
-See [the RTX 4070 Ti installation test](INSTALLATION_TEST.md) for measured
-coverage, dependency exceptions and limitations.
 
 ## 1. Install system dependencies
 
@@ -38,12 +36,10 @@ python -m pip install --upgrade pip setuptools wheel
 Use this environment whenever running the commands below. Your general-RL
 environment remains unchanged.
 
-## 3. Clone main and install the safety runtime
+## 3. Install the safety runtime
 
 ```bash
-git clone --branch main --single-branch \
-  https://github.com/SAIL-Research-Lab/omnipiano.git omnipiano-safety
-cd omnipiano-safety
+cd omnipiano   # repository root
 
 python -m pip install -e . -r omnipiano/safety/requirements.txt
 python -m pip install --no-deps omnisafe==0.5.0 safety-gymnasium==0.4.1

@@ -68,11 +68,13 @@ def main(argv=None):
     # if not api_key:
     #     parser.error("GROK_API_KEY environment variable is required")
 
-    api_key = os.environ.get("CLAUDE_API_KEY")
-    
+    # Any OpenAI-compatible endpoint: set LLM_BASE_URL (unset -> OpenAI default),
+    # LLM_MODEL and LLM_API_KEY (CLAUDE_API_KEY is accepted for compatibility).
+    api_key = os.environ.get("LLM_API_KEY") or os.environ.get("CLAUDE_API_KEY")
+
     llm_kwargs = {
-        "model": "claude-opus-5",
-        "base_url": "https://4router.net/v1",
+        "model": os.environ.get("LLM_MODEL", "claude-opus-5"),
+        "base_url": os.environ.get("LLM_BASE_URL"),
         "api_key": api_key,
         # "thinking": True,
         "temperature": 0,

@@ -128,7 +128,7 @@ def main():
     p.add_argument("--checkpoint-freq", type=int, default=1_000_000)
     p.add_argument("--start-index", type=int, default=0)
     p.add_argument(
-        "--run-root", default="/root/autodl-fs/omnipiano_runs"
+        "--run-root", default="runs/scho"
     )
     a = p.parse_args()
 
