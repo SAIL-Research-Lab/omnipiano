@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://omnipiano.site/"><img src="docs/_static/images/omnipiano-logo.png" alt="OmniPiano" width="480"></a>
 </p>
-
+ 
 <p align="center">
   <b>Diverse Dexterous Piano-Playing Challenges for Standard, Robust, Safe, and Multi-Agent RL</b>
 </p>
