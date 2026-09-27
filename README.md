@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/_static/images/framework_v1.png" alt="OmniPiano overview" width="90%">
+  <img src="docs/_static/images/framework_v2.png" alt="OmniPiano overview" width="90%">
 </p>
 
 OmniPiano is a benchmark for dexterous, multi-hand piano playing built on
