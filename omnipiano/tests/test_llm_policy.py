@@ -53,7 +53,6 @@ def test_keyframe_policy_uses_environment_timestep(tmp_path, monkeypatch):
         env=object(),
         action_space=_ActionSpace(),
         path=str(path),
-        api_key="test",
     )
     policy = KeyframePolicy(config)
 
