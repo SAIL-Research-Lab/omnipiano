@@ -21,8 +21,10 @@ from omnipiano.envs import registration
 
 _PREFIX = "OmniPiano-ClairDeLune-"
 _CHANNEL_FIELD = {"A": "action", "O": "obs", "R": "reward"}
-_ACTION_OBS_LEVELS = {"P05": 0.05, "P10": 0.10, "P15": 0.15}
+_ACTION_LEVELS = {"P05": 0.05, "P10": 0.10, "P15": 0.15}
+_OBS_LEVELS = {"P10": 0.10, "P20": 0.20, "P30": 0.30}
 _REWARD_LEVELS = {"P10": 0.10, "P30": 0.30, "P50": 0.50}
+_LEVELS = {"A": _ACTION_LEVELS, "O": _OBS_LEVELS, "R": _REWARD_LEVELS}
 
 
 # Canonical v1 matrix ids only: <C>-<Dist>-P<XX>-v0 or Clean-v0. Diagnostic /
@@ -50,9 +52,7 @@ def test_28_ids_registered():
 
 def test_full_id_matrix_present():
     expected = set()
-    for letter, levels in (("A", _ACTION_OBS_LEVELS),
-                           ("O", _ACTION_OBS_LEVELS),
-                           ("R", _REWARD_LEVELS)):
+    for letter, levels in _LEVELS.items():
         for dist in ("Gauss", "Uniform", "Shift"):
             for plabel in levels:
                 expected.add(f"{_PREFIX}{letter}-{dist}-{plabel}-v0")
@@ -64,7 +64,7 @@ def test_full_id_matrix_present():
 # Per-id config correctness — single-channel + right dist/level
 # --------------------------------------------------------------------------
 def _levels_for(letter):
-    return _ACTION_OBS_LEVELS if letter in ("A", "O") else _REWARD_LEVELS
+    return _LEVELS[letter]
 
 
 def _other_channels(ch):

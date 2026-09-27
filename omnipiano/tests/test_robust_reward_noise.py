@@ -48,6 +48,7 @@ def _clean_reward(info) -> float:
     return float(sum(
         v for k, v in info.items()
         if isinstance(k, str) and k.startswith("task/") and k.endswith("_reward")
+        and k != "task/true_reward"  # the clean total itself, not a term
     ))
 
 
