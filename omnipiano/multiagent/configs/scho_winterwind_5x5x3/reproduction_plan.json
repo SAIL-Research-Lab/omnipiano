@@ -1,0 +1,677 @@
+[
+  {
+    "algo": "ippo",
+    "setting": "base",
+    "seed": 0,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "base",
+    "seed": 1,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "base",
+    "seed": 2,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "observability",
+    "seed": 0,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "observability",
+    "seed": 1,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "observability",
+    "seed": 2,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "coupling",
+    "seed": 0,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "coupling",
+    "seed": 1,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "coupling",
+    "seed": 2,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "heterogeneous",
+    "seed": 0,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "heterogeneous",
+    "seed": 1,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "heterogeneous",
+    "seed": 2,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "scalability",
+    "seed": 0,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "scalability",
+    "seed": 1,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "ippo",
+    "setting": "scalability",
+    "seed": 2,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "base",
+    "seed": 0,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "base",
+    "seed": 1,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "base",
+    "seed": 2,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "observability",
+    "seed": 0,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "observability",
+    "seed": 1,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "observability",
+    "seed": 2,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "coupling",
+    "seed": 0,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "coupling",
+    "seed": 1,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "coupling",
+    "seed": 2,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "heterogeneous",
+    "seed": 0,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "heterogeneous",
+    "seed": 1,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "heterogeneous",
+    "seed": 2,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "scalability",
+    "seed": 0,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "scalability",
+    "seed": 1,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "mappo",
+    "setting": "scalability",
+    "seed": 2,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "base",
+    "seed": 0,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "base",
+    "seed": 1,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "base",
+    "seed": 2,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "observability",
+    "seed": 0,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "observability",
+    "seed": 1,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "observability",
+    "seed": 2,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "coupling",
+    "seed": 0,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "coupling",
+    "seed": 1,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "coupling",
+    "seed": 2,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "heterogeneous",
+    "seed": 0,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "heterogeneous",
+    "seed": 1,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "heterogeneous",
+    "seed": 2,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "scalability",
+    "seed": 0,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "scalability",
+    "seed": 1,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "happo",
+    "setting": "scalability",
+    "seed": 2,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "base",
+    "seed": 0,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "base",
+    "seed": 1,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "base",
+    "seed": 2,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "observability",
+    "seed": 0,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "observability",
+    "seed": 1,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "observability",
+    "seed": 2,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "coupling",
+    "seed": 0,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "coupling",
+    "seed": 1,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "coupling",
+    "seed": 2,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "heterogeneous",
+    "seed": 0,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "heterogeneous",
+    "seed": 1,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "heterogeneous",
+    "seed": 2,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "scalability",
+    "seed": 0,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "scalability",
+    "seed": 1,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "a2po",
+    "setting": "scalability",
+    "seed": 2,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "base",
+    "seed": 0,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "base",
+    "seed": 1,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "base",
+    "seed": 2,
+    "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "observability",
+    "seed": 0,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "observability",
+    "seed": 1,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "observability",
+    "seed": 2,
+    "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "coupling",
+    "seed": 0,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "coupling",
+    "seed": 1,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "coupling",
+    "seed": 2,
+    "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "heterogeneous",
+    "seed": 0,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "heterogeneous",
+    "seed": 1,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "heterogeneous",
+    "seed": 2,
+    "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "scalability",
+    "seed": 0,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "scalability",
+    "seed": 1,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  },
+  {
+    "algo": "facmac",
+    "setting": "scalability",
+    "seed": 2,
+    "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+    "total_train_env_steps": 10000000,
+    "collision_coef": 0.1,
+    "implementation": "supported backend; needs suite validation"
+  }
+]

@@ -10,9 +10,6 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-ALL_ALGOS = (
-    "ippo", "mappo", "happo", "a2po", "mat", "facmac", "masac",
-)
 RUNNABLE_ALGOS = ("ippo", "mappo", "happo", "a2po", "facmac")
 NATIVE_ALGOS = ("happo", "a2po", "facmac")
 
@@ -130,6 +127,22 @@ def main():
     p.add_argument(
         "--run-root", default="/root/autodl-fs/omnipiano_runs"
     )
+    p.add_argument(
+        "--portable-run-dirs",
+        action="store_true",
+        help=(
+            "Write experiment.run_dir=null so frozen JSON remains portable. "
+            "The queue launcher can inject an artifact root with --run-root."
+        ),
+    )
+    p.add_argument(
+        "--source-commit",
+        default=None,
+        help=(
+            "Record this reviewed runtime commit in the manifest instead of "
+            "the current HEAD."
+        ),
+    )
     a = p.parse_args()
 
     if not re.fullmatch(r"[A-Za-z0-9_-]+", a.suite_id):
@@ -138,6 +151,12 @@ def main():
         p.error("--workers must be >= 1")
     if a.start_index < 0:
         p.error("--start-index must be non-negative")
+    source_commit = a.source_commit or git_output("rev-parse", "HEAD")
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", source_commit):
+        p.error("--source-commit must be a 7..40 digit hexadecimal Git commit")
+    resolved_source = git_output("rev-parse", source_commit)
+    if not re.fullmatch(r"[0-9a-f]{40}", resolved_source):
+        p.error(f"--source-commit is unavailable: {source_commit}")
 
     base = json.loads((ROOT / a.base).read_text(encoding="utf-8"))
     if base.get("schema_version") != 2 or "task" not in base:
@@ -166,8 +185,9 @@ def main():
         "suite_id": a.suite_id,
         "phase": a.phase,
         "selected_algorithms": list(selected_algos),
-        "git_commit": git_output("rev-parse", "HEAD"),
+        "git_commit": resolved_source,
         "git_status": git_output("status", "--short"),
+        "portable_run_dirs": bool(a.portable_run_dirs),
         "task_hashes": {k: digest(v) for k, v in TASKS.items()},
         "semantic_checks": {
             "physical_hands_and_midi": "must verify after compilation",
@@ -205,7 +225,11 @@ def main():
                 algo=algo,
                 env_id=None,
                 seed=seed,
-                run_dir=str(run_root / a.suite_id / a.phase / name),
+                run_dir=(
+                    None
+                    if a.portable_run_dirs
+                    else str(run_root / a.suite_id / a.phase / name)
+                ),
             )
             cfg["protocol"]["total_steps"] = total_steps
             cfg["reward"]["inter_agent_collision_penalty_coef"] = 0.1
@@ -298,11 +322,11 @@ def main():
                 else "not released for this suite"
             ),
         }
-        for algo in ALL_ALGOS
+        for algo in selected_algos
         for setting, t in TASKS.items()
         for seed in (0, 1, 2)
     ]
-    plan_path = out / "all_runs_plan.json"
+    plan_path = out / "reproduction_plan.json"
     write_json(plan_path, plan)
 
     print(f"Generated {expected_runs} full configs: {out / 'runs'}")

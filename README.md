@@ -435,10 +435,21 @@ python -m omnipiano.multiagent.train --algo ippo --smoke-test --num-gpus-per-lea
 # Custom task / run config (JSON) as the first positional argument
 python -m omnipiano.multiagent.train omnipiano/multiagent/configs/marl_task_example.json --algo facmac
 
-# Generate the five SCHO task + run configs (seeds 0-2)
-python scripts/gen_scho_runs.py --out ./scho_suite --suite-id scho_v2 --phase train \
-    --algos ippo mappo happo a2po facmac --run-root ./omnipiano_runs
+# Reproduce the paper's frozen 5 algorithms x 5 SCHO settings x 3 seeds suite
+PYTHON=/path/to/python RUN_ROOT=/path/to/omnipiano_runs \
+bash omnipiano/multiagent/configs/scho_winterwind_5x5x3/reproduce.sh \
+    --gpus 0 1 2 3 4 5 --slots-per-gpu 1 --object-store-mb 4096 --stagger 60
+
+# Validate all 75 configs, checksums, runtime revision, dependencies, and tasks only
+PYTHON=/path/to/python \
+bash omnipiano/multiagent/configs/scho_winterwind_5x5x3/reproduce.sh --verify-only
 ```
+
+The frozen suite contains 25 algorithm/task cells and three seeds per cell.
+See its
+[`README.md`](omnipiano/multiagent/configs/scho_winterwind_5x5x3/README.md)
+for provenance, dataset requirements, conservative launch defaults, and
+single-run commands.
 
 `ppo-monolithic` is the centralized reference: a single PPO policy drives all
 hands. It answers the question "is MARL necessary?". Each run writes

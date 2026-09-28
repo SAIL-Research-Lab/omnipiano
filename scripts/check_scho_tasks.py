@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -43,10 +44,31 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("runs_dir")
     p.add_argument("--steps", type=int, default=64)
+    p.add_argument(
+        "--output",
+        default=None,
+        help="Write the audit here instead of beside the frozen config suite.",
+    )
     a = p.parse_args()
 
     runs_dir = Path(a.runs_dir).resolve()
+    from robopianist import music
+
+    midi_path = music._PIG_NAME_TO_FILE.get("EtudeOp25No11")
+    if midi_path is None or not Path(midi_path).is_file():
+        raise FileNotFoundError(
+            "Install and preprocess PIG v1.2; EtudeOp25No11 is unavailable"
+        )
+    midi_path = Path(midi_path).resolve()
     report = {
+        "dataset_identity": {
+            "dataset": "Piano Fingering (PIG) dataset",
+            "dataset_version": "1.2",
+            "pig_piece_key": "EtudeOp25No11",
+            "path": str(midi_path),
+            "size_bytes": midi_path.stat().st_size,
+            "sha256": hashlib.sha256(midi_path.read_bytes()).hexdigest(),
+        },
         "interface_checks": {},
         "semantic_findings_from_source": {
             "action_key_range": (
@@ -63,7 +85,6 @@ def main():
         "limitations": [
             "Random actions do not guarantee a real MuJoCo collision is triggered.",
             "This check does not measure maximum learned fingertip reach.",
-            "This check does not hash the actual MIDI resource bytes.",
             "This check does not execute a PPO learner update.",
         ],
     }
@@ -259,7 +280,11 @@ def main():
 
     assert len(set(total_action_dims)) == 1, total_action_dims
 
-    output = runs_dir.parent / "environment_audit.json"
+    output = (
+        Path(a.output).expanduser().resolve()
+        if a.output is not None
+        else runs_dir.parent / "environment_audit.json"
+    )
     write_json(output, report)
     print("Saved:", output)
 

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "suite_id": "scho_v2_winterwind_5x5x3_f33ec7c",
+  "reviewed_runtime_commit": "f33ec7cff1591e374fc1be5de78a643b832291b6",
+  "reviewed_branch": "main",
+  "reviewed_remote": "https://github.com/SAIL-Research-Lab/omnipiano.git",
+  "historical_algorithm_commits": {
+    "ippo_mappo_baseline": "6a86ce3f9d3c38b07bacf522172e610cef6bffb0",
+    "facmac_training_version": "58a72a1fb0e91444f3a8206953eea02b854a7995",
+    "happo_training_version": "13e92e591da1a08d2853bda8660577fe848a2d81",
+    "a2po_training_version": "5b475aa9271b1ec7b6a8448c989f3223962f5e47"
+  },
+  "runtime_scope": "All files under omnipiano except omnipiano/multiagent/configs must match the reviewed commit.",
+  "post_experiment_runtime_review": {
+    "result": "accepted",
+    "reason": "After the final A2PO implementation, MARL runtime changes only added observation-noise compilation and zero-valued telemetry for clean configurations. These frozen configurations omit the robust block, so task dynamics, observations, actions, rewards and learner updates retain the clean SCHO path."
+  },
+  "reference_environment": {
+    "source": "Local .venv-marl inspected with the reviewed main checkout on 2026-09-28; the historical remote host was unavailable during packaging.",
+    "python": "3.10.19",
+    "platform": "macOS-26.6.2-arm64-arm-64bit"
+  },
+  "reproducibility_boundary": "Seeds and configurations are frozen. Bitwise identity across GPU drivers, MuJoCo builds and asynchronous workers is not claimed; aggregate protocol reproduction is."
+}

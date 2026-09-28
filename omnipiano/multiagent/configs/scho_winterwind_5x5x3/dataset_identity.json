@@ -1,0 +1,10 @@
+{
+  "dataset": "Piano Fingering (PIG) dataset",
+  "dataset_version": "1.2",
+  "redistributed": false,
+  "song": "WinterWind",
+  "pig_piece_key": "EtudeOp25No11",
+  "base_env_name": "RoboPianist-repertoire-150-EtudeOp25No11-v0",
+  "midi_sha256": null,
+  "hash_status": "The licensed MIDI was not installed on the packaging machine. reproduce.sh requires the resource and reports its local SHA-256 before launch."
+}

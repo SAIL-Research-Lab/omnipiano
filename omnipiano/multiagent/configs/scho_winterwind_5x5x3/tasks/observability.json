@@ -1,0 +1,46 @@
+{
+  "name": "scho-v2-winterwind-4h-observability",
+  "song": "WinterWind",
+  "num_hands": 4,
+  "num_agents": 2,
+  "assignment": "explicit",
+  "sustain_owner": "agent_1",
+  "agents": [
+    {
+      "name": "agent_1",
+      "hand_ids": [
+        0,
+        1
+      ],
+      "action_key_range": [
+        1,
+        44
+      ],
+      "observation_key_range": [
+        1,
+        70
+      ],
+      "visible_teammate_hands": [
+        2
+      ]
+    },
+    {
+      "name": "agent_2",
+      "hand_ids": [
+        2,
+        3
+      ],
+      "action_key_range": [
+        45,
+        88
+      ],
+      "observation_key_range": [
+        19,
+        88
+      ],
+      "visible_teammate_hands": [
+        1
+      ]
+    }
+  ]
+}

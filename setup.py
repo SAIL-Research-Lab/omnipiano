@@ -20,7 +20,21 @@ setup(
     description="A Safety and Robustness Benchmark for Robot Piano Playing",
     packages=omni_pkgs + rp_pkgs,
     package_dir=pkg_dir,
-    package_data={"omnipiano.multiagent": ["configs/*.json"]},
+    package_data={
+        "omnipiano.multiagent": [
+            "configs/*.json",
+            "configs/*.md",
+            "configs/examples/*.json",
+            "configs/examples/*.md",
+            "configs/scho_winterwind_5x5x3/*.json",
+            "configs/scho_winterwind_5x5x3/*.md",
+            "configs/scho_winterwind_5x5x3/*.txt",
+            "configs/scho_winterwind_5x5x3/*.sh",
+            "configs/scho_winterwind_5x5x3/*.sha256",
+            "configs/scho_winterwind_5x5x3/tasks/*.json",
+            "configs/scho_winterwind_5x5x3/runs/*.json",
+        ]
+    },
     include_package_data=True,
     python_requires=">=3.10",
     install_requires=[

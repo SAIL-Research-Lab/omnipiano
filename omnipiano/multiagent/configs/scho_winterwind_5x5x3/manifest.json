@@ -1,0 +1,631 @@
+{
+  "suite_id": "scho_v2_winterwind_5x5x3_f33ec7c",
+  "phase": "train",
+  "selected_algorithms": [
+    "ippo",
+    "mappo",
+    "happo",
+    "a2po",
+    "facmac"
+  ],
+  "git_commit": "f33ec7cff1591e374fc1be5de78a643b832291b6",
+  "git_status": "",
+  "portable_run_dirs": true,
+  "task_hashes": {
+    "base": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+    "observability": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+    "coupling": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+    "heterogeneous": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+    "scalability": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315"
+  },
+  "semantic_checks": {
+    "physical_hands_and_midi": "must verify after compilation",
+    "range_fields_affect_runtime": "must verify in compiler/runtime",
+    "base_o_c_teammate_visibility_identical": true,
+    "observation_changes_only_key_observation_ranges": true,
+    "coupling_changes_only_action_ranges": true,
+    "boundary_teammate_visibility": true
+  },
+  "runs": [
+    {
+      "file": "runs/00_scho_v2_winterwind_5x5x3_f33ec7c_base_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "base",
+      "seed": 0,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "202fdaf5d2cc07102ec33d145278ffb5aa6fe7d4cfdd48fcb9c9ccc7cb4664f3"
+    },
+    {
+      "file": "runs/01_scho_v2_winterwind_5x5x3_f33ec7c_observability_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "observability",
+      "seed": 0,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "a9cd7ebf4308c3222bf05158a51a905a5394fbf4ba6cef85260cbe08072c5963"
+    },
+    {
+      "file": "runs/02_scho_v2_winterwind_5x5x3_f33ec7c_coupling_happo_s0_c01_10M.json",
+      "algo": "happo",
+      "setting": "coupling",
+      "seed": 0,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "2c905ad3448a9a9787623e58de480dc11e1786ed17cdf289f1086c5150515f2f"
+    },
+    {
+      "file": "runs/03_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_a2po_s0_c01_10M.json",
+      "algo": "a2po",
+      "setting": "heterogeneous",
+      "seed": 0,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "d99ecccb6a2e8b494de433d95b4d242f97233b462c0aed2a0d4a65025d0fbbd5"
+    },
+    {
+      "file": "runs/04_scho_v2_winterwind_5x5x3_f33ec7c_scalability_facmac_s0_c01_10M.json",
+      "algo": "facmac",
+      "setting": "scalability",
+      "seed": 0,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "62c5881e4a0f2f1e84c47b7de167cd7874c2dec89f35a206bff70360dbe62d52"
+    },
+    {
+      "file": "runs/05_scho_v2_winterwind_5x5x3_f33ec7c_base_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "base",
+      "seed": 0,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "aeb673c2d717c8f2a4988aa40943bf770b5c4ed7d57aa2a237b981a04f47bb3a"
+    },
+    {
+      "file": "runs/06_scho_v2_winterwind_5x5x3_f33ec7c_observability_happo_s0_c01_10M.json",
+      "algo": "happo",
+      "setting": "observability",
+      "seed": 0,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "7b705eab839173385e8739faa82af99b8dce7ba57a3cfa851939b2e87e9a1f34"
+    },
+    {
+      "file": "runs/07_scho_v2_winterwind_5x5x3_f33ec7c_coupling_a2po_s0_c01_10M.json",
+      "algo": "a2po",
+      "setting": "coupling",
+      "seed": 0,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "337b1820f0b2faf3a4bae0a2db80247da1dfb8e89f9dc34d6f3c837b129315a3"
+    },
+    {
+      "file": "runs/08_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_facmac_s0_c01_10M.json",
+      "algo": "facmac",
+      "setting": "heterogeneous",
+      "seed": 0,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "0f2f197f3d61aa67478a9fb24a92dc58f91c2b239b52d3da99f688c926987ac4"
+    },
+    {
+      "file": "runs/09_scho_v2_winterwind_5x5x3_f33ec7c_scalability_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "scalability",
+      "seed": 0,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "bad57f1bde24b0a95e1acec91ba21ed29fb684db8cf8dbc3aedfc4ec3bf76821"
+    },
+    {
+      "file": "runs/10_scho_v2_winterwind_5x5x3_f33ec7c_base_happo_s0_c01_10M.json",
+      "algo": "happo",
+      "setting": "base",
+      "seed": 0,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "cf1762e1df1ce7e0249f404f3b187b691749cf0b808ff68bcc4cfde29a568ff5"
+    },
+    {
+      "file": "runs/11_scho_v2_winterwind_5x5x3_f33ec7c_observability_a2po_s0_c01_10M.json",
+      "algo": "a2po",
+      "setting": "observability",
+      "seed": 0,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "a4a998f6bf97e548b888cd50cfcacc34beb8ad4728e3b8961cec3f74a3e40873"
+    },
+    {
+      "file": "runs/12_scho_v2_winterwind_5x5x3_f33ec7c_coupling_facmac_s0_c01_10M.json",
+      "algo": "facmac",
+      "setting": "coupling",
+      "seed": 0,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "34883c1819ccb7951a6188a20d614b0cf872b4c3cc766b8cc7e4c9f5f8751d91"
+    },
+    {
+      "file": "runs/13_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "heterogeneous",
+      "seed": 0,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "c960e5dbfadd1648bc4b56a783ea44543ca2519274fbe9664bc8ba5c6a1e097f"
+    },
+    {
+      "file": "runs/14_scho_v2_winterwind_5x5x3_f33ec7c_scalability_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "scalability",
+      "seed": 0,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "ec9c7749f1b87f202cff912c2a4b0e0d93f63ff7f7a19f00b5d930e9bb16f5ed"
+    },
+    {
+      "file": "runs/15_scho_v2_winterwind_5x5x3_f33ec7c_base_a2po_s0_c01_10M.json",
+      "algo": "a2po",
+      "setting": "base",
+      "seed": 0,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "a1647300c65712074359448654d0cf3f3b6bebbf64a9e0f5f26cc7eaccf0bcc8"
+    },
+    {
+      "file": "runs/16_scho_v2_winterwind_5x5x3_f33ec7c_observability_facmac_s0_c01_10M.json",
+      "algo": "facmac",
+      "setting": "observability",
+      "seed": 0,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "e40813dc0231f392ab06b9700429bd9c6fffa27bd44f0df776acf90e194ea87e"
+    },
+    {
+      "file": "runs/17_scho_v2_winterwind_5x5x3_f33ec7c_coupling_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "coupling",
+      "seed": 0,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "a5b12780b236a4a1f982961b4672b2f71bf4ca6afa7de4f77c8cdb9d7a89fc92"
+    },
+    {
+      "file": "runs/18_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "heterogeneous",
+      "seed": 0,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "6b7f29f8cca474505e48fda4ab3f3e48583058fc62e81a4721a3786d7eff1217"
+    },
+    {
+      "file": "runs/19_scho_v2_winterwind_5x5x3_f33ec7c_scalability_happo_s0_c01_10M.json",
+      "algo": "happo",
+      "setting": "scalability",
+      "seed": 0,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "d2e99f1dd591df480bb735a874a961cf3e94ae83bd2357d5ba2fba80a1e81a8f"
+    },
+    {
+      "file": "runs/20_scho_v2_winterwind_5x5x3_f33ec7c_base_facmac_s0_c01_10M.json",
+      "algo": "facmac",
+      "setting": "base",
+      "seed": 0,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "aeebeb7c3cfcc40669f0b940444a14d39018af84c452a9b5fcfcb444b0fc869f"
+    },
+    {
+      "file": "runs/21_scho_v2_winterwind_5x5x3_f33ec7c_observability_ippo_s0_c01_10M.json",
+      "algo": "ippo",
+      "setting": "observability",
+      "seed": 0,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "0b43d40f80bf30faa729b96c82be2f22cf03d14cef6a1c6c99b5fd212774389a"
+    },
+    {
+      "file": "runs/22_scho_v2_winterwind_5x5x3_f33ec7c_coupling_mappo_s0_c01_10M.json",
+      "algo": "mappo",
+      "setting": "coupling",
+      "seed": 0,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "ac6dfd75f6b90e3de6e2b21e6527a448f25e557c01f90aa7445db5a8d1b324ad"
+    },
+    {
+      "file": "runs/23_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_happo_s0_c01_10M.json",
+      "algo": "happo",
+      "setting": "heterogeneous",
+      "seed": 0,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "841936185cdf3bd195ed6d1035674235060698c3a40fa3688e2f9d7650ff5261"
+    },
+    {
+      "file": "runs/24_scho_v2_winterwind_5x5x3_f33ec7c_scalability_a2po_s0_c01_10M.json",
+      "algo": "a2po",
+      "setting": "scalability",
+      "seed": 0,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "78f080dc27dad7e05da764585baaff06940be23717774e4f09d4c48a6889eb83"
+    },
+    {
+      "file": "runs/25_scho_v2_winterwind_5x5x3_f33ec7c_base_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "base",
+      "seed": 1,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "d3630eaa2725404ab0a2bbcfeaab46a52187dd45c24712047174fc3ff9f8538c"
+    },
+    {
+      "file": "runs/26_scho_v2_winterwind_5x5x3_f33ec7c_observability_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "observability",
+      "seed": 1,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "5b773a6b13b8fde2e6a23d3a3a0fb47d9cef70d4fc17e75c25658198e1ff14cd"
+    },
+    {
+      "file": "runs/27_scho_v2_winterwind_5x5x3_f33ec7c_coupling_happo_s1_c01_10M.json",
+      "algo": "happo",
+      "setting": "coupling",
+      "seed": 1,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "728d382783b584a503f8300c84d568ab54d021df68d106d30449a7bc1405da71"
+    },
+    {
+      "file": "runs/28_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_a2po_s1_c01_10M.json",
+      "algo": "a2po",
+      "setting": "heterogeneous",
+      "seed": 1,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "1d131630c36ec54319ee9cd3fcd4a1963bf6a64e83762ff3f42553a6600216ce"
+    },
+    {
+      "file": "runs/29_scho_v2_winterwind_5x5x3_f33ec7c_scalability_facmac_s1_c01_10M.json",
+      "algo": "facmac",
+      "setting": "scalability",
+      "seed": 1,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "ab035f99e5b523359c8f258c211344a088acf639a490bcef5c72554c2bc9311e"
+    },
+    {
+      "file": "runs/30_scho_v2_winterwind_5x5x3_f33ec7c_base_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "base",
+      "seed": 1,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "50e0190a7cead82d9686d1d49d5395097c6a4e04d41f51f622236ce370ffe7ee"
+    },
+    {
+      "file": "runs/31_scho_v2_winterwind_5x5x3_f33ec7c_observability_happo_s1_c01_10M.json",
+      "algo": "happo",
+      "setting": "observability",
+      "seed": 1,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "727aae7aa7204982b2ce4377f88437b65548ff8b1fa60f64805df9724ec8fc6b"
+    },
+    {
+      "file": "runs/32_scho_v2_winterwind_5x5x3_f33ec7c_coupling_a2po_s1_c01_10M.json",
+      "algo": "a2po",
+      "setting": "coupling",
+      "seed": 1,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "18c8b3e5790b6733150a88c458d85f419bd09dcb24b41c01eeef33c6ebef3d62"
+    },
+    {
+      "file": "runs/33_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_facmac_s1_c01_10M.json",
+      "algo": "facmac",
+      "setting": "heterogeneous",
+      "seed": 1,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "89e1fdd5d5eab18400dfc7a82d20a8c6e2d73d76e539c5bddbfaa49c1fa0a81a"
+    },
+    {
+      "file": "runs/34_scho_v2_winterwind_5x5x3_f33ec7c_scalability_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "scalability",
+      "seed": 1,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "6e52e26bbb7cb17bc0c55bb4005844c7800c0a3a446809ed0d787b7e6d72134f"
+    },
+    {
+      "file": "runs/35_scho_v2_winterwind_5x5x3_f33ec7c_base_happo_s1_c01_10M.json",
+      "algo": "happo",
+      "setting": "base",
+      "seed": 1,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "f02045df915366a338e6ff76314d9102da5d06a7c828aeb18850911e1521b4e6"
+    },
+    {
+      "file": "runs/36_scho_v2_winterwind_5x5x3_f33ec7c_observability_a2po_s1_c01_10M.json",
+      "algo": "a2po",
+      "setting": "observability",
+      "seed": 1,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "756c8af716eaadaf998513f0c0fee8bcfd7e4b5981ef5e1967a20abf7df24c72"
+    },
+    {
+      "file": "runs/37_scho_v2_winterwind_5x5x3_f33ec7c_coupling_facmac_s1_c01_10M.json",
+      "algo": "facmac",
+      "setting": "coupling",
+      "seed": 1,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "7047c1a76c8c20523c5f38f85bec07c6009827b65066cd8c05560a5ac933509e"
+    },
+    {
+      "file": "runs/38_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "heterogeneous",
+      "seed": 1,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "a6693e3178b67860558fd63da48b4a0a96a8ef2cfdc2ebb3e8125611eb3c45e3"
+    },
+    {
+      "file": "runs/39_scho_v2_winterwind_5x5x3_f33ec7c_scalability_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "scalability",
+      "seed": 1,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "8ddd9d15651348e05d604380688888d746fb80c4a3c7455b26b5a477b741c79f"
+    },
+    {
+      "file": "runs/40_scho_v2_winterwind_5x5x3_f33ec7c_base_a2po_s1_c01_10M.json",
+      "algo": "a2po",
+      "setting": "base",
+      "seed": 1,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "c94e8f20fe27728b771b984d032db45ce12bbc5fff2f032887bf37136117163b"
+    },
+    {
+      "file": "runs/41_scho_v2_winterwind_5x5x3_f33ec7c_observability_facmac_s1_c01_10M.json",
+      "algo": "facmac",
+      "setting": "observability",
+      "seed": 1,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "5c3711c03171e9f8606679a38c67d29c6e6d1e38e5d2df0a5691d129dc32f172"
+    },
+    {
+      "file": "runs/42_scho_v2_winterwind_5x5x3_f33ec7c_coupling_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "coupling",
+      "seed": 1,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "fcdeb2aad4a7214ca711e724441e068c44742e5162bf56551e227ecbdbe36672"
+    },
+    {
+      "file": "runs/43_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "heterogeneous",
+      "seed": 1,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "7455bd26fd3d4de4b8be0a2114c65ac5e4e9c679de5200a60c94eb9984c51ee3"
+    },
+    {
+      "file": "runs/44_scho_v2_winterwind_5x5x3_f33ec7c_scalability_happo_s1_c01_10M.json",
+      "algo": "happo",
+      "setting": "scalability",
+      "seed": 1,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "a6dce3ae68f3dddf264962ec3398bd0982a2f63374f9330dafaaf350b5202522"
+    },
+    {
+      "file": "runs/45_scho_v2_winterwind_5x5x3_f33ec7c_base_facmac_s1_c01_10M.json",
+      "algo": "facmac",
+      "setting": "base",
+      "seed": 1,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "d7fa054eb165c84a7d6c266167fb97c154d7730bfe35ffe6f366acf358536784"
+    },
+    {
+      "file": "runs/46_scho_v2_winterwind_5x5x3_f33ec7c_observability_ippo_s1_c01_10M.json",
+      "algo": "ippo",
+      "setting": "observability",
+      "seed": 1,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "cc94866083fd64e1b04e830abdeb0458eb3341090dbed06a1d71d6d7731f5a04"
+    },
+    {
+      "file": "runs/47_scho_v2_winterwind_5x5x3_f33ec7c_coupling_mappo_s1_c01_10M.json",
+      "algo": "mappo",
+      "setting": "coupling",
+      "seed": 1,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "dd5c684cbfd275c677c022787ae9828da1647f3298afc557f7712e5f96dd29a7"
+    },
+    {
+      "file": "runs/48_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_happo_s1_c01_10M.json",
+      "algo": "happo",
+      "setting": "heterogeneous",
+      "seed": 1,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "5ef003cd00345333297a9fa776f2bd7924d3fbde980295a801cf5f5e53270718"
+    },
+    {
+      "file": "runs/49_scho_v2_winterwind_5x5x3_f33ec7c_scalability_a2po_s1_c01_10M.json",
+      "algo": "a2po",
+      "setting": "scalability",
+      "seed": 1,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "28ddd7ecc9e7c8b4ecbb4f83683985c06aa1246b4d892e5fe9558781dfca007b"
+    },
+    {
+      "file": "runs/50_scho_v2_winterwind_5x5x3_f33ec7c_base_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "base",
+      "seed": 2,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "7f466c37f789d8b496a9500f140ebc31916be80065c75ec8d537cb0dee756e64"
+    },
+    {
+      "file": "runs/51_scho_v2_winterwind_5x5x3_f33ec7c_observability_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "observability",
+      "seed": 2,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "3262a6ed5bf6d20111f6a28ac09b2d5836b687e0df8a35bcf2a0a4c27ef31cc1"
+    },
+    {
+      "file": "runs/52_scho_v2_winterwind_5x5x3_f33ec7c_coupling_happo_s2_c01_10M.json",
+      "algo": "happo",
+      "setting": "coupling",
+      "seed": 2,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "ab85fe13fe08b76132f8bd30cc35d5e08fe5ff21f89d126d72bc805706e1a8ba"
+    },
+    {
+      "file": "runs/53_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_a2po_s2_c01_10M.json",
+      "algo": "a2po",
+      "setting": "heterogeneous",
+      "seed": 2,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "858c7dc52538b325e16f60503d306ea7c7b86081aa17a58ad3daded03f170742"
+    },
+    {
+      "file": "runs/54_scho_v2_winterwind_5x5x3_f33ec7c_scalability_facmac_s2_c01_10M.json",
+      "algo": "facmac",
+      "setting": "scalability",
+      "seed": 2,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "7188eb15e24aac7f7cc711542169399d04095287a94a3096bb765e68c1e62cc8"
+    },
+    {
+      "file": "runs/55_scho_v2_winterwind_5x5x3_f33ec7c_base_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "base",
+      "seed": 2,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "a2d0eba415656a9485eefca7a7af5ff58bf101f66acfd6cd707efe3bd0779e43"
+    },
+    {
+      "file": "runs/56_scho_v2_winterwind_5x5x3_f33ec7c_observability_happo_s2_c01_10M.json",
+      "algo": "happo",
+      "setting": "observability",
+      "seed": 2,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "84762e2023fb4b5481bb00a177f5e57787ca36b728f6f2b1cd87e2050fa7fc34"
+    },
+    {
+      "file": "runs/57_scho_v2_winterwind_5x5x3_f33ec7c_coupling_a2po_s2_c01_10M.json",
+      "algo": "a2po",
+      "setting": "coupling",
+      "seed": 2,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "6bffac925e71629616b6815447ca6e8c59524fb1e22c99fa79d7be22d7d5f390"
+    },
+    {
+      "file": "runs/58_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_facmac_s2_c01_10M.json",
+      "algo": "facmac",
+      "setting": "heterogeneous",
+      "seed": 2,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "c65378ce0a85f98d473b0ccfd121738530423a8707bd754bbc083fc7e7bb598f"
+    },
+    {
+      "file": "runs/59_scho_v2_winterwind_5x5x3_f33ec7c_scalability_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "scalability",
+      "seed": 2,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "04fb758942d166939b6ab5ee633dc18bbc5fd4a3398200eb028e35e7224072bf"
+    },
+    {
+      "file": "runs/60_scho_v2_winterwind_5x5x3_f33ec7c_base_happo_s2_c01_10M.json",
+      "algo": "happo",
+      "setting": "base",
+      "seed": 2,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "794a84d7e69f542b323073fd42237ca58348c66e69548702d655125872597b71"
+    },
+    {
+      "file": "runs/61_scho_v2_winterwind_5x5x3_f33ec7c_observability_a2po_s2_c01_10M.json",
+      "algo": "a2po",
+      "setting": "observability",
+      "seed": 2,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "19e85822e755043bb0cef6a7951aaf885556136ed58e8cbdc4178593fcd49c0d"
+    },
+    {
+      "file": "runs/62_scho_v2_winterwind_5x5x3_f33ec7c_coupling_facmac_s2_c01_10M.json",
+      "algo": "facmac",
+      "setting": "coupling",
+      "seed": 2,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "18d547c0743e5fa01c836d643f3cf529dc1fc1c4907a3a671f9299dcd717efbb"
+    },
+    {
+      "file": "runs/63_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "heterogeneous",
+      "seed": 2,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "3ae26561fb146d5521cceba0b70faf8f2a0081e826a41b84ce8632d6d2a861a7"
+    },
+    {
+      "file": "runs/64_scho_v2_winterwind_5x5x3_f33ec7c_scalability_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "scalability",
+      "seed": 2,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "a468d90dff27d8ee8c9c628fbccf08ac7ba84742efe757be410b25250cd35655"
+    },
+    {
+      "file": "runs/65_scho_v2_winterwind_5x5x3_f33ec7c_base_a2po_s2_c01_10M.json",
+      "algo": "a2po",
+      "setting": "base",
+      "seed": 2,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "1458dc03072ea506d589942f5a53d7f2c9341f7f8d3f03559eb1128cfb08a64a"
+    },
+    {
+      "file": "runs/66_scho_v2_winterwind_5x5x3_f33ec7c_observability_facmac_s2_c01_10M.json",
+      "algo": "facmac",
+      "setting": "observability",
+      "seed": 2,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "84d059a554bd39dfacdbf8f74ae2540846c44e2e9f01559d440090584ea85953"
+    },
+    {
+      "file": "runs/67_scho_v2_winterwind_5x5x3_f33ec7c_coupling_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "coupling",
+      "seed": 2,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "e7a2148f5574e664ac6df5d3be4e03ed359b282443ca25a3b60f9b43a89abeb1"
+    },
+    {
+      "file": "runs/68_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "heterogeneous",
+      "seed": 2,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "2c854ef774e594ae23e8bf29e389706550fc2b4b126c12f389468263b22da82f"
+    },
+    {
+      "file": "runs/69_scho_v2_winterwind_5x5x3_f33ec7c_scalability_happo_s2_c01_10M.json",
+      "algo": "happo",
+      "setting": "scalability",
+      "seed": 2,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "4ab876993f4f8df019c8d3f147da39ab3c11d59cd28d43d3241fd6038c224139"
+    },
+    {
+      "file": "runs/70_scho_v2_winterwind_5x5x3_f33ec7c_base_facmac_s2_c01_10M.json",
+      "algo": "facmac",
+      "setting": "base",
+      "seed": 2,
+      "task_sha256": "52963bf6a8cec3080cbe07163532f8abe17401c056e28c7e4b51ee6f06a49d45",
+      "config_sha256": "c020cd93d5c107d632d11833040e21d3f98c65b372852d1e3433a9b3942f63fe"
+    },
+    {
+      "file": "runs/71_scho_v2_winterwind_5x5x3_f33ec7c_observability_ippo_s2_c01_10M.json",
+      "algo": "ippo",
+      "setting": "observability",
+      "seed": 2,
+      "task_sha256": "4276d5b656576402974c3888b127df8f9bbb14828a6e956c57ac84a76d647caa",
+      "config_sha256": "64a16935ff446db76899522eafcef5273dff56353137d80668a5f03e96dd397b"
+    },
+    {
+      "file": "runs/72_scho_v2_winterwind_5x5x3_f33ec7c_coupling_mappo_s2_c01_10M.json",
+      "algo": "mappo",
+      "setting": "coupling",
+      "seed": 2,
+      "task_sha256": "ccc4ac45c738007d3002e45fb8bb9096dc1f60a76e5ca76e341c294dc90542f8",
+      "config_sha256": "b0342b40fb4d5b60a7f2c7f31133b6d56f43f0dfa443cf1230e47515891e9d95"
+    },
+    {
+      "file": "runs/73_scho_v2_winterwind_5x5x3_f33ec7c_heterogeneous_happo_s2_c01_10M.json",
+      "algo": "happo",
+      "setting": "heterogeneous",
+      "seed": 2,
+      "task_sha256": "588f4d74b4cff8f8e573c3610db801138b21681170c6706143c6d75268f08072",
+      "config_sha256": "57468fcb9677b66bb0649bf16f56d17d8d1d6de8f6e83b87d8d17f6ac38c0aff"
+    },
+    {
+      "file": "runs/74_scho_v2_winterwind_5x5x3_f33ec7c_scalability_a2po_s2_c01_10M.json",
+      "algo": "a2po",
+      "setting": "scalability",
+      "seed": 2,
+      "task_sha256": "9dba3cf20a8789285287658ae8e87fee469a9708e2dedee8379e7bc5e84d8315",
+      "config_sha256": "0d5a40d3d450f88be2d1a7131820228faf754bc67c7187e836e295fab0c16c65"
+    }
+  ]
+}

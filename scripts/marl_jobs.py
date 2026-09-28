@@ -34,6 +34,26 @@ def save(path, value):
     tmp.replace(path)
 
 
+def snapshot_config(cfg_path, snapshot, cfg, *, run_root=None, name=None):
+    """Freeze launcher input, optionally injecting only the artifact path."""
+    cfg_path = Path(cfg_path)
+    snapshot = Path(snapshot)
+    source_sha256 = hashlib.sha256(cfg_path.read_bytes()).hexdigest()
+    if run_root is None:
+        shutil.copyfile(cfg_path, snapshot)
+        return source_sha256
+
+    run_name = cfg.get("wandb", {}).get("name") or name or cfg_path.stem
+    if Path(run_name).name != run_name:
+        raise ValueError(f"Invalid run name for --run-root: {run_name!r}")
+    runtime_cfg = copy.deepcopy(cfg)
+    runtime_cfg["experiment"]["run_dir"] = str(
+        Path(run_root).expanduser().resolve() / run_name
+    )
+    save(snapshot, runtime_cfg)
+    return source_sha256
+
+
 def make_configs(args):
     base = json.loads((ROOT / args.base).read_text(encoding="utf-8"))
     if base.get("schema_version") != 1 or "task" in base:
@@ -230,7 +250,13 @@ def run_queue(args):
                 slot = free_slots[0]
                 name = cfg_path.stem
                 snapshot = state / f"{name}.input.json"
-                shutil.copyfile(cfg_path, snapshot)
+                source_config_sha256 = snapshot_config(
+                    cfg_path,
+                    snapshot,
+                    cfg,
+                    run_root=args.run_root,
+                    name=name,
+                )
 
                 ray_root = Path("/root/autodl-tmp/r")
                 ray_root.mkdir(parents=True, exist_ok=True)
@@ -262,6 +288,8 @@ def run_queue(args):
                     "slot": slot[1],
                     "cwd": str(cwd),
                     "config": str(snapshot),
+                    "source_config": str(cfg_path),
+                    "source_config_sha256": source_config_sha256,
                     "config_sha256": hashlib.sha256(
                         snapshot.read_bytes()
                     ).hexdigest(),
@@ -351,6 +379,14 @@ def main():
     run.add_argument("--stagger", type=float, default=15)
     run.add_argument("--object-store-mb", type=int, default=2048)
     run.add_argument("--watch", action="store_true")
+    run.add_argument(
+        "--run-root",
+        default=None,
+        help=(
+            "Optional artifact root injected into a runtime copy of each "
+            "portable config; frozen source JSON is never modified."
+        ),
+    )
 
     args = parser.parse_args()
     if args.command == "make":
