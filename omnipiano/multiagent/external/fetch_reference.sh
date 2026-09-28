@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Fetch reference MARL implementations, pin them, and record provenance.
 #
-#   bash scripts/fetch_external.sh list          # what would be fetched
-#   bash scripts/fetch_external.sh clone harl    # clone one upstream (gitignored)
-#   bash scripts/fetch_external.sh clone all
-#   bash scripts/fetch_external.sh locate harl   # find the files we care about
-#   bash scripts/fetch_external.sh vendor harl   # copy leaf files + PROVENANCE
+#   bash omnipiano/multiagent/external/fetch_reference.sh list
+#   bash omnipiano/multiagent/external/fetch_reference.sh clone harl
+#   bash omnipiano/multiagent/external/fetch_reference.sh clone all
+#   bash omnipiano/multiagent/external/fetch_reference.sh locate harl
+#   bash omnipiano/multiagent/external/fetch_reference.sh vendor harl
 #
 # Two-stage on purpose. `clone` pulls the WHOLE repo into external/_upstream/,
 # which is gitignored: those repos pin their own gym/sacred versions and must
@@ -13,10 +13,10 @@
 # torch, into a tracked directory, and records a sha256 for every one so nobody
 # can quietly edit reference code and still call it reference code.
 set -uo pipefail
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-UPSTREAM=external/_upstream
 VENDOR=omnipiano/multiagent/external
+UPSTREAM=$VENDOR/_upstream
 
 # name|url|pin  -- pin is a tag/branch; `vendor` records the resolved SHA.
 # Pinning to a branch is a deliberate first step: you cannot know the right
@@ -34,15 +34,18 @@ REPOS=(
   "facmac|https://github.com/oxwhirl/facmac.git|main"
 )
 
-# What we are looking for in each repo. These are SEARCH PATTERNS, not paths:
-# upstream layouts drift, so `locate` finds them and prints what it found.
-declare -A WANT=(
-  [happo_iclr22]="happo trpo ppo_trainer r_actor_critic valuenorm util.py"
-  [on_policy]="r_mappo.py r_actor_critic popart valuenorm util.py"
-  [harl]="happo hasac v_critic soft_twin_continuous_q_critic on_policy_base"
-  [mat]="ma_transformer transformer_policy mat_trainer"
-  [facmac]="qmix.py vdn.py facmac_learner maddpg_learner"
-)
+# What we are looking for in each repo. These are SEARCH PATTERNS, not paths.
+# A case function keeps this helper compatible with macOS's older system Bash.
+want_for () {
+  case "$1" in
+    happo_iclr22) echo "happo trpo ppo_trainer r_actor_critic valuenorm util.py" ;;
+    on_policy) echo "r_mappo.py r_actor_critic popart valuenorm util.py" ;;
+    harl) echo "happo hasac v_critic soft_twin_continuous_q_critic on_policy_base" ;;
+    mat) echo "ma_transformer transformer_policy mat_trainer" ;;
+    facmac) echo "qmix.py vdn.py facmac_learner maddpg_learner" ;;
+    *) echo "" ;;
+  esac
+}
 
 _row () { IFS='|' read -r n u p <<<"$1"; echo "$n" "$u" "$p"; }
 
@@ -90,12 +93,12 @@ locate)
   fi
   find "$d" -maxdepth 2 -iname 'LICENSE*' -o -maxdepth 2 -iname 'COPYING*' | sed 's/^/   /'
   echo "-- files matching what we want:"
-  for pat in ${WANT[$n]}; do
+  for pat in $(want_for "$n"); do
     find "$d" -name "*${pat}*" -name '*.py' -not -path '*/.git/*' | sed "s/^/   [$pat] /"
   done
   echo
   echo "NEXT: read them, then list the exact leaf files in VENDOR_FILES below"
-  echo "      and run: bash scripts/fetch_external.sh vendor $n"
+  echo "      and run: bash omnipiano/multiagent/external/fetch_reference.sh vendor $n"
   ;;
 
 vendor)
@@ -104,9 +107,9 @@ vendor)
   [[ -d $d ]] || { echo "[abort] not cloned: $d"; exit 1; }
   # Fill this in AFTER `locate` -- one upstream-relative path per line.
   # Leave empty to be told so, rather than silently vendoring nothing.
-  VENDOR_FILES=$(cat "external/vendor_manifest/$n.txt" 2>/dev/null || true)
+  VENDOR_FILES=$(cat "$VENDOR/vendor_manifest/$n.txt" 2>/dev/null || true)
   if [[ -z "$VENDOR_FILES" ]]; then
-    echo "[abort] no manifest: external/vendor_manifest/$n.txt"
+    echo "[abort] no manifest: $VENDOR/vendor_manifest/$n.txt"
     echo "        Create it with one upstream-relative .py path per line."
     exit 1
   fi

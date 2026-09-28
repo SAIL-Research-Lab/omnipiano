@@ -33,7 +33,6 @@
 # local run artifacts, not source). Subfolder tracking is opt-in per request.
 !/examples/
 /examples/*/
-!/scripts/
 
 # Third-party upstream algorithm clones (local build dependency, not our source)
 omnipiano/multiagent/external/_upstream/

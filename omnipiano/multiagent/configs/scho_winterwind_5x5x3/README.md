@@ -21,6 +21,10 @@ Contents:
 - `checksums.sha256`: raw-file integrity checks;
 - `reproduce.sh`: validation, runtime environment audit and queue launch.
 
+The Python utilities used by `reproduce.sh` live in
+`omnipiano/multiagent/reproduction/`; they are intentionally separate from the
+JSON configurations and from the algorithm runtime.
+
 From the repository root, a conservative six-GPU launch is:
 
 ```bash

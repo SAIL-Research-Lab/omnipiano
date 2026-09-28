@@ -28,7 +28,10 @@ VENDORED = sorted(
 
 def test_something_is_vendored():
     if not VENDORED:
-        pytest.skip("external/ is empty; run scripts/fetch_external.sh")
+        pytest.skip(
+            "external/ is empty; run "
+            "omnipiano/multiagent/external/fetch_reference.sh"
+        )
 
 
 @pytest.mark.parametrize("d", VENDORED, ids=lambda p: p.name)
@@ -36,7 +39,8 @@ def test_provenance_is_complete_and_intact(d: Path):
     manifest = d / "PROVENANCE.json"
     assert manifest.is_file(), (
         f"{d.name}/ has vendored files but no PROVENANCE.json; re-run "
-        f"`bash scripts/fetch_external.sh vendor {d.name}`")
+        "`bash omnipiano/multiagent/external/fetch_reference.sh "
+        f"vendor {d.name}`")
     meta = json.loads(manifest.read_text(encoding="utf-8"))
 
     for key in ("upstream_url", "upstream_commit", "sha256"):

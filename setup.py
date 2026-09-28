@@ -33,6 +33,10 @@ setup(
             "configs/scho_winterwind_5x5x3/*.sha256",
             "configs/scho_winterwind_5x5x3/tasks/*.json",
             "configs/scho_winterwind_5x5x3/runs/*.json",
+            "reproduction/*.md",
+            "external/*.md",
+            "external/*.sh",
+            "external/vendor_manifest/*.txt",
         ]
     },
     include_package_data=True,

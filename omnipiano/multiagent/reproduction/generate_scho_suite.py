@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 RUNNABLE_ALGOS = ("ippo", "mappo", "happo", "a2po", "facmac")
 NATIVE_ALGOS = ("happo", "a2po", "facmac")
 

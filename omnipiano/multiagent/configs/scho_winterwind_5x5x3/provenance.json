@@ -10,7 +10,7 @@
     "happo_training_version": "13e92e591da1a08d2853bda8660577fe848a2d81",
     "a2po_training_version": "5b475aa9271b1ec7b6a8448c989f3223962f5e47"
   },
-  "runtime_scope": "All files under omnipiano except omnipiano/multiagent/configs must match the reviewed commit.",
+  "runtime_scope": "All runtime files under omnipiano must match the reviewed commit. Frozen configs, reproduction tooling, tests, and external-reference maintenance utilities are excluded from runtime comparison and are validated separately.",
   "post_experiment_runtime_review": {
     "result": "accepted",
     "reason": "After the final A2PO implementation, MARL runtime changes only added observation-noise compilation and zero-valued telemetry for clean configurations. These frozen configurations omit the robust block, so task dynamics, observations, actions, rewards and learner updates retain the clean SCHO path."

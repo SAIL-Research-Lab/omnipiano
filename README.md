@@ -513,12 +513,11 @@ omnipiano/
 ├── tasks/             # MJCF-level task variants, N-hand `HandSpec`, static partitions
 ├── wrappers/          # MetricsWrapper → SafetyWrapper → RobustWrapper
 ├── safety/            # constraint library, factorized safety suite, OmniSafe runner + CMDP bridge
-├── multiagent/        # PettingZoo ParallelEnv, SCHO task compiler, IPPO/MAPPO/HAPPO/A2PO/FACMAC trainers
+├── multiagent/        # MARL algorithms, compiler/runtime, configs, and frozen-suite reproduction tools
 ├── integrations/      # framework glue: sb3, torch_rl (robust algos), llm agents
 ├── configs/           # BenchmarkProtocolConfig, env / safety / robust dataclasses
 └── tests/             # pytest suite
 examples/              # reference trainers, evaluation, rendering, plotting
-scripts/               # MARL launchers and SCHO generators
 docs/                  # Sphinx sources for the tutorial site
 ```
 

@@ -1,6 +1,6 @@
 # One upstream-relative .py path per line. Only PURE-TORCH leaf files: anything
 # that imports the framework's config/logger/buffer belongs in _upstream/ only.
-# Fill in from `bash scripts/fetch_external.sh locate harl`.
+# Fill in from `bash omnipiano/multiagent/external/fetch_reference.sh locate harl`.
 #
 # harl/algorithms/actors/happo.py
 # harl/algorithms/actors/hasac.py

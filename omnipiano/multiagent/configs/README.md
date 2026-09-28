@@ -11,5 +11,8 @@ This directory has three intentionally separate roles:
 Additional single-experiment configurations live in `examples/`; they are not
 members of the frozen 5 x 5 x 3 comparison.
 
+Generation, validation, environment-audit, and queue code lives beside the
+MARL implementation in `../reproduction/`, not among the JSON files.
+
 Do not edit JSON under `scho_winterwind_5x5x3/runs/` in place. Its manifest and
 checksum file intentionally make configuration drift fail fast.

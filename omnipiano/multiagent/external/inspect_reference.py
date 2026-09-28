@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Print the source of a vendored reference symbol, for writing an adapter.
 
-    python scripts/dump_external_source.py harl happo
-    python scripts/dump_external_source.py on_policy r_mappo
+    python omnipiano/multiagent/external/inspect_reference.py harl happo
+    python omnipiano/multiagent/external/inspect_reference.py on_policy r_mappo
 
 Reads the VENDORED copy, not the upstream clone, so what you see is exactly what
 provenance_test.py is hashing.
@@ -14,13 +14,17 @@ import pathlib
 import re
 import sys
 
-VENDOR = pathlib.Path("omnipiano/multiagent/external")
+VENDOR = pathlib.Path(__file__).resolve().parent
 
 
 def main(name: str, needle: str) -> int:
     d = VENDOR / name
     if not d.is_dir():
-        print(f"not vendored: {d}\n  bash scripts/fetch_external.sh vendor {name}")
+        print(
+            f"not vendored: {d}\n"
+            "  bash omnipiano/multiagent/external/fetch_reference.sh "
+            f"vendor {name}"
+        )
         return 1
     hits = [p for p in sorted(d.glob("*.py")) if needle.lower() in p.name.lower()]
     if not hits:

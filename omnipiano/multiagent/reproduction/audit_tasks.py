@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Construct and audit the five frozen WinterWind SCHO tasks."""
 from __future__ import annotations
 
 import argparse

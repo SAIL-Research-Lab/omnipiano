@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SUITE = (
     ROOT
     / "omnipiano/multiagent/configs/scho_winterwind_5x5x3"
@@ -98,7 +98,13 @@ def verify_runtime_source(source_commit: str) -> None:
     comparison = subprocess.run(
         [
             "git", "-C", str(ROOT), "diff", "--quiet", source_commit, "--",
-            "omnipiano", ":(exclude)omnipiano/multiagent/configs",
+            "omnipiano",
+            ":(exclude)omnipiano/multiagent/configs",
+            ":(exclude)omnipiano/multiagent/reproduction",
+            ":(exclude)omnipiano/multiagent/external/fetch_reference.sh",
+            ":(exclude)omnipiano/multiagent/external/inspect_reference.py",
+            ":(exclude)omnipiano/multiagent/external/vendor_manifest",
+            ":(exclude)omnipiano/tests",
         ]
     )
     if comparison.returncode:

@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 
 ENVS = {
     "ww": "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0",
