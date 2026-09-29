@@ -508,6 +508,7 @@ scripts/               # MARL launchers and SCHO generators
 docs/                  # Sphinx sources for the tutorial site
 ```
 
+<!--
 ---
 
 ## 🤝 Contributing
@@ -545,3 +546,5 @@ Robust-Gymnasium (Gu et al., ICLR 2025),
 [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3),
 [RLlib](https://docs.ray.io/en/latest/rllib/) and
 [TorchRL](https://github.com/pytorch/rl).
+
+-->
