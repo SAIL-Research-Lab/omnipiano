@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://omnipiano.site/"><img src="https://img.shields.io/badge/Website-omnipiano.site-blue" alt="Website"></a>
+  <a href="https://sail-research-lab.github.io/omnipiano.github.io/"><img src="https://img.shields.io/badge/Website-omnipiano.site-blue" alt="Website"></a>
   <a href="https://omnipiano-docs.readthedocs.io/en/latest/"><img src="https://img.shields.io/badge/Tutorial-ReadTheDocs-8CA1AF?logo=readthedocs" alt="Tutorial"></a>
   <img src="https://img.shields.io/badge/python-%E2%89%A53.10-3776AB?logo=python" alt="Python">
   <img src="https://img.shields.io/badge/API-Gymnasium%20%7C%20PettingZoo-0081A5" alt="API">
