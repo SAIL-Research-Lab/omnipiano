@@ -1,0 +1,25 @@
+{
+  "schema_version": 3,
+  "experiment": {
+    "name": "robust-sac-example",
+    "seeds": [0, 1, 2],
+    "tags": ["example", "robust"]
+  },
+  "task": {
+    "source": "registered",
+    "environment_id": "OmniPiano-ClairDeLune-A-Gauss-P05-v0"
+  },
+  "design": {
+    "type": "robust",
+    "config": {
+      "evaluation_protocol": "matched"
+    }
+  },
+  "algorithm": {
+    "name": "sac"
+  },
+  "run": {
+    "total_steps": 10000000,
+    "gamma": 0.8
+  }
+}

@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipiano.org/schemas/experiment-v3.json",
+  "title": "OmniPiano Unified Experiment Request",
+  "description": "Backend-neutral user intent. Backend adapters perform track-specific validation and command generation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experiment",
+    "task",
+    "design",
+    "algorithm",
+    "run"
+  ],
+  "properties": {
+    "schema_version": { "const": 3 },
+    "experiment": { "$ref": "#/$defs/experiment" },
+    "task": {
+      "oneOf": [
+        { "$ref": "#/$defs/registeredTask" },
+        { "$ref": "#/$defs/customTask" }
+      ]
+    },
+    "design": { "$ref": "#/$defs/design" },
+    "algorithm": { "$ref": "#/$defs/algorithm" },
+    "run": { "$ref": "#/$defs/run" }
+  },
+  "$defs": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "experiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "seeds"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "description": { "type": "string", "default": "" },
+        "seeds": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "default": []
+        }
+      }
+    },
+    "registeredTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "environment_id"],
+      "properties": {
+        "source": { "const": "registered" },
+        "environment_id": { "type": "string", "minLength": 1 },
+        "overrides": { "$ref": "#/$defs/stringMap", "default": {} }
+      }
+    },
+    "keyRange": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 1, "maximum": 88 },
+        { "type": "integer", "minimum": 1, "maximum": 88 }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "hand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "side", "mobile", "initial_key_range"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 0, "maximum": 4 },
+        "name": { "type": "string", "minLength": 1 },
+        "side": { "enum": ["left", "right"] },
+        "mobile": { "type": "boolean" },
+        "initial_key_range": {
+          "oneOf": [
+            { "$ref": "#/$defs/keyRange" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": { "enum": ["repertoire", "custom_midi"] },
+        "piece": { "type": ["string", "null"] },
+        "midi_path": { "type": ["string", "null"] },
+        "trim_silence": { "type": "boolean", "default": true },
+        "stretch_factor": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 1.0
+        },
+        "shift_factor": { "type": "integer", "default": 0 },
+        "fingering_mode": {
+          "enum": ["annotated", "optimal_transport"],
+          "default": "optimal_transport"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "repertoire" } },
+            "required": ["source"]
+          },
+          "then": {
+            "required": ["piece"],
+            "properties": {
+              "piece": { "type": "string", "minLength": 1 },
+              "midi_path": { "type": "null" }
+            }
+          },
+          "else": {
+            "required": ["midi_path"],
+            "properties": {
+              "piece": { "type": "null" },
+              "midi_path": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      ]
+    },
+    "embodiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["num_hands", "layout_preset", "hands"],
+      "properties": {
+        "num_hands": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "layout_preset": { "type": "string", "minLength": 1 },
+        "mobility": {
+          "enum": ["unrestricted", "static_partition", "custom"],
+          "default": "unrestricted"
+        },
+        "hands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hand" },
+          "minItems": 1,
+          "maxItems": 5
+        }
+      }
+    },
+    "customTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "music", "embodiment"],
+      "properties": {
+        "source": { "const": "custom" },
+        "music": { "$ref": "#/$defs/music" },
+        "embodiment": { "$ref": "#/$defs/embodiment" },
+        "environment": { "$ref": "#/$defs/stringMap", "default": {} },
+        "reward": { "$ref": "#/$defs/stringMap", "default": {} }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["standard", "robust", "safety", "marl"] },
+        "config": { "$ref": "#/$defs/stringMap", "default": {} }
+      }
+    },
+    "algorithm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "preset": { "type": "string", "minLength": 1, "default": "default" },
+        "parameters": { "$ref": "#/$defs/stringMap", "default": {} }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "frequency", "episodes"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "frequency": { "type": "integer", "minimum": 1 },
+        "episodes": { "type": "integer", "minimum": 1 },
+        "seed_offset": { "type": "integer", "minimum": 0, "default": 10000 }
+      }
+    },
+    "video": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "frequency", "camera", "width", "height"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "frequency": { "type": "integer", "minimum": 1 },
+        "camera": { "type": "string", "minLength": 1 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "compute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "num_workers", "num_envs"],
+      "properties": {
+        "device": { "type": "string", "minLength": 1 },
+        "num_workers": { "type": "integer", "minimum": 0 },
+        "num_envs": { "type": "integer", "minimum": 1 },
+        "cpus": { "type": "number", "minimum": 0 },
+        "gpus": { "type": "number", "minimum": 0 }
+      }
+    },
+    "tracking": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "mode"],
+      "properties": {
+        "provider": { "enum": ["none", "wandb", "tensorboard", "jsonl"] },
+        "mode": { "enum": ["disabled", "offline", "online"] },
+        "project": { "type": ["string", "null"] },
+        "group": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root"],
+      "properties": {
+        "root": { "type": "string", "minLength": 1 }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_steps", "gamma"],
+      "properties": {
+        "total_steps": { "type": "integer", "minimum": 1 },
+        "gamma": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "evaluation": { "$ref": "#/$defs/evaluation" },
+        "video": { "$ref": "#/$defs/video" },
+        "compute": { "$ref": "#/$defs/compute" },
+        "tracking": { "$ref": "#/$defs/tracking" },
+        "output": { "$ref": "#/$defs/output" }
+      }
+    }
+  }
+}

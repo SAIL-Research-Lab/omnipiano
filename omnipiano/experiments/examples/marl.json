@@ -1,0 +1,30 @@
+{
+  "schema_version": 3,
+  "experiment": {
+    "name": "marl-ippo-example",
+    "seeds": [0, 1, 2],
+    "tags": ["example", "marl"]
+  },
+  "task": {
+    "source": "registered",
+    "environment_id": "OmniPiano-WinterWind-FourHand-MA-Duet-Territorial-v0"
+  },
+  "design": {
+    "type": "marl",
+    "config": {
+      "assignment": "territorial"
+    }
+  },
+  "algorithm": {
+    "name": "ippo"
+  },
+  "run": {
+    "total_steps": 10000000,
+    "gamma": 0.8,
+    "tracking": {
+      "provider": "wandb",
+      "mode": "offline",
+      "project": "OmniPiano-MARL"
+    }
+  }
+}

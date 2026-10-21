@@ -1,0 +1,26 @@
+{
+  "schema_version": 3,
+  "experiment": {
+    "name": "safety-ppolag-example",
+    "seeds": [0, 1, 2],
+    "tags": ["example", "safety"]
+  },
+  "task": {
+    "source": "registered",
+    "environment_id": "OmniPiano-ClairDeLune-CollisionSafe-v0"
+  },
+  "design": {
+    "type": "safety",
+    "config": {
+      "suite_task": "hand_collision_event",
+      "budget": "paper"
+    }
+  },
+  "algorithm": {
+    "name": "PPOLag"
+  },
+  "run": {
+    "total_steps": 10000000,
+    "gamma": 0.8
+  }
+}

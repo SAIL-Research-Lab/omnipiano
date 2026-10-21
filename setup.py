@@ -37,7 +37,11 @@ setup(
             "external/*.md",
             "external/*.sh",
             "external/vendor_manifest/*.txt",
-        ]
+        ],
+        "omnipiano.experiments": [
+            "contract/*.json",
+            "examples/*.json",
+        ],
     },
     include_package_data=True,
     python_requires=">=3.10",
@@ -63,6 +67,7 @@ setup(
         "openai>=1.0",
         "Pillow",
         "moviepy",
+        "jsonschema>=4.20",
     ],
     extras_require={
         "torchrl": [

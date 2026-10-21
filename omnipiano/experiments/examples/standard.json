@@ -1,0 +1,22 @@
+{
+  "schema_version": 3,
+  "experiment": {
+    "name": "standard-ppo-example",
+    "seeds": [0, 1, 2],
+    "tags": ["example", "standard"]
+  },
+  "task": {
+    "source": "registered",
+    "environment_id": "OmniPiano-WinterWind-TwoHand-GeneralRL-v0"
+  },
+  "design": {
+    "type": "standard"
+  },
+  "algorithm": {
+    "name": "ppo"
+  },
+  "run": {
+    "total_steps": 10000000,
+    "gamma": 0.8
+  }
+}
