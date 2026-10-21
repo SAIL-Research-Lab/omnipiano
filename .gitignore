@@ -34,6 +34,12 @@
 !/examples/
 /examples/*/
 
+# Local experiment composer source. Keep generated frontend artifacts local.
+!/ui/
+/ui/node_modules/
+/ui/dist/
+/ui/.vite/
+
 # Third-party upstream algorithm clones (local build dependency, not our source)
 omnipiano/multiagent/external/_upstream/
 

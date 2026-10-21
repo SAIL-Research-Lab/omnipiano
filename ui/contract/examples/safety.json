@@ -1,0 +1,125 @@
+{
+  "schema_version": 2,
+  "experiment": {
+    "name": "safety_for_elise_range_event",
+    "description": "Single-primary-cost joint range event benchmark.",
+    "seeds": [0, 1, 2],
+    "tags": ["safety", "range-event", "two-hand"]
+  },
+  "task": {
+    "music": {
+      "source": "repertoire",
+      "piece": "ForElise",
+      "midi_path": null,
+      "trim_silence": true,
+      "stretch_factor": 1.0,
+      "shift_factor": 0,
+      "fingering_mode": "optimal_transport"
+    },
+    "embodiment": {
+      "num_hands": 2,
+      "layout_preset": "two_hand_default",
+      "mobility": "unrestricted",
+      "hands": [
+        {
+          "id": 0,
+          "name": "left_hand",
+          "side": "left",
+          "mobile": true,
+          "initial_key_range": [1, 44]
+        },
+        {
+          "id": 1,
+          "name": "right_hand",
+          "side": "right",
+          "mobile": true,
+          "initial_key_range": [45, 88]
+        }
+      ]
+    },
+    "environment": {
+      "control_timestep": 0.05,
+      "n_steps_lookahead": 10,
+      "gravity_compensation": true,
+      "reduced_action_space": false,
+      "frame_stack": 1,
+      "clip_actions": true,
+      "wrong_press_termination": false,
+      "hand_collisions": true,
+      "primitive_fingertip_collisions": false
+    },
+    "reward": {
+      "key_press": { "enabled": true, "coefficient": 1.0 },
+      "sustain": { "enabled": true, "coefficient": 1.0 },
+      "energy_regularization": { "enabled": false, "coefficient": 0.005 },
+      "fingering": { "enabled": true, "coefficient": 1.0 },
+      "forearm_collision": { "enabled": true, "coefficient": 1.0 }
+    }
+  },
+  "design": {
+    "type": "safety",
+    "config": {
+      "mode": "single_primary_cost",
+      "primary_cost": {
+        "type": "range_event",
+        "target_hand_ids": [0, 1],
+        "target_joints": ["THJ2", "FFJ2", "MFJ2", "RFJ2", "LFJ2"],
+        "safe_interval_fraction": 0.5,
+        "power_threshold": null,
+        "coefficient": 1.0,
+        "budget_mode": "paper_default",
+        "episodic_budget": 19.95
+      }
+    }
+  },
+  "algorithm": {
+    "framework": "omnisafe",
+    "name": "PPOLag",
+    "family": "safe_policy_optimization",
+    "preset": "paper_default",
+    "parameters": {
+      "learning_rate": 0.0003,
+      "lagrangian_learning_rate": 0.035,
+      "train_batch_size": 4000,
+      "minibatch_size": 4000,
+      "num_epochs": 5,
+      "gae_lambda": 0.95,
+      "clip_param": 0.2,
+      "hidden_sizes": [256, 256]
+    }
+  },
+  "protocol": {
+    "total_env_steps": 5000000,
+    "gamma": 0.8,
+    "checkpoint_frequency": 500000,
+    "keep_best_checkpoint": true
+  },
+  "evaluation": {
+    "frequency": 50000,
+    "episodes": 1,
+    "seed_offset": 10000,
+    "video": {
+      "enabled": true,
+      "frequency": 500000,
+      "record_final": true,
+      "camera_id": "piano/topdown",
+      "height": 480,
+      "width": 640
+    }
+  },
+  "compute": {
+    "env_runners": 4,
+    "learners": 1,
+    "cpus_per_env_runner": 1,
+    "gpus_per_learner": 1.0
+  },
+  "tracking": {
+    "provider": "wandb",
+    "mode": "online",
+    "entity": "omnipiano",
+    "project": "safe",
+    "group": null,
+    "run_name": null,
+    "upload_artifacts": false
+  }
+}

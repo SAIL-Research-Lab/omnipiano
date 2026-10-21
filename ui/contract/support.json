@@ -1,0 +1,44 @@
+{
+  "contract_version": 2,
+  "statuses": {
+    "supported": "The current repository has a corresponding runtime implementation.",
+    "experimental": "An implementation exists, but its public configuration contract is not stable.",
+    "awaiting_merge": "Defined by the paper/UI contract; backend wiring must wait for the relevant branches to merge."
+  },
+  "shared": {
+    "music": "supported",
+    "embodiment": "experimental",
+    "environment": "supported",
+    "reward": "experimental",
+    "algorithm_registry": "experimental",
+    "protocol": "supported",
+    "evaluation": "supported",
+    "compute": "supported",
+    "tracking": "supported"
+  },
+  "tracks": {
+    "standard": {
+      "status": "experimental",
+      "notes": "Existing registered environments cover the task family, but no unified experiment compiler consumes this contract yet."
+    },
+    "robust": {
+      "status": "experimental",
+      "features": {
+        "action_noise": "supported",
+        "observation_noise": "supported",
+        "reward_noise": "supported",
+        "gravity": "awaiting_merge",
+        "friction": "awaiting_merge",
+        "initial_hand_pose": "awaiting_merge"
+      }
+    },
+    "safety": {
+      "status": "awaiting_merge",
+      "notes": "Constraint implementations exist, but the paper taxonomy and a declarative JSON compiler are not yet unified. Power Spike also requires a final paper-level definition."
+    },
+    "marl": {
+      "status": "supported",
+      "notes": "The existing MARL schema-v2 compiler is operational. A later exporter will translate the canonical UI contract into that format."
+    }
+  }
+}
