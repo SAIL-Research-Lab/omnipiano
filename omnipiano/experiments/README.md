@@ -18,6 +18,17 @@ python -m omnipiano.experiments plan \
   omnipiano/experiments/examples/marl.json
 ```
 
+Inspect the capabilities exposed by the current repository:
+
+```bash
+python -m omnipiano.experiments catalog
+python -m omnipiano.experiments catalog --track marl --include-unavailable
+```
+
+The catalog distinguishes backend support from unified-adapter readiness. It
+lists only current backend algorithms as selectable; declared but unfinished
+algorithms such as MAT and MASAC are visible only with `--include-unavailable`.
+
 The phase-two plan deliberately contains:
 
 ```json
@@ -35,5 +46,6 @@ existing Standard, Robust, Safety, or MARL entrypoints.
 
 The canonical schema is `contract/experiment-v3.schema.json`. A task can be an
 existing registered environment or a custom task description. Track-specific
-capability checks intentionally belong to the future catalog and adapters,
-not to the shared schema.
+capability checks live in `catalog.py`, not in the shared structural schema.
+Backend-specific parameter and environment checks remain the responsibility of
+the adapters added in the next phase.

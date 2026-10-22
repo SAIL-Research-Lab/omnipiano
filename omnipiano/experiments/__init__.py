@@ -5,6 +5,13 @@ or modify any Standard, Robust, Safety, or MARL training implementation.
 """
 
 from omnipiano.experiments.compiler import compile_plan, resolve_experiment
+from omnipiano.experiments.catalog import (
+    CATALOG_VERSION,
+    CapabilityError,
+    catalog_dict,
+    get_track_capability,
+    validate_request_capabilities,
+)
 from omnipiano.experiments.models import (
     AlgorithmRequest,
     DesignRequest,
@@ -26,6 +33,8 @@ from omnipiano.experiments.schema import (
 
 __all__ = [
     "AlgorithmRequest",
+    "CATALOG_VERSION",
+    "CapabilityError",
     "CONTRACT_SCHEMA_VERSION",
     "DesignRequest",
     "ExperimentMetadata",
@@ -37,8 +46,11 @@ __all__ = [
     "RunRequest",
     "TaskRequest",
     "compile_plan",
+    "catalog_dict",
+    "get_track_capability",
     "load_request",
     "parse_request",
     "resolve_experiment",
     "validate_document",
+    "validate_request_capabilities",
 ]

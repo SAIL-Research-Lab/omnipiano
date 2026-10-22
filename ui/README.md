@@ -47,7 +47,8 @@ connection, authentication, database, or other backend service.
 The configuration contract remains independent from the React application:
 
 - `contract/experiment.schema.json`: the canonical, versioned JSON Schema.
-- `contract/support.json`: backend-support metadata for the future exporter.
+- `../omnipiano/experiments/catalog.py`: the backend capability source of
+  truth; the future local API will expose it to this UI.
 - `contract/examples/`: one complete example for each paper track. These are
   also the future UI's initial form states, so defaults are not duplicated in
   a second file.

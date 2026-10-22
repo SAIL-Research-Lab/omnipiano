@@ -6,6 +6,7 @@ from copy import deepcopy
 from pathlib import PurePath
 from typing import Any
 
+from omnipiano.experiments.catalog import validate_request_capabilities
 from omnipiano.experiments.models import (
     ExperimentRequest,
     PlanBundle,
@@ -20,6 +21,7 @@ PLAN_VERSION = 1
 
 def resolve_experiment(request: ExperimentRequest) -> ResolvedExperiment:
     """Make control-plane defaults explicit without touching any backend."""
+    validate_request_capabilities(request)
     document = request.to_dict()
 
     document["experiment"].setdefault("description", "")

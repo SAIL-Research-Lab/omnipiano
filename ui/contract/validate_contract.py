@@ -23,7 +23,6 @@ except ImportError as exc:  # pragma: no cover - depends on the caller's env.
 
 CONTRACT_DIR = Path(__file__).resolve().parent
 SCHEMA_PATH = CONTRACT_DIR / "experiment.schema.json"
-SUPPORT_PATH = CONTRACT_DIR / "support.json"
 EXAMPLES_DIR = CONTRACT_DIR / "examples"
 
 
@@ -187,10 +186,6 @@ def main() -> None:
     schema = _read_json(SCHEMA_PATH)
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
-
-    support = _read_json(SUPPORT_PATH)
-    if support["contract_version"] != schema["properties"]["schema_version"]["const"]:
-        raise ValueError("support.json and experiment schema versions differ")
 
     example_paths = sorted(EXAMPLES_DIR.glob("*.json"))
     expected_tracks = {"standard", "robust", "safety", "marl"}

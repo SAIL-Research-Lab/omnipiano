@@ -8,6 +8,12 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from omnipiano.experiments.catalog import (
+    CapabilityError,
+    TRACKS,
+    catalog_dict,
+    validate_request_capabilities,
+)
 from omnipiano.experiments.compiler import compile_plan
 from omnipiano.experiments.schema import ExperimentValidationError, load_request
 
@@ -22,6 +28,13 @@ def _parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate", help="validate one JSON file")
     validate.add_argument("config", type=Path)
 
+    catalog = subparsers.add_parser(
+        "catalog", help="print current track and algorithm capabilities"
+    )
+    catalog.add_argument("--track", choices=TRACKS, default=None)
+    catalog.add_argument("--include-unavailable", action="store_true")
+    catalog.add_argument("--compact", action="store_true")
+
     plan = subparsers.add_parser(
         "plan", help="resolve defaults and expand one plan per seed"
     )
@@ -34,8 +47,24 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "catalog":
+            indent = None if args.compact else 2
+            print(
+                json.dumps(
+                    catalog_dict(
+                        track=args.track,
+                        include_unavailable=args.include_unavailable,
+                    ),
+                    indent=indent,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+
         request = load_request(args.config)
         if args.command == "validate":
+            validate_request_capabilities(request)
             print(
                 f"VALID: {request.experiment.name} "
                 f"({request.design.type}, {len(request.experiment.seeds)} seed(s))"
@@ -54,7 +83,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output.write_text(rendered + "\n", encoding="utf-8")
             print(f"WROTE: {args.output}")
         return 0
-    except ExperimentValidationError as exc:
+    except (ExperimentValidationError, CapabilityError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
 
