@@ -116,8 +116,9 @@ class ResolvedExperiment:
 class RunPlan:
     """One deterministic track/algorithm/task/seed unit.
 
-    Phase two intentionally leaves launch binding empty.  Backend adapters add
-    the exact command and backend configuration in a later phase.
+    The core compiler leaves launch binding empty. Backend adapters return a
+    new plan with an exact command and, when required, JSON artifacts that a
+    later materialization/launch layer can write explicitly.
     """
 
     run_id: str
@@ -131,6 +132,7 @@ class RunPlan:
     backend: Optional[str] = None
     command: Tuple[str, ...] = ()
     environment: JsonMapping = field(default_factory=dict)
+    artifacts: JsonMapping = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -146,13 +148,14 @@ class RunPlan:
                 "backend": self.backend,
                 "command": list(self.command),
                 "environment": _copy(dict(self.environment)),
+                "artifacts": _copy(dict(self.artifacts)),
             },
         }
 
 
 @dataclass(frozen=True)
 class PlanBundle:
-    """Resolved experiment plus its seed-expanded, non-executable plans."""
+    """Resolved experiment plus seed-expanded unbound or bound run plans."""
 
     plan_version: int
     resolved_experiment: ResolvedExperiment

@@ -1,10 +1,17 @@
 """Backend-neutral experiment requests and deterministic run planning.
 
-This package is an additive control plane.  It deliberately does not import
-or modify any Standard, Robust, Safety, or MARL training implementation.
+This package is an additive control plane. Validation and planning do not load
+training frameworks; explicit binding lazily inspects existing backend metadata
+but never modifies a backend, writes run artifacts, or starts training.
 """
 
-from omnipiano.experiments.compiler import compile_plan, resolve_experiment
+from omnipiano.experiments.adapters import AdapterError
+from omnipiano.experiments.compiler import (
+    bind_document,
+    bind_plan,
+    compile_plan,
+    resolve_experiment,
+)
 from omnipiano.experiments.catalog import (
     CATALOG_VERSION,
     CapabilityError,
@@ -33,6 +40,7 @@ from omnipiano.experiments.schema import (
 
 __all__ = [
     "AlgorithmRequest",
+    "AdapterError",
     "CATALOG_VERSION",
     "CapabilityError",
     "CONTRACT_SCHEMA_VERSION",
@@ -45,6 +53,8 @@ __all__ = [
     "RunPlan",
     "RunRequest",
     "TaskRequest",
+    "bind_document",
+    "bind_plan",
     "compile_plan",
     "catalog_dict",
     "get_track_capability",

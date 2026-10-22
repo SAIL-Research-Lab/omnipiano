@@ -14,7 +14,8 @@ from omnipiano.experiments.catalog import (
     catalog_dict,
     validate_request_capabilities,
 )
-from omnipiano.experiments.compiler import compile_plan
+from omnipiano.experiments.adapters import AdapterError
+from omnipiano.experiments.compiler import bind_plan, compile_plan
 from omnipiano.experiments.schema import ExperimentValidationError, load_request
 
 
@@ -41,6 +42,14 @@ def _parser() -> argparse.ArgumentParser:
     plan.add_argument("config", type=Path)
     plan.add_argument("--output", type=Path, default=None)
     plan.add_argument("--compact", action="store_true")
+
+    bind = subparsers.add_parser(
+        "bind",
+        help="translate every seed plan to an existing backend command without running it",
+    )
+    bind.add_argument("config", type=Path)
+    bind.add_argument("--output", type=Path, default=None)
+    bind.add_argument("--compact", action="store_true")
     return parser
 
 
@@ -71,7 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
-        bundle = compile_plan(request)
+        bundle = bind_plan(request) if args.command == "bind" else compile_plan(request)
         indent = None if args.compact else 2
         rendered = json.dumps(
             bundle.to_dict(), indent=indent, sort_keys=True, ensure_ascii=False
@@ -83,7 +92,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output.write_text(rendered + "\n", encoding="utf-8")
             print(f"WROTE: {args.output}")
         return 0
-    except (ExperimentValidationError, CapabilityError) as exc:
+    except (ExperimentValidationError, CapabilityError, AdapterError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
 

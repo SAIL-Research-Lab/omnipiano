@@ -42,7 +42,7 @@ def test_plan_fans_out_seeds_without_binding_a_backend() -> None:
     request = load_request(EXAMPLES / "marl.json")
     bundle = compile_plan(request)
 
-    assert bundle.plan_version == 1
+    assert bundle.plan_version == 2
     assert [run.seed for run in bundle.runs] == [0, 1, 2]
     assert [run.run_id for run in bundle.runs] == [
         "marl-ippo-example--marl--seed-0",
@@ -52,6 +52,7 @@ def test_plan_fans_out_seeds_without_binding_a_backend() -> None:
     assert all(run.launch_status == "unbound" for run in bundle.runs)
     assert all(run.backend is None for run in bundle.runs)
     assert all(run.command == () for run in bundle.runs)
+    assert all(run.artifacts == {} for run in bundle.runs)
     assert bundle.runs[0].output_dir == (
         "runs/marl-ippo-example/marl/seed-0"
     )

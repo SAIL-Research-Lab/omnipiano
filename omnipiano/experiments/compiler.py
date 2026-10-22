@@ -16,7 +16,7 @@ from omnipiano.experiments.models import (
 from omnipiano.experiments.schema import parse_request, validate_document
 
 
-PLAN_VERSION = 1
+PLAN_VERSION = 2
 
 
 def resolve_experiment(request: ExperimentRequest) -> ResolvedExperiment:
@@ -115,3 +115,15 @@ def compile_plan(request: ExperimentRequest) -> PlanBundle:
 def compile_document(document: dict[str, Any]) -> PlanBundle:
     """Convenience entrypoint for callers that already hold decoded JSON."""
     return compile_plan(parse_request(document))
+
+
+def bind_plan(request: ExperimentRequest) -> PlanBundle:
+    """Compile and bind every seed to its existing backend without I/O."""
+    from omnipiano.experiments.adapters import bind_plan as bind_compiled_plan
+
+    return bind_compiled_plan(compile_plan(request))
+
+
+def bind_document(document: dict[str, Any]) -> PlanBundle:
+    """Validate, compile, and bind an already decoded JSON document."""
+    return bind_plan(parse_request(document))

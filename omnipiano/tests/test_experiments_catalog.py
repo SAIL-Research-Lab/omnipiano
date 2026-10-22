@@ -155,3 +155,25 @@ def test_catalog_records_current_track_specific_limits() -> None:
         "joint_range", "actuator_power", "injured_finger", "hand_collision"
     }
     assert marl.features["robust_noise_channels"] == ["observation"]
+
+
+def test_catalog_parameter_lists_match_adapter_allowlists() -> None:
+    from omnipiano.experiments.adapters.marl import (
+        PARAMETER_FLAGS as MARL_PARAMETERS,
+        PPO_PARAMETER_ALGORITHMS,
+    )
+    from omnipiano.experiments.adapters.robust import ALGORITHM_PARAMETERS as ROBUST
+    from omnipiano.experiments.adapters.standard import ALGORITHM_PARAMETERS as STANDARD
+
+    for capability in get_track_capability("standard").algorithms:
+        assert set(capability.configurable_parameters) == set(STANDARD[capability.name])
+    for capability in get_track_capability("robust").algorithms:
+        assert set(capability.configurable_parameters) == set(ROBUST[capability.name])
+    for capability in get_track_capability("safety").algorithms:
+        expected = {"buffer_size"} if capability.family == "off_policy_safe_rl" else set()
+        assert set(capability.configurable_parameters) == expected
+    for capability in get_track_capability("marl").algorithms:
+        if capability.status != "supported":
+            continue
+        expected = set(MARL_PARAMETERS) if capability.name in PPO_PARAMETER_ALGORITHMS else set()
+        assert set(capability.configurable_parameters) == expected

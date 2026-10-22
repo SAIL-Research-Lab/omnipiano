@@ -66,7 +66,7 @@ class TrackCapability:
     algorithms: Tuple[AlgorithmCapability, ...]
     features: Mapping[str, Any] = field(default_factory=dict)
     limitations: Tuple[str, ...] = ()
-    adapter_status: str = "pending"
+    adapter_status: str = "available"
 
     def algorithm(self, name: str) -> AlgorithmCapability:
         for algorithm in self.algorithms:
@@ -132,16 +132,33 @@ _STANDARD_ALGORITHMS = (
 )
 
 
+_ROBUST_PPO_PARAMETERS = (
+    "net_arch", "n_steps", "n_epochs", "gae_lambda", "clip_epsilon",
+    "entropy_coeff", "critic_coeff",
+)
+_ROBUST_SAC_PARAMETERS = (
+    "net_arch", "batch_size", "buffer_size", "learning_starts", "tau",
+    "utd", "learning_rate",
+)
 _ROBUST_ALGORITHMS = (
-    _algo("ppo", "PPO", "torchrl", "on_policy_ppo", recommended=True),
-    _algo("sac", "SAC", "torchrl", "off_policy_sac", recommended=True),
+    _algo(
+        "ppo", "PPO", "torchrl", "on_policy_ppo", recommended=True,
+        configurable_parameters=_ROBUST_PPO_PARAMETERS,
+    ),
+    _algo(
+        "sac", "SAC", "torchrl", "off_policy_sac", recommended=True,
+        configurable_parameters=_ROBUST_SAC_PARAMETERS,
+    ),
     _algo(
         "eppo", "EPPO", "torchrl", "on_policy_ppo",
-        configurable_parameters=("eppo_mode", "kappa", "evidential_reg"),
+        configurable_parameters=(
+            *_ROBUST_PPO_PARAMETERS, "eppo_mode", "kappa", "evidential_reg",
+        ),
     ),
     _algo(
         "a2p_sac", "A2P-SAC", "torchrl", "off_policy_sac",
         configurable_parameters=(
+            *_ROBUST_SAC_PARAMETERS,
             "a2p_epsilon_mode", "a2p_epsilon", "adversary_learning_rate",
             "adversary_update_freq", "a2p_warmup_steps",
         ),
@@ -149,6 +166,7 @@ _ROBUST_ALGORITHMS = (
     _algo(
         "ompo", "OMPO", "torchrl", "off_policy_sac",
         configurable_parameters=(
+            *_ROBUST_SAC_PARAMETERS,
             "ompo_local_buffer_size", "ompo_updates_per_step",
             "ompo_discriminator_observation", "ompo_exponent",
             "ompo_correction_coeff", "ompo_reward_max",
@@ -156,7 +174,10 @@ _ROBUST_ALGORITHMS = (
     ),
     _algo(
         "scpo", "SCPO", "torchrl", "off_policy_sac",
-        configurable_parameters=("scpo_state_noise", "scpo_gradient_observation"),
+        configurable_parameters=(
+            *_ROBUST_SAC_PARAMETERS,
+            "scpo_state_noise", "scpo_gradient_observation",
+        ),
     ),
 )
 
@@ -181,37 +202,52 @@ _SAFETY_ALGORITHMS = tuple(
         "on_policy_safe_rl" if name in _SAFETY_ON_POLICY else "off_policy_safe_rl",
         recommended=name in _SAFETY_PAPER_DEFAULTS,
         role="paper_baseline" if name in _SAFETY_PAPER_DEFAULTS else "extended_baseline",
+        configurable_parameters=("buffer_size",) if name in _SAFETY_OFF_POLICY else (),
     )
     for name in _SAFETY_ON_POLICY + _SAFETY_OFF_POLICY
 )
 
 
+_MARL_PPO_PARAMETERS = (
+    "learning_rate", "critic_learning_rate", "train_batch_size",
+    "minibatch_size", "num_epochs", "adam_epsilon", "gae_lambda",
+    "clip_param", "value_clip_param", "value_loss_coefficient",
+    "entropy_coefficient", "use_kl_loss", "gradient_clip",
+    "gradient_clip_mode", "hidden_sizes", "activation", "input_layer_norm",
+    "value_norm",
+)
 _MARL_ALGORITHMS = (
     _algo(
         "ippo", "IPPO", "rllib", "on_policy_ppo", recommended=True,
         critic="own", execution="decentralized",
+        configurable_parameters=_MARL_PPO_PARAMETERS,
     ),
     _algo(
         "ippo-rllib-module", "IPPO · RLlib module control", "rllib",
         "on_policy_ppo", critic="own", execution="decentralized",
         role="diagnostic_control",
+        configurable_parameters=_MARL_PPO_PARAMETERS,
     ),
     _algo(
         "mappo", "MAPPO", "rllib", "on_policy_ppo", recommended=True,
         critic="global", execution="decentralized",
+        configurable_parameters=_MARL_PPO_PARAMETERS,
     ),
     _algo(
         "mappo-own-critic", "MAPPO · own-critic ablation", "rllib",
         "on_policy_ppo", critic="own", execution="decentralized",
         role="ablation",
+        configurable_parameters=_MARL_PPO_PARAMETERS,
     ),
     _algo(
         "happo", "HAPPO", "native", "on_policy_ppo_sequential",
         recommended=True, critic="global", execution="decentralized",
+        configurable_parameters=_MARL_PPO_PARAMETERS,
     ),
     _algo(
         "a2po", "A2PO", "native", "on_policy_ppo_sequential",
         recommended=True, critic="global", execution="decentralized",
+        configurable_parameters=_MARL_PPO_PARAMETERS,
     ),
     _algo(
         "facmac", "FACMAC", "native", "off_policy_ddpg", recommended=True,
@@ -221,6 +257,7 @@ _MARL_ALGORITHMS = (
         "ppo-monolithic", "PPO · monolithic single-agent baseline", "rllib",
         "on_policy_ppo", critic="own", execution="centralized",
         required_num_agents=1, role="single_agent_control",
+        configurable_parameters=_MARL_PPO_PARAMETERS,
     ),
     _algo(
         "mat", "MAT", "native", "on_policy_ppo_sequential", status="planned",
@@ -344,7 +381,7 @@ def catalog_dict(
     return {
         "catalog_version": CATALOG_VERSION,
         "contract_version": 3,
-        "adapter_status": "pending",
+        "adapter_status": "available",
         "statuses": {
             "supported": "Implemented by the current track backend.",
             "planned": "Declared in the repository but not launchable.",
