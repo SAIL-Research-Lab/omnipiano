@@ -156,6 +156,16 @@ export default function MarlDesign({ fullConfig, config, set, update, panel }) {
   const rangePanel = panel("marl.ranges");
   const actionOverlap = totalPairwiseOverlap(config.agents, "action_key_range");
   const observationOverlap = totalPairwiseOverlap(config.agents, "observation_key_range");
+  const critic = {
+    ippo: "local",
+    "ippo-rllib-module": "local",
+    mappo: "global",
+    "mappo-own-critic": "own observation",
+    happo: "global",
+    a2po: "global",
+    facmac: "joint action",
+    "ppo-monolithic": "local",
+  }[fullConfig.algorithm.name] ?? "backend default";
 
   return (
     <>
@@ -164,7 +174,7 @@ export default function MarlDesign({ fullConfig, config, set, update, panel }) {
           <div><span>Hands / agents</span><strong>{hands.length} / {config.num_agents}</strong></div>
           <div><span>Action overlap</span><strong>{actionOverlap} keys</strong></div>
           <div><span>Observation overlap</span><strong>{observationOverlap} keys</strong></div>
-          <div><span>Critic</span><strong>{config.critic_mode.replaceAll("_", " ")}</strong></div>
+          <div><span>Critic</span><strong>{critic}</strong></div>
         </div>
       </section>
 
@@ -179,12 +189,6 @@ export default function MarlDesign({ fullConfig, config, set, update, panel }) {
         />
         {agentsPanel.advanced && (
           <>
-            <SelectField
-              label="Policy sharing"
-              value={config.policy_sharing}
-              onChange={(value) => set("design.config.policy_sharing", value)}
-              options={["independent", "shared"]}
-            />
             <NumberField
               label="Collision penalty"
               value={config.coordination.inter_agent_collision_penalty_coefficient}

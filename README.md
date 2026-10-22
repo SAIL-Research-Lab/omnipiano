@@ -180,8 +180,9 @@ python -c "import omnipiano; env = omnipiano.make('OmniPiano-TwinkleTwinkleLittl
 `robopianist soundfont --download`.
 
 > [!TIP]
-> Set `MUJOCO_GL` **before** Python starts. Importing `omnipiano` builds the
-> MuJoCo-backed task registry.
+> Set `MUJOCO_GL` **before** Python starts. OmniPiano builds the MuJoCo-backed
+> task registry lazily when `omnipiano.make`, `register`, or a direct
+> environment module is first accessed.
 
 ---
 
@@ -261,6 +262,25 @@ fixed by the ID. Only runtime options are accepted as kwargs: `seed`,
 `mode` (`"train"` or `"eval"`) and, for robustness evaluation,
 `eval_noise_scale`. To change anything
 else, register a new ID (see [Contributing](#-contributing)).
+
+### Unified experiment composer
+
+The optional local composer gives all four tracks one schema-v3 JSON format
+while preserving their existing trainers. Start the loopback API and UI in
+separate terminals:
+
+```bash
+python -m omnipiano.experiments serve --allowed-root runs
+
+cd ui
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:5173/` to configure, validate, preview, prepare, and
+explicitly launch an experiment. A CLI-only workflow and safety guarantees
+are documented in
+[`omnipiano/experiments/README.md`](omnipiano/experiments/README.md).
 
 ---
 

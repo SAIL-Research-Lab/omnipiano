@@ -1,28 +1,8 @@
 export const TRACKS = [
-  {
-    id: "standard",
-    short: "S",
-    title: "Standard RL",
-    description: "Nominal control",
-  },
-  {
-    id: "robust",
-    short: "R",
-    title: "Robust RL",
-    description: "Perturbed tasks",
-  },
-  {
-    id: "safety",
-    short: "C",
-    title: "Safe RL",
-    description: "Constrained learning",
-  },
-  {
-    id: "marl",
-    short: "M",
-    title: "Multi-Agent RL",
-    description: "Multi-agent coordination",
-  },
+  { id: "standard", short: "S", title: "Standard RL", description: "Nominal control" },
+  { id: "robust", short: "R", title: "Robust RL", description: "Perturbed tasks" },
+  { id: "safety", short: "C", title: "Safe RL", description: "Constrained learning" },
+  { id: "marl", short: "M", title: "Multi-Agent RL", description: "Multi-agent coordination" },
 ];
 
 export const STEPS = [
@@ -31,132 +11,51 @@ export const STEPS = [
   { id: "design", number: "03", title: "Track design" },
   { id: "algorithm", number: "04", title: "Algorithm" },
   { id: "run", number: "05", title: "Train & evaluate" },
-  { id: "review", number: "06", title: "Review & export" },
+  { id: "review", number: "06", title: "Review & launch" },
 ];
 
 export const REPERTOIRE = [
-  { value: "TwinkleTwinkleLittleStar", label: "Twinkle Twinkle Little Star" },
-  { value: "ForElise", label: "Für Elise" },
-  { value: "ClairDeLune", label: "Clair de Lune" },
-  { value: "WinterWind", label: "Winter Wind" },
-  { value: "PicturesGreatKiev", label: "Pictures at an Exhibition · Great Gate of Kiev" },
-  { value: "NocturneOp9No2", label: "Nocturne Op. 9 No. 2" },
-  { value: "PianoSonataNo281StMov", label: "Piano Sonata No. 28 · I" },
-  { value: "PianoSonataNo301StMov", label: "Piano Sonata No. 30 · I" },
-  { value: "PolonaiseOp40No1", label: "Polonaise Op. 40 No. 1" },
-];
-
-export const ROBUST_CHANNELS = {
-  action: {
-    label: "Action noise",
-    group: "signal",
-    levels: { low: 0.05, medium: 0.1, high: 0.15 },
-    frequency: "step",
-  },
-  observation: {
-    label: "Observation noise",
-    group: "signal",
-    levels: { low: 0.05, medium: 0.1, high: 0.15 },
-    frequency: "step",
-  },
-  reward: {
-    label: "Reward noise",
-    group: "signal",
-    levels: { low: 0.1, medium: 0.3, high: 0.5 },
-    frequency: "step",
-  },
-  gravity: {
-    label: "Gravity",
-    group: "physical",
-    levels: { low: 0.5, medium: 1.0, high: 1.5 },
-    frequency: "episode",
-  },
-  friction: {
-    label: "Key friction",
-    group: "physical",
-    levels: { low: 0.05, medium: 0.1, high: 0.15 },
-    frequency: "episode",
-  },
-  initial_hand_pose: {
-    label: "Initial hand pose",
-    group: "physical",
-    levels: {
-      low: { y_mm: 10, z_mm: 5 },
-      medium: { y_mm: 25, z_mm: 10 },
-      high: { y_mm: 50, z_mm: 20 },
-    },
-    frequency: "episode",
-  },
-};
-
-const SAFETY_SONG_HORIZONS = {
-  TwinkleTwinkleLittleStar: 161,
-  WinterWind: 314,
-  ForElise: 399,
-  ClairDeLune: 588,
-  PicturesGreatKiev: 720,
-};
+  "WinterWind",
+  "PicturesGreatKiev",
+  "PolonaiseOp40No1",
+  "PianoSonataNo281StMov",
+  "PianoSonataNo301StMov",
+].map((value) => ({ value, label: value.replace(/([a-z])([A-Z])/g, "$1 $2") }));
 
 const HAND_LAYOUTS = {
-  1: {
-    name: "OneHand",
-    hands: [["rh", "right", [1, 88]]],
-  },
-  2: {
-    name: "TwoHand",
-    hands: [
-      ["lh", "left", [1, 44]],
-      ["rh", "right", [45, 88]],
-    ],
-  },
   3: {
-    name: "ThreeHand",
-    hands: [
-      ["lh", "left", [1, 29]],
-      ["rh_c", "right", [30, 59]],
-      ["rh", "right", [60, 88]],
-    ],
+    preset: "ThreeHand",
+    hands: [["lh", "left", [1, 29]], ["rh_c", "right", [30, 59]], ["rh", "right", [60, 88]]],
   },
   4: {
-    name: "FourHand",
-    hands: [
-      ["lh_b", "left", [1, 22]],
-      ["rh_b", "right", [23, 44]],
-      ["lh_t", "left", [45, 66]],
-      ["rh_t", "right", [67, 88]],
-    ],
+    preset: "FourHand",
+    hands: [["lh_b", "left", [1, 22]], ["rh_b", "right", [23, 44]], ["lh_t", "left", [45, 66]], ["rh_t", "right", [67, 88]]],
   },
   5: {
-    name: "FiveHand",
-    hands: [
-      ["lh_b", "left", [1, 18]],
-      ["rh_b", "right", [19, 36]],
-      ["rh_c", "right", [37, 53]],
-      ["lh_t", "left", [54, 71]],
-      ["rh_t", "right", [72, 88]],
-    ],
+    preset: "FiveHand",
+    hands: [["lh_b", "left", [1, 18]], ["rh_b", "right", [19, 36]], ["rh_c", "right", [37, 53]], ["lh_t", "left", [54, 71]], ["rh_t", "right", [72, 88]]],
   },
 };
 
-export function cloneConfig(config) {
-  return structuredClone(config);
-}
+export function cloneConfig(config) { return structuredClone(config); }
 
-export function upgradeImportedConfig(source) {
-  if (source?.schema_version !== 1) return source;
-
-  const next = cloneConfig(source);
-  next.schema_version = 2;
-  if (next.design?.type === "marl") {
-    delete next.design.config.scho_axis;
-    const agents = next.design.config.agents;
-    if (agents.length === 2 && agents[0].name === "secondo" && agents[1].name === "primo") {
-      const names = { secondo: "agent_1", primo: "agent_2" };
-      agents.forEach((agent) => { agent.name = names[agent.name]; });
-      next.design.config.sustain_owner = names[next.design.config.sustain_owner]
-        ?? next.design.config.sustain_owner;
-    }
-  }
+export function withUiDefaults(config) {
+  const next = cloneConfig(config);
+  next.experiment.description ??= "";
+  next.experiment.tags ??= [];
+  next.design.config ??= {};
+  next.algorithm.preset ??= "default";
+  next.algorithm.parameters ??= {};
+  next.run.evaluation ??= { enabled: true, frequency: 50000, episodes: 1, seed_offset: 10000 };
+  next.run.evaluation.seed_offset ??= 10000;
+  next.run.video ??= { enabled: false, frequency: 250000, camera: "piano/back", width: 640, height: 480 };
+  next.run.compute ??= { device: "auto", num_workers: 1, num_envs: 1 };
+  next.run.tracking ??= { provider: "none", mode: "disabled", project: null, group: null, name: null, tags: [] };
+  next.run.tracking.project ??= null;
+  next.run.tracking.group ??= null;
+  next.run.tracking.name ??= null;
+  next.run.tracking.tags ??= [];
+  next.run.output ??= { root: "runs" };
   return next;
 }
 
@@ -164,279 +63,136 @@ export function setAtPath(source, path, value) {
   const next = cloneConfig(source);
   const parts = Array.isArray(path) ? path : path.split(".");
   let cursor = next;
-  for (let index = 0; index < parts.length - 1; index += 1) {
-    cursor = cursor[parts[index]];
-  }
+  for (let index = 0; index < parts.length - 1; index += 1) cursor = cursor[parts[index]];
   cursor[parts.at(-1)] = value;
   return next;
 }
 
-export function getSafetyPaperBudget(config, costType = config.design.config.primary_cost.type) {
-  if (config.task.music.source !== "repertoire") return null;
-  const horizon = SAFETY_SONG_HORIZONS[config.task.music.piece];
-  if (!horizon) return null;
-  const rate = ["range_excess", "power_excess"].includes(costType) ? 0.02 : 0.05;
-  return { horizon, rate, value: Number((horizon * rate).toFixed(2)) };
+export function parseIntegerList(value) {
+  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean).map(Number)
+    .filter((item) => Number.isInteger(item) && item >= 0))];
 }
 
-export function applyMusicSelection(source, changes) {
-  const next = cloneConfig(source);
-  Object.assign(next.task.music, changes);
-  if (
-    next.design.type === "safety"
-    && next.design.config.primary_cost.budget_mode === "paper_default"
-  ) {
-    const budget = getSafetyPaperBudget(next);
-    if (budget) next.design.config.primary_cost.episodic_budget = budget.value;
-    else next.design.config.primary_cost.budget_mode = "custom";
-  }
-  return next;
-}
-
-export function applyTrackingProvider(source, provider) {
-  const next = cloneConfig(source);
-  next.tracking.provider = provider;
-  if (provider === "none") next.tracking.mode = "disabled";
-  if (provider === "wandb" && next.tracking.mode === "disabled") {
-    next.tracking.mode = "offline";
-  }
-  return next;
+export function parseStringList(value) {
+  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
 }
 
 function distributeHands(handIds, numAgents) {
   const assignments = Array.from({ length: numAgents }, () => []);
   handIds.forEach((handId, index) => {
-    const agentIndex = Math.min(
-      numAgents - 1,
-      Math.floor((index * numAgents) / handIds.length),
-    );
-    assignments[agentIndex].push(handId);
+    assignments[Math.min(numAgents - 1, Math.floor((index * numAgents) / handIds.length))].push(handId);
   });
   return assignments;
 }
 
-function rebalanceMarl(config) {
-  if (config.design.type !== "marl") return;
+function rangeForHands(hands, handIds) {
+  const ranges = handIds.map((id) => hands.find((hand) => hand.id === id).initial_key_range);
+  return [Math.min(...ranges.map((range) => range[0])), Math.max(...ranges.map((range) => range[1]))];
+}
 
-  const marl = config.design.config;
-  const handIds = config.task.embodiment.hands.map((hand) => hand.id);
-  const numAgents = Math.min(Math.max(1, marl.num_agents), handIds.length);
-  const assignments = distributeHands(handIds, numAgents);
-  const previous = marl.agents;
-
-  marl.num_agents = numAgents;
-  marl.assignment = "balanced";
-  marl.agents = assignments.map((ownedHands, index) => {
-    const existing = previous[index];
-    const ranges = ownedHands.map(
-      (handId) => config.task.embodiment.hands.find((hand) => hand.id === handId).initial_key_range,
-    );
-    const keyRange = [
-      Math.min(...ranges.map((range) => range[0])),
-      Math.max(...ranges.map((range) => range[1])),
-    ];
+function rebalanceMarl(next, numAgents) {
+  const hands = next.task.embodiment.hands;
+  const count = Math.min(Math.max(1, Number(numAgents)), hands.length);
+  const previous = next.design.config.agents ?? [];
+  const assignments = distributeHands(hands.map((hand) => hand.id), count);
+  next.design.config.num_agents = count;
+  next.design.config.assignment = "explicit";
+  next.design.config.agents = assignments.map((handIds, index) => {
+    const old = previous[index];
+    const range = rangeForHands(hands, handIds);
     return {
-      name: existing?.name ?? `agent_${index + 1}`,
-      hand_ids: ownedHands,
-      action_key_range: keyRange,
-      observation_key_range: keyRange,
-      visible_teammate_hands: "boundary",
+      name: old?.name ?? `agent_${index + 1}`,
+      hand_ids: handIds,
+      action_key_range: old?.action_key_range ?? range,
+      observation_key_range: old?.observation_key_range ?? range,
+      visible_teammate_hands: old?.visible_teammate_hands ?? "boundary",
     };
   });
-
-  if (!marl.agents.some((agent) => agent.name === marl.sustain_owner)) {
-    marl.sustain_owner = marl.agents.at(-1).name;
+  if (!next.design.config.agents.some((agent) => agent.name === next.design.config.sustain_owner)) {
+    next.design.config.sustain_owner = next.design.config.agents[0].name;
   }
 }
 
-export function applyHandLayout(source, numHands, mobility) {
-  if (numHands === source.task.embodiment.num_hands && mobility === source.task.embodiment.mobility) {
-    return cloneConfig(source);
-  }
+export function makeCustomMarl(source) {
   const next = cloneConfig(source);
+  const layout = HAND_LAYOUTS[4];
+  next.task = {
+    source: "custom",
+    music: { source: "repertoire", piece: "WinterWind", midi_path: null, trim_silence: true, stretch_factor: 1, shift_factor: 0, fingering_mode: "optimal_transport" },
+    embodiment: {
+      num_hands: 4,
+      layout_preset: layout.preset,
+      mobility: "custom",
+      hands: layout.hands.map(([name, side, initial_key_range], id) => ({ id, name, side, mobile: true, initial_key_range })),
+    },
+  };
+  next.design.config = {
+    num_agents: 2,
+    assignment: "explicit",
+    sustain_owner: "agent_1",
+    agents: [],
+    coordination: { inter_agent_collision_penalty_coefficient: 0.1 },
+  };
+  rebalanceMarl(next, 2);
+  return next;
+}
+
+export function makeRegisteredTask(source, environment, track = source.design.type) {
+  const next = cloneConfig(source);
+  next.task = { source: "registered", environment_id: environment.id };
+  if (track === "safety") next.design.config = { group: environment.group, task_index: environment.task_index };
+  else if (track === "robust") next.design.config = { evaluation_protocol: "matched" };
+  else if (track === "marl") next.design.config = { assignment: "territorial" };
+  else next.design = { type: "standard" };
+  return next;
+}
+
+export function applyHandLayout(source, numHands) {
+  const next = cloneConfig(source);
+  if (next.task.source !== "custom" || !HAND_LAYOUTS[numHands]) return next;
   const layout = HAND_LAYOUTS[numHands];
-  const isStatic = mobility === "static_partition";
-  const previousHands = source.task.embodiment.hands;
-
-  next.task.embodiment.num_hands = numHands;
-  next.task.embodiment.mobility = mobility;
-  next.task.embodiment.layout_preset = isStatic
-    ? `${layout.name}StaticPartition`
-    : layout.name;
-  next.task.embodiment.hands = layout.hands.map(([name, side, range], id) => ({
-    id,
-    name,
-    side,
-    mobile: isStatic ? false : mobility === "custom"
-      ? (previousHands.find((hand) => hand.name === name)?.mobile ?? id % 2 === 0)
-      : true,
-    initial_key_range: [...range],
-  }));
-  if (numHands !== 2) {
-    next.task.music.fingering_mode = "optimal_transport";
-  }
-  if (next.design.type === "safety") {
-    const validIds = new Set(next.task.embodiment.hands.map((hand) => hand.id));
-    const cost = next.design.config.primary_cost;
-    cost.target_hand_ids = cost.target_hand_ids.filter((id) => validIds.has(id));
-    if (!cost.target_hand_ids.length) cost.target_hand_ids = [...validIds];
-  }
-  rebalanceMarl(next);
-  return next;
-}
-
-export function applyStandardVariant(source, variant) {
-  if (source.design.type !== "standard") return cloneConfig(source);
-  if (source.design.config.benchmark_variant === variant) return cloneConfig(source);
-  const mobility = {
-    general: "unrestricted",
+  next.task.embodiment = {
+    num_hands: numHands,
+    layout_preset: layout.preset,
     mobility: "custom",
-    restricted_range: "static_partition",
-  }[variant];
-  const next = applyHandLayout(
-    source,
-    source.task.embodiment.num_hands,
-    mobility,
-  );
-  if (variant === "mobility" && source.design.config.benchmark_variant !== "mobility") {
-    next.task.embodiment.hands.forEach((hand, index) => { hand.mobile = index % 2 === 0; });
-  }
-  next.design.config.benchmark_variant = variant;
-  return next;
-}
-
-export function setStandardHandMobile(source, handId, mobile) {
-  const next = cloneConfig(source);
-  if (next.design.type !== "standard" || next.design.config.benchmark_variant !== "mobility") return next;
-  next.task.embodiment.hands[handId].mobile = mobile;
-  next.task.embodiment.mobility = "custom";
+    hands: layout.hands.map(([name, side, initial_key_range], id) => ({ id, name, side, mobile: true, initial_key_range })),
+  };
+  rebalanceMarl(next, Math.min(next.design.config.num_agents, numHands));
   return next;
 }
 
 export function applyMarlAgentCount(source, numAgents) {
   const next = cloneConfig(source);
-  if (next.design.type !== "marl") return next;
-  if (numAgents === next.design.config.num_agents) return next;
-  next.design.config.num_agents = Math.min(
-    Math.max(1, numAgents),
-    next.task.embodiment.num_hands,
-  );
-  rebalanceMarl(next);
+  if (next.design.type === "marl" && next.task.source === "custom") rebalanceMarl(next, numAgents);
   return next;
 }
 
 export function assignMarlHandOwner(source, handId, targetAgentIndex) {
   const next = cloneConfig(source);
-  if (next.design.type !== "marl") return next;
   const agents = next.design.config.agents;
   const sourceIndex = agents.findIndex((agent) => agent.hand_ids.includes(handId));
   if (sourceIndex < 0 || sourceIndex === targetAgentIndex) return next;
-
-  const sourceAgent = agents[sourceIndex];
-  const targetAgent = agents[targetAgentIndex];
-  if (sourceAgent.hand_ids.length === 1) {
-    const swapHand = targetAgent.hand_ids[0];
-    targetAgent.hand_ids = targetAgent.hand_ids.filter((id) => id !== swapHand);
-    targetAgent.hand_ids.push(handId);
-    sourceAgent.hand_ids = [swapHand];
-  } else {
-    sourceAgent.hand_ids = sourceAgent.hand_ids.filter((id) => id !== handId);
-    targetAgent.hand_ids.push(handId);
+  if (agents[sourceIndex].hand_ids.length === 1) {
+    const swap = agents[targetAgentIndex].hand_ids[0];
+    agents[targetAgentIndex].hand_ids = agents[targetAgentIndex].hand_ids.filter((id) => id !== swap);
+    agents[sourceIndex].hand_ids.push(swap);
   }
+  agents[sourceIndex].hand_ids = agents[sourceIndex].hand_ids.filter((id) => id !== handId);
+  agents[targetAgentIndex].hand_ids.push(handId);
   agents.forEach((agent) => agent.hand_ids.sort((left, right) => left - right));
-  agents.forEach((agent) => {
-    if (Array.isArray(agent.visible_teammate_hands)) {
-      agent.visible_teammate_hands = agent.visible_teammate_hands.filter(
-        (id) => !agent.hand_ids.includes(id),
-      );
-    }
-  });
-  next.design.config.assignment = "explicit";
   return next;
 }
 
-function robustMagnitude(target, preset, distribution) {
-  const channel = ROBUST_CHANNELS[target];
-  const level = channel.levels[preset === "custom" ? "medium" : preset];
-  if (target === "initial_hand_pose") return { ...level };
-  if (distribution === "bounded_uniform") return { low: -level, high: level };
-  return { value: level };
-}
-
-export function addRobustChannel(source, target) {
+export function applyTrackingProvider(source, provider) {
   const next = cloneConfig(source);
-  if (next.design.type !== "robust") return next;
-  if (next.design.config.channels.some((channel) => channel.target === target)) return next;
-  const metadata = ROBUST_CHANNELS[target];
-  next.design.config.channels.push({
-    target,
-    distribution: "gaussian",
-    preset: "medium",
-    frequency: metadata.frequency,
-    magnitude: robustMagnitude(target, "medium", "gaussian"),
-  });
+  next.run.tracking.provider = provider;
+  next.run.tracking.mode = provider === "none" ? "disabled" :
+    next.run.tracking.mode === "disabled" ? "offline" : next.run.tracking.mode;
   return next;
 }
 
-export function removeRobustChannel(source, target) {
+export function selectAlgorithm(source, name) {
   const next = cloneConfig(source);
-  if (next.design.type !== "robust") return next;
-  if (next.design.config.channels.length === 1) return next;
-  next.design.config.channels = next.design.config.channels.filter(
-    (channel) => channel.target !== target,
-  );
+  next.algorithm = { name, preset: "default", parameters: {} };
   return next;
-}
-
-export function updateRobustChannel(source, index, changes) {
-  const next = cloneConfig(source);
-  if (next.design.type !== "robust") return next;
-  const channel = next.design.config.channels[index];
-  if (Object.entries(changes).every(([key, value]) => channel[key] === value)) return next;
-  const previousMagnitude = channel.magnitude;
-  Object.assign(channel, changes);
-  if ("distribution" in changes && channel.preset === "custom" && channel.target === "initial_hand_pose") {
-    return next;
-  }
-  if ("distribution" in changes && channel.preset === "custom") {
-    const level = previousMagnitude.value ?? Math.max(
-      Math.abs(previousMagnitude.low),
-      Math.abs(previousMagnitude.high),
-    );
-    channel.magnitude = channel.distribution === "bounded_uniform"
-      ? { low: -level, high: level }
-      : { value: level };
-  } else if ("distribution" in changes || ("preset" in changes && channel.preset !== "custom")) {
-    channel.magnitude = robustMagnitude(
-      channel.target,
-      channel.preset,
-      channel.distribution,
-    );
-  }
-  return next;
-}
-
-export function setRobustMagnitude(source, index, key, value) {
-  const next = cloneConfig(source);
-  if (next.design.type !== "robust") return next;
-  const channel = next.design.config.channels[index];
-  channel.preset = "custom";
-  channel.magnitude[key] = value;
-  return next;
-}
-
-export function parseIntegerList(value) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map(Number)
-    .filter(Number.isInteger);
-}
-
-export function parseStringList(value) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 }

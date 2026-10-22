@@ -85,3 +85,33 @@ env.close()
 
 The random policy above is only an interface demonstration. Meaningful musical
 performance requires training a policy with an RL algorithm.
+
+## Configure all four tracks with one JSON format
+
+The optional experiment composer translates one schema-v3 JSON document into
+the existing Standard, Robust, Safe, or Multi-Agent training entrypoint. To
+use the browser interface, start its loopback API from the repository root:
+
+```bash
+python -m omnipiano.experiments serve --allowed-root runs
+```
+
+In a second terminal:
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:5173/`, configure the experiment, and validate the exact
+commands before preparing or launching it. The equivalent command-line flow
+is available without the UI:
+
+```bash
+python -m omnipiano.experiments validate omnipiano/experiments/examples/marl.json
+python -m omnipiano.experiments launch omnipiano/experiments/examples/marl.json --dry-run
+```
+
+See `omnipiano/experiments/README.md` for materialization, launch, status, and
+stop commands. The original per-track trainers remain available unchanged.

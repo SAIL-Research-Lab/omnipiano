@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import standardExample from "../contract/examples/standard.json";
-import robustExample from "../contract/examples/robust.json";
-import safetyExample from "../contract/examples/safety.json";
-import marlExample from "../contract/examples/marl.json";
+import standardExample from "../../omnipiano/experiments/examples/standard.json";
+import robustExample from "../../omnipiano/experiments/examples/robust.json";
+import safetyExample from "../../omnipiano/experiments/examples/safety.json";
+import marlExample from "../../omnipiano/experiments/examples/marl.json";
 
-import { cloneConfig, setAtPath, STEPS, TRACKS, upgradeImportedConfig } from "./config";
+import { getCatalog, getEnvironments, getRuns, postConfig, stopRun } from "./api";
+import { cloneConfig, setAtPath, STEPS, TRACKS, withUiDefaults } from "./config";
 import {
   AlgorithmSection,
   DesignSection,
@@ -16,20 +17,14 @@ import {
 } from "./sections";
 import { validateExperiment } from "./validation";
 
-const EXAMPLES = {
-  standard: standardExample,
-  robust: robustExample,
-  safety: safetyExample,
-  marl: marlExample,
-};
+const RAW_EXAMPLES = { standard: standardExample, robust: robustExample, safety: safetyExample, marl: marlExample };
+const EXAMPLES = Object.fromEntries(Object.entries(RAW_EXAMPLES).map(([key, value]) => [key, withUiDefaults(value)]));
 
-function JsonPreview({ config, errors, warnings, collapsed, onToggle, onCopy }) {
+function JsonPreview({ config, errors, collapsed, onToggle, onCopy }) {
   return (
     <aside className={`json-panel ${collapsed ? "json-panel--collapsed" : ""}`}>
       <div className="json-panel__header">
-        <div>
-          <strong>Experiment JSON</strong>
-        </div>
+        <strong>Unified JSON · v3</strong>
         <div className="json-panel__actions">
           <button type="button" onClick={onCopy}>Copy</button>
           <button type="button" onClick={onToggle}>{collapsed ? "Show" : "Hide"}</button>
@@ -39,11 +34,7 @@ function JsonPreview({ config, errors, warnings, collapsed, onToggle, onCopy }) 
         <>
           <div className={`schema-status ${errors.length ? "schema-status--error" : ""}`}>
             <span>{errors.length ? "!" : "✓"}</span>
-            {errors.length
-              ? `${errors.length} configuration issue${errors.length === 1 ? "" : "s"}`
-              : warnings.length
-                ? `Valid with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}`
-                : "Configuration valid"}
+            {errors.length ? `${errors.length} JSON issue${errors.length === 1 ? "" : "s"}` : "Schema valid"}
           </div>
           <pre>{JSON.stringify(config, null, 2)}</pre>
         </>
@@ -52,28 +43,14 @@ function JsonPreview({ config, errors, warnings, collapsed, onToggle, onCopy }) 
   );
 }
 
-function StepContent({ step, config, track, onTrack, set, update, panel, errors, warnings, onCopy, onDownload, copyLabel }) {
-  if (step === "experiment") {
-    return <ExperimentSection config={config} track={track} onTrack={onTrack} set={set} panel={panel} />;
-  }
-  if (step === "task") return <TaskSection config={config} set={set} update={update} panel={panel} />;
-  if (step === "design") {
-    return <DesignSection config={config} set={set} update={update} panel={panel} />;
-  }
-  if (step === "algorithm") return <AlgorithmSection config={config} update={update} panel={panel} />;
-  if (step === "run") {
-    return <RunSection config={config} set={set} update={update} panel={panel} />;
-  }
-  return (
-    <ReviewSection
-      config={config}
-      errors={errors}
-      warnings={warnings}
-      onCopy={onCopy}
-      onDownload={onDownload}
-      copyLabel={copyLabel}
-    />
-  );
+function StepContent(props) {
+  const { step } = props;
+  if (step === "experiment") return <ExperimentSection {...props} />;
+  if (step === "task") return <TaskSection {...props} />;
+  if (step === "design") return <DesignSection {...props} />;
+  if (step === "algorithm") return <AlgorithmSection {...props} />;
+  if (step === "run") return <RunSection {...props} />;
+  return <ReviewSection {...props} />;
 }
 
 export default function App() {
@@ -82,7 +59,10 @@ export default function App() {
   const [advancedPanels, setAdvancedPanels] = useState({});
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [copyLabel, setCopyLabel] = useState("Copy JSON");
-  const [importMessage, setImportMessage] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [catalog, setCatalog] = useState(null);
+  const [environments, setEnvironments] = useState({});
+  const [backend, setBackend] = useState({ type: "idle", message: "", busy: false, runs: [] });
   const fileInput = useRef(null);
   const [configs, setConfigs] = useState(() => Object.fromEntries(
     Object.entries(EXAMPLES).map(([key, value]) => [key, cloneConfig(value)]),
@@ -92,111 +72,110 @@ export default function App() {
   const validation = useMemo(() => validateExperiment(config), [config]);
   const { errors, warnings } = validation;
   const trackInfo = TRACKS.find((item) => item.id === track);
+  const algorithms = catalog?.tracks?.[track]?.algorithms ?? [{
+    name: config.algorithm.name,
+    label: config.algorithm.name.toUpperCase(),
+    configurable_parameters: Object.keys(config.algorithm.parameters),
+  }];
+
   const panel = (id) => {
     const key = `${track}:${id}`;
     return {
       advanced: Boolean(advancedPanels[key]),
-      onToggleAdvanced: () => setAdvancedPanels((previous) => ({
-        ...previous,
-        [key]: !previous[key],
-      })),
+      onToggleAdvanced: () => setAdvancedPanels((previous) => ({ ...previous, [key]: !previous[key] })),
     };
   };
+
+  useEffect(() => {
+    getCatalog().then(setCatalog).catch(() => setBackend((previous) => ({
+      ...previous,
+      type: "error",
+      message: "Local API unavailable. Start it before backend validation or launch.",
+    })));
+  }, []);
+
+  useEffect(() => {
+    getEnvironments(track).then((payload) => setEnvironments((previous) => ({
+      ...previous,
+      [track]: payload.environments,
+    }))).catch(() => {});
+  }, [track]);
 
   useEffect(() => {
     let frame = null;
     const updateActiveStep = () => {
       const anchor = Math.min(180, window.innerHeight * 0.25);
-      const sections = STEPS
-        .map((step) => document.getElementById(`step-${step.id}`))
-        .filter(Boolean);
+      const sections = STEPS.map((step) => document.getElementById(`step-${step.id}`)).filter(Boolean);
       let current = sections[0];
-      sections.forEach((section) => {
-        if (section.getBoundingClientRect().top <= anchor) current = section;
-      });
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
-        current = sections.at(-1);
-      }
+      sections.forEach((section) => { if (section.getBoundingClientRect().top <= anchor) current = section; });
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) current = sections.at(-1);
       if (current) setActiveStep(current.dataset.step);
     };
-    const scheduleUpdate = () => {
+    const schedule = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(updateActiveStep);
     };
-    updateActiveStep();
-    window.addEventListener("scroll", scheduleUpdate, { passive: true });
-    window.addEventListener("resize", scheduleUpdate);
+    schedule();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
     };
   }, []);
 
   function set(path, value) {
-    setConfigs((previous) => ({
-      ...previous,
-      [track]: setAtPath(previous[track], path, value),
-    }));
-  }
-
-  function update(transform) {
-    setConfigs((previous) => ({
-      ...previous,
-      [track]: transform(previous[track]),
-    }));
+    setConfigs((previous) => ({ ...previous, [track]: setAtPath(previous[track], path, value) }));
+    setBackend({ type: "idle", message: "", busy: false, runs: [] });
   }
 
   function changeTrack(nextTrack) {
     setTrack(nextTrack);
+    setBackend({ type: "idle", message: "", busy: false, runs: [] });
+    setMessage(null);
+  }
+
+  function update(transform) {
+    setConfigs((previous) => ({ ...previous, [track]: transform(previous[track]) }));
+    setBackend({ type: "idle", message: "", busy: false, runs: [] });
   }
 
   function resetTrack() {
-    setConfigs((previous) => ({
-      ...previous,
-      [track]: cloneConfig(EXAMPLES[track]),
-    }));
-    setImportMessage(null);
+    setConfigs((previous) => ({ ...previous, [track]: cloneConfig(EXAMPLES[track]) }));
+    setBackend({ type: "idle", message: "", busy: false, runs: [] });
+    setMessage(null);
   }
 
   async function importJson(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-
     try {
-      const imported = upgradeImportedConfig(JSON.parse(await file.text()));
+      const imported = withUiDefaults(JSON.parse(await file.text()));
       const importedTrack = imported?.design?.type;
-      if (!(importedTrack in EXAMPLES)) {
-        throw new Error("This is not an OmniPiano canonical UI configuration.");
-      }
+      if (!TRACKS.some((item) => item.id === importedTrack)) throw new Error("Not a unified OmniPiano schema-v3 configuration.");
       const result = validateExperiment(imported);
-      if (result.errors.length) {
-        throw new Error(result.errors[0]);
-      }
+      if (result.errors.length) throw new Error(result.errors[0]);
       setConfigs((previous) => ({ ...previous, [importedTrack]: imported }));
       setTrack(importedTrack);
-      setImportMessage({ type: "success", text: `Loaded ${file.name}` });
-    } catch (error) {
-      setImportMessage({ type: "error", text: error.message });
+      setMessage({ type: "success", text: `Loaded ${file.name}` });
+    } catch (reason) {
+      setMessage({ type: "error", text: reason.message });
     }
   }
 
   async function copyJson() {
     try {
-      await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+      await navigator.clipboard.writeText(`${JSON.stringify(config, null, 2)}\n`);
       setCopyLabel("Copied");
       window.setTimeout(() => setCopyLabel("Copy JSON"), 1400);
-    } catch {
-      setCopyLabel("Copy failed");
-    }
+    } catch { setCopyLabel("Copy failed"); }
   }
 
   function downloadJson() {
     if (errors.length) return;
-    const blob = new Blob([`${JSON.stringify(config, null, 2)}\n`], {
-      type: "application/json",
-    });
+    const blob = new Blob([`${JSON.stringify(config, null, 2)}\n`], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -204,6 +183,66 @@ export default function App() {
     anchor.click();
     URL.revokeObjectURL(url);
   }
+
+  async function callBackend(action) {
+    setBackend({ type: "working", message: `${action}…`, busy: true, runs: [] });
+    try {
+      const payload = await postConfig(action, config);
+      let runs = [];
+      if (action === "plan") runs = payload.plan.runs;
+      if (action === "materialize") runs = payload.materialized.runs;
+      if (action === "launch") {
+        const status = await getRuns();
+        runs = status.runs.filter((run) => run.run_id.startsWith(`${config.experiment.name}--`));
+      }
+      setBackend({
+        type: "success",
+        message: action === "plan" ? "Backend validated; launch commands are ready." :
+          action === "materialize" ? "Run directories and manifests prepared." : "Training processes started.",
+        busy: false,
+        runs,
+      });
+    } catch (reason) {
+      setBackend({ type: "error", message: reason.message, busy: false, runs: [] });
+    }
+  }
+
+  async function launch() {
+    if (!window.confirm(`Launch ${config.experiment.seeds.length} run(s) for ${config.experiment.name}?`)) return;
+    await callBackend("launch");
+  }
+
+  async function stop(runId) {
+    try {
+      await stopRun(runId);
+      const status = await getRuns();
+      setBackend((previous) => ({ ...previous, runs: status.runs.filter((run) => run.run_id.startsWith(`${config.experiment.name}--`)) }));
+    } catch (reason) {
+      setBackend({ type: "error", message: reason.message, busy: false, runs: [] });
+    }
+  }
+
+  const sharedProps = {
+    config,
+    track,
+    onTrack: changeTrack,
+    set,
+    update,
+    panel,
+    errors,
+    warnings,
+    algorithms,
+    trackCapability: catalog?.tracks?.[track] ?? null,
+    environments: environments[track] ?? [],
+    backend,
+    onCopy: copyJson,
+    onDownload: downloadJson,
+    onPreview: () => callBackend("plan"),
+    onPrepare: () => callBackend("materialize"),
+    onLaunch: launch,
+    onStop: stop,
+    copyLabel,
+  };
 
   return (
     <div className={`app app--${track}`}>
@@ -213,89 +252,26 @@ export default function App() {
           <span><strong>OmniPiano</strong><small>Experiment Composer</small></span>
         </a>
         <div className="topbar__context">
-          <input
-            ref={fileInput}
-            className="visually-hidden"
-            type="file"
-            accept="application/json,.json"
-            onChange={importJson}
-          />
-          <button className="reset-button" type="button" onClick={() => fileInput.current?.click()}>
-            Import JSON
-          </button>
+          <input ref={fileInput} className="visually-hidden" type="file" accept="application/json,.json" onChange={importJson} />
+          <button className="reset-button" type="button" onClick={() => fileInput.current?.click()}>Import JSON</button>
           <button className="reset-button" type="button" onClick={resetTrack}>Reset track</button>
         </div>
       </header>
-
-      {importMessage && (
-        <div className={`import-message import-message--${importMessage.type}`} role="status">
-          <span>{importMessage.type === "success" ? "✓" : "!"}</span>
-          {importMessage.text}
-          <button type="button" aria-label="Dismiss import message" onClick={() => setImportMessage(null)}>×</button>
-        </div>
-      )}
-
+      {message && <div className={`import-message import-message--${message.type}`} role="status"><span>{message.type === "success" ? "✓" : "!"}</span>{message.text}<button type="button" onClick={() => setMessage(null)}>×</button></div>}
       <div className="workspace" id="top">
         <nav className="step-nav" aria-label="Experiment configuration steps">
-          <div className="step-nav__track">
-            <span className={`track-card__mark track-card__mark--${track}`}>{trackInfo.short}</span>
-            <div><strong>{trackInfo.title}</strong></div>
-          </div>
-          <ol>
-            {STEPS.map((step) => (
-              <li key={step.id}>
-                <a
-                  href={`#step-${step.id}`}
-                  className={activeStep === step.id ? "active" : ""}
-                  aria-current={activeStep === step.id ? "step" : undefined}
-                >
-                  <span>{step.number}</span>
-                  <strong>{step.title}</strong>
-                </a>
-              </li>
-            ))}
-          </ol>
+          <div className="step-nav__track"><span className={`track-card__mark track-card__mark--${track}`}>{trackInfo.short}</span><strong>{trackInfo.title}</strong></div>
+          <ol>{STEPS.map((step) => <li key={step.id}><a href={`#step-${step.id}`} className={activeStep === step.id ? "active" : ""}><span>{step.number}</span><strong>{step.title}</strong></a></li>)}</ol>
         </nav>
-
         <main className="editor">
           {STEPS.map((step) => (
-            <section
-              className="workflow-section"
-              data-step={step.id}
-              id={`step-${step.id}`}
-              aria-labelledby={`step-${step.id}-title`}
-              key={step.id}
-            >
-              <div className="workflow-section__heading">
-                <span>{step.number}</span>
-                <h1 id={`step-${step.id}-title`}>{step.title}</h1>
-              </div>
-              <StepContent
-                step={step.id}
-                config={config}
-                track={track}
-                onTrack={changeTrack}
-                set={set}
-                update={update}
-                panel={panel}
-                errors={errors}
-                warnings={warnings}
-                onCopy={copyJson}
-                onDownload={downloadJson}
-                copyLabel={copyLabel}
-              />
+            <section className="workflow-section" data-step={step.id} id={`step-${step.id}`} key={step.id}>
+              <div className="workflow-section__heading"><span>{step.number}</span><h1>{step.title}</h1></div>
+              <StepContent step={step.id} {...sharedProps} />
             </section>
           ))}
         </main>
-
-        <JsonPreview
-          config={config}
-          errors={errors}
-          warnings={warnings}
-          collapsed={previewCollapsed}
-          onToggle={() => setPreviewCollapsed((value) => !value)}
-          onCopy={copyJson}
-        />
+        <JsonPreview config={config} errors={errors} collapsed={previewCollapsed} onToggle={() => setPreviewCollapsed((value) => !value)} onCopy={copyJson} />
       </div>
     </div>
   );

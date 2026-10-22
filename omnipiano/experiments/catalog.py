@@ -372,7 +372,7 @@ def get_track_capability(track: str) -> TrackCapability:
 def catalog_dict(
     *, track: Optional[str] = None, include_unavailable: bool = False
 ) -> dict[str, Any]:
-    """Return a stable JSON-ready catalog for CLI and the future local API."""
+    """Return the stable JSON-ready catalog shared by the CLI, API, and UI."""
     selected = (
         (get_track_capability(track),)
         if track is not None

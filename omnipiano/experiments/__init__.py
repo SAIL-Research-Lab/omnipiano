@@ -1,8 +1,8 @@
-"""Backend-neutral experiment requests and deterministic run planning.
+"""Unified requests, deterministic planning, and explicit local execution.
 
-This package is an additive control plane. Validation and planning do not load
-training frameworks; explicit binding lazily inspects existing backend metadata
-but never modifies a backend, writes run artifacts, or starts training.
+Validation, planning, and binding stay side-effect free. Materialization and
+launch are separate opt-in operations implemented without modifying any of the
+four existing training backends.
 """
 
 from omnipiano.experiments.adapters import AdapterError
@@ -37,6 +37,16 @@ from omnipiano.experiments.schema import (
     parse_request,
     validate_document,
 )
+from omnipiano.experiments.execution import (
+    ExecutionError,
+    MaterializedBundle,
+    MaterializedRun,
+    discover_runs,
+    launch_bundle,
+    materialize_bundle,
+    process_status,
+    stop_process,
+)
 
 __all__ = [
     "AlgorithmRequest",
@@ -48,6 +58,9 @@ __all__ = [
     "ExperimentMetadata",
     "ExperimentRequest",
     "ExperimentValidationError",
+    "ExecutionError",
+    "MaterializedBundle",
+    "MaterializedRun",
     "PlanBundle",
     "ResolvedExperiment",
     "RunPlan",
@@ -58,9 +71,14 @@ __all__ = [
     "compile_plan",
     "catalog_dict",
     "get_track_capability",
+    "discover_runs",
+    "launch_bundle",
     "load_request",
     "parse_request",
+    "materialize_bundle",
+    "process_status",
     "resolve_experiment",
     "validate_document",
     "validate_request_capabilities",
+    "stop_process",
 ]

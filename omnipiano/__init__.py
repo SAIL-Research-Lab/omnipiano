@@ -1,4 +1,11 @@
-"""OmniPiano: A Safety and Robustness Benchmark for Robot Piano Playing."""
+"""OmniPiano: a benchmark for dexterous robot piano playing.
+
+Environment registration is lazy so dependency-light tooling such as the
+experiment composer can import ``omnipiano.experiments`` without initializing
+MuJoCo or a graphics backend.  Existing public calls (``omnipiano.make`` and
+``omnipiano.register``) retain the same interface and trigger registration on
+first access.
+"""
 
 import os as _os
 import sys as _sys
@@ -9,13 +16,8 @@ _envs_dir = _os.path.join(_os.path.dirname(__file__), "envs")
 if _envs_dir not in _sys.path:
     _sys.path.insert(0, _envs_dir)
 
-from omnipiano.envs.registration import make, register  # noqa: E402
-
-# Importing envs triggers all register() calls in envs/__init__.py
-from omnipiano import envs  # noqa: E402, F401
-
 # ---------------------------------------------------------------------------
-# Multi-agent entrypoints, exposed lazily (PEP 562).
+# Environment entrypoints, exposed lazily (PEP 562).
 #
 # ``envs/registration.make()`` tells the user to call
 # ``omnipiano.make_parallel(...)`` when it receives a ``-MA-`` id, and
@@ -31,9 +33,15 @@ _MA_LAZY_ATTRS = {
     "AGENT_ASSIGNMENTS": "omnipiano.multiagent",
 }
 
+_LAZY_ATTRS = {
+    "make": "omnipiano.envs.registration",
+    "register": "omnipiano.envs.registration",
+    **_MA_LAZY_ATTRS,
+}
+
 
 def __getattr__(name):
-    module_path = _MA_LAZY_ATTRS.get(name)
+    module_path = _LAZY_ATTRS.get(name)
     if module_path is None:
         raise AttributeError(f"module 'omnipiano' has no attribute {name!r}")
     import importlib
@@ -41,6 +49,8 @@ def __getattr__(name):
     try:
         module = importlib.import_module(module_path)
     except ImportError as exc:
+        if name not in _MA_LAZY_ATTRS:
+            raise
         raise ImportError(
             f"omnipiano.{name} requires the multi-agent extra: "
             f"pip install -e '.[marl]'"
@@ -51,4 +61,4 @@ def __getattr__(name):
 
 
 def __dir__():
-    return sorted(set(globals()) | set(_MA_LAZY_ATTRS))
+    return sorted(set(globals()) | set(_LAZY_ATTRS))

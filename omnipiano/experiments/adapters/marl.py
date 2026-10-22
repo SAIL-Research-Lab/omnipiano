@@ -146,9 +146,9 @@ def bind_run(resolved: ResolvedExperiment, run: RunPlan) -> RunPlan:
             raise AdapterError(
                 "the MARL registered-task adapter cannot apply task.overrides"
             )
-        from omnipiano.multiagent import list_parallel_envs
+        from omnipiano.experiments.environments import known_marl_environment_ids
 
-        if task["environment_id"] not in set(list_parallel_envs()):
+        if task["environment_id"] not in known_marl_environment_ids():
             raise AdapterError(
                 f"{task['environment_id']!r} is not a registered MARL environment"
             )

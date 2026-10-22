@@ -16,6 +16,13 @@ from omnipiano.experiments.catalog import (
 )
 from omnipiano.experiments.adapters import AdapterError
 from omnipiano.experiments.compiler import bind_plan, compile_plan
+from omnipiano.experiments.execution import (
+    ExecutionError,
+    discover_runs,
+    launch_bundle,
+    materialize_bundle,
+    stop_process,
+)
 from omnipiano.experiments.schema import ExperimentValidationError, load_request
 
 
@@ -50,12 +57,72 @@ def _parser() -> argparse.ArgumentParser:
     bind.add_argument("config", type=Path)
     bind.add_argument("--output", type=Path, default=None)
     bind.add_argument("--compact", action="store_true")
+
+    for name, help_text in (
+        ("materialize", "write backend artifacts and safe launch manifests"),
+        ("launch", "materialize and start every seed as a detached process"),
+    ):
+        command = subparsers.add_parser(name, help=help_text)
+        command.add_argument("config", type=Path)
+        command.add_argument(
+            "--allowed-root",
+            type=Path,
+            default=None,
+            help="explicit output containment root; defaults to the configured root inside the repository",
+        )
+        command.add_argument("--dry-run", action="store_true")
+        command.add_argument("--compact", action="store_true")
+
+    status = subparsers.add_parser("status", help="list prepared and launched runs")
+    status.add_argument("--root", type=Path, default=Path("runs"))
+    status.add_argument("--compact", action="store_true")
+
+    stop = subparsers.add_parser("stop", help="request a clean stop for one run")
+    stop.add_argument("process", type=Path, help="path to a run's .omnipiano/process.json")
+    stop.add_argument("--compact", action="store_true")
+
+    serve = subparsers.add_parser("serve", help="start the loopback-only local JSON API")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument("--allowed-root", type=Path, default=Path("runs"))
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "serve":
+            from omnipiano.experiments.api import ApiRequestError, serve
+
+            try:
+                serve(host=args.host, port=args.port, allowed_root=args.allowed_root)
+            except ApiRequestError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+            return 0
+
+        if args.command == "status":
+            print(
+                json.dumps(
+                    {"runs": discover_runs(args.root)},
+                    indent=None if args.compact else 2,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+
+        if args.command == "stop":
+            print(
+                json.dumps(
+                    stop_process(args.process),
+                    indent=None if args.compact else 2,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+
         if args.command == "catalog":
             indent = None if args.compact else 2
             print(
@@ -80,6 +147,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
+        if args.command in {"materialize", "launch"}:
+            materialized = materialize_bundle(
+                bind_plan(request),
+                allowed_root=args.allowed_root,
+                dry_run=args.dry_run,
+            )
+            payload = (
+                launch_bundle(materialized, dry_run=args.dry_run)
+                if args.command == "launch"
+                else materialized.to_dict()
+            )
+            print(
+                json.dumps(
+                    payload,
+                    indent=None if args.compact else 2,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+
         bundle = bind_plan(request) if args.command == "bind" else compile_plan(request)
         indent = None if args.compact else 2
         rendered = json.dumps(
@@ -92,7 +180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output.write_text(rendered + "\n", encoding="utf-8")
             print(f"WROTE: {args.output}")
         return 0
-    except (ExperimentValidationError, CapabilityError, AdapterError) as exc:
+    except (ExperimentValidationError, CapabilityError, AdapterError, ExecutionError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
 

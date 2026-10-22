@@ -49,9 +49,11 @@ def require_registered_task(document: Mapping[str, Any], *, track: str) -> str:
 
 
 def require_single_agent_environment(env_id: str, *, track: str) -> None:
-    from omnipiano.envs.registration import _registry
+    from omnipiano.experiments.environments import (
+        known_single_agent_environment_ids,
+    )
 
-    if env_id not in _registry:
+    if env_id not in known_single_agent_environment_ids():
         raise AdapterError(
             f"{env_id!r} is not registered for the current {track} backend"
         )

@@ -1,63 +1,81 @@
 # Unified experiment control plane
 
-`omnipiano.experiments` is an additive, backend-neutral layer. It validates a
-single versioned JSON format and expands its seed list into deterministic run
-plans. It does not import a training backend or launch a process.
+`omnipiano.experiments` is an additive control plane over the four existing
+training backends. It gives Standard, Robust, Safe, and Multi-Agent RL one
+versioned JSON contract without changing their trainers.
 
-Validate an example:
+The pipeline is deliberately split into inspectable stages:
+
+```text
+schema-v3 JSON -> validate -> resolve seeds -> bind backend -> materialize -> launch
+```
+
+## Command line
+
+Use any file in `examples/` as a starting point:
 
 ```bash
+# Structural and capability validation.
 python -m omnipiano.experiments validate \
   omnipiano/experiments/examples/marl.json
-```
 
-Preview resolved defaults and seed fan-out:
-
-```bash
+# Resolved defaults and one run per seed, still backend-neutral.
 python -m omnipiano.experiments plan \
   omnipiano/experiments/examples/marl.json
-```
 
-Bind the same plan to the existing backend CLI without launching it:
-
-```bash
+# Exact existing-backend commands, without writes or processes.
 python -m omnipiano.experiments bind \
   omnipiano/experiments/examples/marl.json
+
+# Preview paths/artifacts, then prepare them.
+python -m omnipiano.experiments materialize \
+  omnipiano/experiments/examples/marl.json --dry-run
+python -m omnipiano.experiments materialize \
+  omnipiano/experiments/examples/marl.json
+
+# Preview, then start detached training processes.
+python -m omnipiano.experiments launch \
+  omnipiano/experiments/examples/marl.json --dry-run
+python -m omnipiano.experiments launch \
+  omnipiano/experiments/examples/marl.json
+
+python -m omnipiano.experiments status --root runs
+python -m omnipiano.experiments stop \
+  runs/EXPERIMENT/RUN/.omnipiano/process.json
 ```
 
-Inspect the capabilities exposed by the current repository:
+`catalog` reports only algorithms the current backend can actually bind;
+unfinished declarations are opt-in:
 
 ```bash
 python -m omnipiano.experiments catalog
 python -m omnipiano.experiments catalog --track marl --include-unavailable
 ```
 
-The catalog lists only current backend algorithms as selectable; declared but unfinished
-algorithms such as MAT and MASAC are visible only with `--include-unavailable`.
+## Local UI and API
 
-The backend-neutral `plan` deliberately contains:
+Start the loopback-only API from the repository root:
 
-```json
-"launch": {
-  "status": "unbound",
-  "backend": null,
-  "command": [],
-  "environment": {},
-  "artifacts": {}
-}
+```bash
+python -m omnipiano.experiments serve --allowed-root runs
 ```
 
-The `bind` command fills those fields with an exact existing backend command.
-It remains side-effect free: it does not write generated backend artifacts,
-create run directories, import a trainer, or execute a subprocess. A MARL
-custom task carries its generated schema-v2 JSON inline under
-`launch.artifacts`; explicit materialization and execution belong to the next
-stage. Existing Standard, Robust, Safety, and MARL entrypoints are unchanged.
-The added `launch.artifacts` field makes this plan format version 2; the user
-request schema remains version 3.
+Then start the Vite UI in another terminal (see `ui/README.md`). The browser
+can validate and preview freely, but asks for confirmation before launching.
 
-The canonical schema is `contract/experiment-v3.schema.json`. A task can be an
-existing registered environment or a custom task description. Track-specific
-capability checks live in `catalog.py`, not in the shared structural schema.
-Backend-specific parameter and environment checks are enforced by the four
-track adapters. Unsupported requests fail closed instead of being ignored.
+## Safety properties
+
+- all backend commands come from repository-owned adapters;
+- subprocesses receive an argument vector with `shell=False`;
+- generated files and runs are confined to the configured allowed root;
+- materialization never overwrites content it did not create;
+- every run records its command, environment, PID, and logs under
+  `.omnipiano/`;
+- duplicate launch attempts fail closed;
+- stopping checks PID identity before sending `SIGTERM`;
+- the HTTP service binds only to loopback and rejects non-loopback origins.
+
+The canonical request schema is
+`contract/experiment-v3.schema.json`. Backend-specific representability is
+checked by `adapters/`, while `catalog.py` is the shared capability source of
+truth. Existing backend entrypoints remain directly usable and unchanged.
