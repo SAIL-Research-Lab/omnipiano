@@ -111,11 +111,12 @@ test("advanced algorithm settings start with an editable reference template", ()
     update: noop,
     panel: (id) => panel(id, ["algorithm"]),
   }));
-  assert.match(html, /Editable parameters/);
-  assert.match(html, /&quot;learning_rate&quot;: 0.0003/);
-  assert.match(html, /&quot;buffer_size&quot;: 1000000/);
-  assert.match(html, /&quot;net_arch&quot;:/);
-  assert.doesNotMatch(html, /Reference values|Allowed keys/);
+  assert.match(html, />Parameters</);
+  assert.match(html, /aria-label="learning_rate" value="0.0003"/);
+  assert.match(html, /aria-label="buffer_size" value="1000000"/);
+  assert.match(html, /aria-label="net_arch" value="\[256,256\]"/);
+  assert.equal((html.match(/class="parameter-json"/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /Editable parameters|Read-only parameters|Reference values|Allowed keys/);
 });
 
 test("unsupported Safe RL profiles render as read-only parameters", () => {
@@ -133,9 +134,10 @@ test("unsupported Safe RL profiles render as read-only parameters", () => {
     update: noop,
     panel: (id) => panel(id, ["algorithm"]),
   }));
-  assert.match(html, /Read-only parameters/);
-  assert.doesNotMatch(html, /Editable parameters/);
-  assert.match(html, /readOnly=""/);
+  assert.match(html, />Parameters</);
+  assert.match(html, /parameter-json__readonly/);
+  assert.doesNotMatch(html, /parameter-json__input|Editable parameters|Read-only parameters/);
+  assert.equal((html.match(/class="parameter-json"/g) ?? []).length, 1);
   for (const name of ["algo_cfgs", "update_iters", "target_kl", "kappa", "penalty_coef", "model_cfgs", "actor", "critic"]) {
     assert.match(html, new RegExp(name));
   }

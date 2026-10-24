@@ -13,10 +13,10 @@ import {
   applyHandLayout,
   applyTrackingProvider,
   makeCustomMarl,
+  parameterDisplayTemplate,
   makeRegisteredTask,
   parameterTemplate,
   parseIntegerList,
-  readOnlyParameterTemplate,
   REPERTOIRE,
   selectAlgorithm,
   TRACKS,
@@ -159,51 +159,68 @@ export function DesignSection({ config, environments, set, update, panel }) {
   return <Section title="Standard task"><div className="inline-callout field--wide">The registered environment fully defines the nominal control task.</div></Section>;
 }
 
-function ParameterEditor({ parameters, allowed, template, readOnlyTemplate, onChange }) {
-  const hasOverrides = Object.keys(parameters).length > 0;
-  const templateText = JSON.stringify(template, null, 2);
-  const serialized = JSON.stringify(hasOverrides ? parameters : template, null, 2);
-  const readOnlyText = JSON.stringify(readOnlyTemplate, null, 2);
+function ParameterValue({ name, value, onCommit, comma }) {
+  const serialized = JSON.stringify(value);
   const [draft, setDraft] = useState(serialized);
   const [error, setError] = useState("");
-  useEffect(() => setDraft(serialized), [serialized]);
+  useEffect(() => {
+    setDraft(serialized);
+    setError("");
+  }, [serialized]);
   const commit = () => {
     try {
       const value = JSON.parse(draft);
-      if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("Use a JSON object");
-      const unknown = Object.keys(value).filter((name) => !allowed.includes(name));
-      if (unknown.length) throw new Error(`Unsupported: ${unknown.join(", ")}`);
-      if (!hasOverrides && JSON.stringify(value, null, 2) === templateText) {
-        setError("");
-        return;
-      }
-      onChange(value);
+      onCommit(value);
       setError("");
     } catch (reason) {
-      setError(reason.message);
+      setError(reason instanceof SyntaxError ? "Invalid JSON value" : reason.message);
     }
   };
   return (
+    <div className="parameter-json__editable-row">
+      <span className="parameter-json__key">{JSON.stringify(name)}: </span>
+      <input
+        className="parameter-json__input"
+        aria-label={name}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+      />
+      <span>{comma ? "," : ""}</span>
+      {error && <span className="parameter-json__error">{error}</span>}
+    </div>
+  );
+}
+
+function readOnlyEntry(name, value, comma) {
+  const serialized = JSON.stringify(value, null, 2).replaceAll("\n", "\n  ");
+  return `${JSON.stringify(name)}: ${serialized}${comma ? "," : ""}`;
+}
+
+function ParameterEditor({ parameters, allowed, template, displayTemplate, onChange }) {
+  const entries = Object.entries(displayTemplate);
+  const updateParameter = (name, value) => {
+    const next = { ...parameters };
+    if (JSON.stringify(value) === JSON.stringify(template[name])) delete next[name];
+    else next[name] = value;
+    onChange(next);
+  };
+  return (
     <div className="parameter-editor field--wide">
-      {allowed.length > 0 && (
-        <label className="field">
-          <span className="field__label">Editable parameters</span>
-          <textarea className="control" rows="14" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />
-          {error && <span className="field__hint">{error}</span>}
-        </label>
-      )}
-      {Object.keys(readOnlyTemplate).length > 0 && (
-        <label className="field">
-          <span className="field__label field__label--muted">Read-only parameters</span>
-          <textarea
-            className="control parameter-editor__readonly"
-            rows="14"
-            value={readOnlyText}
-            readOnly
-            aria-readonly="true"
-          />
-        </label>
-      )}
+      <span className="field__label">Parameters</span>
+      <div className="parameter-json" aria-label="Algorithm parameters">
+        <code className="parameter-json__brace">{"{"}</code>
+        {entries.map(([name, reference], index) => {
+          const comma = index < entries.length - 1;
+          if (allowed.includes(name)) {
+            const value = Object.hasOwn(parameters, name) ? parameters[name] : reference;
+            return <ParameterValue key={name} name={name} value={value} comma={comma} onCommit={(next) => updateParameter(name, next)} />;
+          }
+          return <code className="parameter-json__readonly" aria-disabled="true" key={name}>{readOnlyEntry(name, reference, comma)}</code>;
+        })}
+        <code className="parameter-json__brace">{"}"}</code>
+      </div>
     </div>
   );
 }
@@ -214,8 +231,8 @@ export function AlgorithmSection({ config, algorithms, update, panel }) {
   const template = selected
     ? parameterTemplate(config.design.type, selected.name, selected.configurable_parameters)
     : {};
-  const readOnlyTemplate = selected
-    ? readOnlyParameterTemplate(config.design.type, selected.name, selected.configurable_parameters)
+  const displayTemplate = selected
+    ? parameterDisplayTemplate(config.design.type, selected.name, selected.configurable_parameters)
     : {};
   return (
     <Section title="Available algorithms" {...algorithmPanel}>
@@ -228,7 +245,7 @@ export function AlgorithmSection({ config, algorithms, update, panel }) {
       </div>
       {!algorithms.length && <div className="inline-callout field--wide">Start the local API to load the live algorithm catalog.</div>}
       {algorithmPanel.advanced && selected && (
-        <ParameterEditor parameters={config.algorithm.parameters} allowed={selected.configurable_parameters} template={template} readOnlyTemplate={readOnlyTemplate} onChange={(parameters) => update((current) => ({ ...current, algorithm: { ...current.algorithm, parameters } }))} />
+        <ParameterEditor parameters={config.algorithm.parameters} allowed={selected.configurable_parameters} template={template} displayTemplate={displayTemplate} onChange={(parameters) => update((current) => ({ ...current, algorithm: { ...current.algorithm, parameters } }))} />
       )}
     </Section>
   );

@@ -42,6 +42,13 @@ export function readOnlyParameterTemplate(track, algorithm, allowed) {
   );
 }
 
+export function parameterDisplayTemplate(track, algorithm, allowed) {
+  return {
+    ...completeParameterTemplate(track, algorithm),
+    ...parameterTemplate(track, algorithm, allowed),
+  };
+}
+
 const HAND_LAYOUTS = {
   3: {
     preset: "ThreeHand",

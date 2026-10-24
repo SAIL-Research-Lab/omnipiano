@@ -453,7 +453,7 @@ button {
   min-height: 82px;
   padding: 15px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   border: 1px solid var(--line);
   border-left-width: 3px;
@@ -504,7 +504,7 @@ button {
 .track-card__copy {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  justify-content: center;
 }
 
 .track-card__copy strong {
@@ -802,26 +802,79 @@ textarea.control {
 }
 
 .parameter-editor {
-  display: grid;
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
-.field__label--muted {
-  color: #929baa;
+.parameter-json {
+  max-height: 520px;
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid #cfd7df;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
-.parameter-editor__readonly {
-  border-color: #e0e5ea;
-  background: #f3f5f7;
+.parameter-json__brace,
+.parameter-json__readonly {
+  display: block;
+  white-space: pre;
+}
+
+.parameter-json__editable-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  min-width: max-content;
+  padding-left: 18px;
+  white-space: nowrap;
+}
+
+.parameter-json__key {
+  font-weight: 650;
+}
+
+.parameter-json__input {
+  width: min(560px, 62vw);
+  min-width: 120px;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+
+.parameter-json__input:hover {
+  border-color: #d8dee5;
+  background: #f7f9fa;
+}
+
+.parameter-json__input:focus {
+  border-color: var(--accent);
+  background: #fff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.parameter-json__readonly {
+  padding-left: 18px;
   color: #929baa;
   cursor: default;
-  resize: none;
+  pointer-events: none;
+  user-select: none;
 }
 
-.parameter-editor__readonly:hover,
-.parameter-editor__readonly:focus {
-  border-color: #e0e5ea;
-  box-shadow: none;
+.parameter-json__error {
+  margin-left: 10px;
+  color: #b42318;
+  font-family: Inter, ui-sans-serif, sans-serif;
+  font-size: 10px;
 }
 
 .control:hover {
