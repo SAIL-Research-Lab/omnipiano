@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,14 +8,34 @@ const repositoryRoot = resolve(uiRoot, "..");
 const apiHealthUrl = "http://127.0.0.1:8765/api/health";
 
 function pythonExecutable() {
-  const candidates = [
+  const candidates = [...new Set([
     process.env.OMNIPIANO_PYTHON,
     process.env.VIRTUAL_ENV && join(process.env.VIRTUAL_ENV, "bin", "python"),
     process.env.CONDA_PREFIX && join(process.env.CONDA_PREFIX, "bin", "python"),
     join(repositoryRoot, ".venv", "bin", "python"),
     join(repositoryRoot, ".venv-marl", "bin", "python"),
-  ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) ?? "python3";
+    "python3",
+    "python",
+  ].filter(Boolean))];
+  const failures = [];
+  for (const candidate of candidates) {
+    if (candidate.includes("/") && !existsSync(candidate)) continue;
+    const probe = spawnSync(
+      candidate,
+      ["-c", "import jsonschema; import omnipiano.experiments.api"],
+      { cwd: repositoryRoot, env: process.env, encoding: "utf8" },
+    );
+    if (probe.status === 0) return candidate;
+    const detail = probe.error?.message
+      ?? probe.stderr.trim().split("\n").at(-1)
+      ?? `exit code ${probe.status}`;
+    failures.push(`${candidate}: ${detail}`);
+  }
+  throw new Error([
+    "No Python interpreter can start the OmniPiano experiment API.",
+    "Install the project in the active environment or set OMNIPIANO_PYTHON.",
+    ...failures,
+  ].join("\n"));
 }
 
 async function apiIsReady() {
