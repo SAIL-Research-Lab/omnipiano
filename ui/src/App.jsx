@@ -11,7 +11,6 @@ import {
   AlgorithmSection,
   DesignSection,
   ExperimentSection,
-  ReviewSection,
   RunSection,
   TaskSection,
 } from "./sections";
@@ -20,23 +19,43 @@ import { validateExperiment } from "./validation";
 const RAW_EXAMPLES = { standard: standardExample, robust: robustExample, safety: safetyExample, marl: marlExample };
 const EXAMPLES = Object.fromEntries(Object.entries(RAW_EXAMPLES).map(([key, value]) => [key, withUiDefaults(value)]));
 
-function JsonPreview({ config, errors, collapsed, onToggle, onCopy }) {
+function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, onLaunch, onStop, backend, copyLabel }) {
+  const backendError = backend.type === "error";
+  const statusError = errors.length > 0 || backendError;
+  const statusMessage = errors.length
+    ? `${errors.length} JSON issue${errors.length === 1 ? "" : "s"}`
+    : backend.message || "Schema valid";
   return (
     <aside className={`json-panel ${collapsed ? "json-panel--collapsed" : ""}`}>
       <div className="json-panel__header">
         <strong>Unified JSON · v3</strong>
         <div className="json-panel__actions">
-          <button type="button" onClick={onCopy}>Copy</button>
+          <button type="button" onClick={onCopy}>{copyLabel}</button>
           <button type="button" onClick={onToggle}>{collapsed ? "Show" : "Hide"}</button>
         </div>
       </div>
       {!collapsed && (
         <>
-          <div className={`schema-status ${errors.length ? "schema-status--error" : ""}`}>
-            <span>{errors.length ? "!" : "✓"}</span>
-            {errors.length ? `${errors.length} JSON issue${errors.length === 1 ? "" : "s"}` : "Schema valid"}
+          <div className={`schema-status ${statusError ? "schema-status--error" : ""}`}>
+            <span>{statusError ? "!" : "✓"}</span>
+            {statusMessage}
           </div>
           <pre>{JSON.stringify(config, null, 2)}</pre>
+          {backend.runs?.length > 0 && (
+            <div className="json-panel__runs">
+              {backend.runs.map((run) => (
+                <div key={run.run_id}>
+                  <span>{run.run_id}</span>
+                  <strong>{run.process?.state ?? "prepared"}</strong>
+                  {run.process?.state === "running" && <button type="button" onClick={() => onStop(run.run_id)}>Stop</button>}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="json-panel__launch-actions">
+            <button type="button" onClick={onDownload} disabled={errors.length > 0}>Download JSON</button>
+            <button type="button" className="json-panel__launch" onClick={onLaunch} disabled={errors.length > 0 || backend.busy}>{backend.busy ? "Working…" : "Launch runs"}</button>
+          </div>
         </>
       )}
     </aside>
@@ -49,8 +68,7 @@ function StepContent(props) {
   if (step === "task") return <TaskSection {...props} />;
   if (step === "design") return <DesignSection {...props} />;
   if (step === "algorithm") return <AlgorithmSection {...props} />;
-  if (step === "run") return <RunSection {...props} />;
-  return <ReviewSection {...props} />;
+  return <RunSection {...props} />;
 }
 
 export default function App() {
@@ -70,7 +88,7 @@ export default function App() {
 
   const config = configs[track];
   const validation = useMemo(() => validateExperiment(config), [config]);
-  const { errors, warnings } = validation;
+  const { errors } = validation;
   const trackInfo = TRACKS.find((item) => item.id === track);
   const algorithms = catalog?.tracks?.[track]?.algorithms ?? [{
     name: config.algorithm.name,
@@ -230,18 +248,14 @@ export default function App() {
     update,
     panel,
     errors,
-    warnings,
     algorithms,
     trackCapability: catalog?.tracks?.[track] ?? null,
     environments: environments[track] ?? [],
     backend,
     onCopy: copyJson,
     onDownload: downloadJson,
-    onPreview: () => callBackend("plan"),
-    onPrepare: () => callBackend("materialize"),
     onLaunch: launch,
     onStop: stop,
-    copyLabel,
   };
 
   return (
@@ -271,7 +285,18 @@ export default function App() {
             </section>
           ))}
         </main>
-        <JsonPreview config={config} errors={errors} collapsed={previewCollapsed} onToggle={() => setPreviewCollapsed((value) => !value)} onCopy={copyJson} />
+        <JsonPreview
+          config={config}
+          errors={errors}
+          collapsed={previewCollapsed}
+          onToggle={() => setPreviewCollapsed((value) => !value)}
+          onCopy={copyJson}
+          onDownload={downloadJson}
+          onLaunch={launch}
+          onStop={stop}
+          backend={backend}
+          copyLabel={copyLabel}
+        />
       </div>
     </div>
   );

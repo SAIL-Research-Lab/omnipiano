@@ -25,13 +25,16 @@ const noop = () => {};
 
 test.after(async () => server.close());
 
-test("the composer remains one scrollable six-section page", () => {
+test("the composer remains one scrollable five-section page", () => {
   const html = renderToStaticMarkup(createElement(App));
   assert.match(html, /Choose a track/);
-  assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 6);
-  for (const title of ["Experiment", "Piano task", "Track design", "Algorithm", "Train &amp; evaluate", "Review &amp; launch"]) {
+  assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 5);
+  for (const title of ["Experiment", "Piano task", "Track design", "Algorithm", "Train &amp; evaluate"]) {
     assert.match(html, new RegExp(title));
   }
+  assert.doesNotMatch(html, /Review &amp; launch|Validate &amp; preview|Prepare files/);
+  assert.match(html, /Download JSON/);
+  assert.match(html, /Launch runs/);
   assert.match(html, /Unified JSON · v3/);
 });
 

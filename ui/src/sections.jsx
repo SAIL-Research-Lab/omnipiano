@@ -54,7 +54,6 @@ export function ExperimentSection({ config, track, onTrack, set }) {
     </>
   );
 }
-
 function HandOverview({ hands }) {
   return (
     <div className="hand-overview field--wide">
@@ -74,7 +73,6 @@ function HandOverview({ hands }) {
     </div>
   );
 }
-
 export function TaskSection({ config, environments, set, update }) {
   const isMarl = config.design.type === "marl";
   const isCustom = config.task.source === "custom";
@@ -305,42 +303,6 @@ export function RunSection({ config, track, trackCapability, set, update, panel 
           </>
         )}
       </Section>
-    </>
-  );
-}
-
-export function ReviewSection({ config, errors, backend, onCopy, onDownload, onPreview, onPrepare, onLaunch, onStop, copyLabel }) {
-  const track = TRACKS.find((item) => item.id === config.design.type);
-  const taskLabel = config.task.source === "registered" ? config.task.environment_id : `${config.task.music.piece} · ${config.task.embodiment.num_hands} hands`;
-  const allErrors = [...errors, ...(backend.type === "error" ? [backend.message] : [])];
-  return (
-    <>
-      <section className="review-hero">
-        <span className={`track-card__mark track-card__mark--${track.id}`}>{track.short}</span>
-        <div><h2>{config.experiment.name}</h2><p>{taskLabel}</p></div>
-      </section>
-      <div className="summary-grid">
-        <div><span>Track</span><strong>{track.title}</strong></div>
-        <div><span>Algorithm</span><strong>{config.algorithm.name}</strong></div>
-        <div><span>Steps</span><strong>{config.run.total_steps.toLocaleString()}</strong></div>
-        <div><span>Seeds</span><strong>{config.experiment.seeds.join(", ")}</strong></div>
-      </div>
-      <section className={`validation-panel ${allErrors.length ? "validation-panel--error" : ""}`}>
-        <div><span className="validation-panel__icon">{allErrors.length ? "!" : "✓"}</span><div><strong>{allErrors.length ? "Configuration needs attention" : backend.message || "Ready for backend validation"}</strong></div></div>
-        {allErrors.length > 0 && <ul>{allErrors.slice(0, 8).map((error) => <li key={error}>{error}</li>)}</ul>}
-      </section>
-      {backend.runs?.length > 0 && (
-        <section className="section-card"><div className="section-card__heading"><h2>Runs</h2></div><div className="field-grid">
-          {backend.runs.map((run) => <div className="recipe-summary field--wide" key={run.run_id}><span><strong>{run.run_id}</strong></span><span>{run.process?.state ?? "prepared"}</span>{run.process?.state === "running" && <button type="button" onClick={() => onStop(run.run_id)}>Stop</button>}</div>)}
-        </div></section>
-      )}
-      <div className="review-actions">
-        <button type="button" className="button button--secondary" onClick={onCopy}>{copyLabel}</button>
-        <button type="button" className="button button--secondary" onClick={onDownload} disabled={errors.length > 0}>Download JSON</button>
-        <button type="button" className="button button--secondary" onClick={onPreview} disabled={errors.length > 0 || backend.busy}>Validate & preview</button>
-        <button type="button" className="button button--secondary" onClick={onPrepare} disabled={errors.length > 0 || backend.busy}>Prepare files</button>
-        <button type="button" className="button button--primary" onClick={onLaunch} disabled={errors.length > 0 || backend.busy}>Launch runs</button>
-      </div>
     </>
   );
 }

@@ -13,7 +13,6 @@ export const STEPS = [
   { id: "design", number: "03", title: "Track design" },
   { id: "algorithm", number: "04", title: "Algorithm" },
   { id: "run", number: "05", title: "Train & evaluate" },
-  { id: "review", number: "06", title: "Review & launch" },
 ];
 
 export const REPERTOIRE = [
