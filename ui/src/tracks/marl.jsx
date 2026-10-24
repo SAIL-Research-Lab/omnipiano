@@ -1,39 +1,97 @@
-import { ChoiceRow, NumberField, NumberInput, Section, SelectField, TextField } from "../fields";
+import { useRef } from "react";
+
+import { ChoiceRow, NumberField, Section, SelectField, TextField } from "../fields";
 import { applyMarlAgentCount, assignMarlHandOwner } from "../config";
 
-function RangeBar({ range, agentIndex, kind }) {
+function clamp(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function RangeSlider({ range, agentIndex, kind, onChange }) {
+  const drag = useRef(null);
   const left = ((range[0] - 1) / 88) * 100;
   const width = ((range[1] - range[0] + 1) / 88) * 100;
+  const keyAtPointer = (event, track) => {
+    const bounds = track.getBoundingClientRect();
+    return clamp(Math.round(((event.clientX - bounds.left) / bounds.width) * 87) + 1, 1, 88);
+  };
+  const beginDrag = (mode, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const track = event.currentTarget.closest(".agent-range__track");
+    track.setPointerCapture(event.pointerId);
+    drag.current = {
+      mode,
+      pointerId: event.pointerId,
+      origin: keyAtPointer(event, track),
+      range: [...range],
+    };
+  };
+  const moveDrag = (event) => {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    const key = keyAtPointer(event, event.currentTarget);
+    if (current.mode === "start") onChange([Math.min(key, current.range[1]), current.range[1]]);
+    if (current.mode === "end") onChange([current.range[0], Math.max(key, current.range[0])]);
+    if (current.mode === "range") {
+      const span = current.range[1] - current.range[0];
+      const start = clamp(current.range[0] + key - current.origin, 1, 88 - span);
+      onChange([start, start + span]);
+    }
+  };
+  const endDrag = (event) => {
+    if (!drag.current || drag.current.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    drag.current = null;
+  };
+  const adjustEdge = (edge, delta) => {
+    if (edge === "start") onChange([clamp(range[0] + delta, 1, range[1]), range[1]]);
+    else onChange([range[0], clamp(range[1] + delta, range[0], 88)]);
+  };
+  const handleKey = (edge, event) => {
+    if (!["ArrowLeft", "ArrowDown", "ArrowRight", "ArrowUp"].includes(event.key)) return;
+    event.preventDefault();
+    adjustEdge(edge, ["ArrowLeft", "ArrowDown"].includes(event.key) ? -1 : 1);
+  };
   return (
-    <div className="agent-range__track" aria-label={`${kind} keys ${range[0]} to ${range[1]}`}>
+    <div
+      className="agent-range__track agent-range__track--interactive"
+      aria-label={`${kind} keys ${range[0]} to ${range[1]}`}
+      onPointerMove={moveDrag}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+    >
       <span
         className={`agent-range__bar agent-range__bar--${agentIndex + 1} agent-range__bar--${kind}`}
         style={{ left: `${left}%`, width: `${width}%` }}
+        onPointerDown={(event) => beginDrag("range", event)}
       >
+        <span
+          className="agent-range__handle agent-range__handle--start"
+          role="slider"
+          tabIndex="0"
+          aria-label={`${kind} start`}
+          aria-valuemin="1"
+          aria-valuemax={range[1]}
+          aria-valuenow={range[0]}
+          onPointerDown={(event) => beginDrag("start", event)}
+          onKeyDown={(event) => handleKey("start", event)}
+        />
         {range[0]}–{range[1]}
+        <span
+          className="agent-range__handle agent-range__handle--end"
+          role="slider"
+          tabIndex="0"
+          aria-label={`${kind} end`}
+          aria-valuemin={range[0]}
+          aria-valuemax="88"
+          aria-valuenow={range[1]}
+          onPointerDown={(event) => beginDrag("end", event)}
+          onKeyDown={(event) => handleKey("end", event)}
+        />
       </span>
-    </div>
-  );
-}
-
-function RangeInputs({ label, value, onChange }) {
-  return (
-    <div className="mini-range-editor">
-      <NumberInput
-        min="1"
-        max="88"
-        aria-label={`${label} start`}
-        value={value[0]}
-        onChange={(next) => onChange([next, value[1]])}
-      />
-      <i>–</i>
-      <NumberInput
-        min="1"
-        max="88"
-        aria-label={`${label} end`}
-        value={value[1]}
-        onChange={(next) => onChange([value[0], next])}
-      />
     </div>
   );
 }
@@ -111,17 +169,17 @@ function RangeEditor({ agents, hands, set, showVisibility }) {
         <article className="agent-range" key={agent.name}>
           <header><i className={`agent-swatch agent-swatch--${index + 1}`} /><strong>{agent.name}</strong></header>
           <div className="agent-range__label"><span>Action</span></div>
-          <RangeBar range={agent.action_key_range} agentIndex={index} kind="action" />
-          <RangeInputs
-            label="Action keys"
-            value={agent.action_key_range}
+          <RangeSlider
+            range={agent.action_key_range}
+            agentIndex={index}
+            kind="action"
             onChange={(value) => set(["design", "config", "agents", index, "action_key_range"], value)}
           />
           <div className="agent-range__label"><span>Observation</span></div>
-          <RangeBar range={agent.observation_key_range} agentIndex={index} kind="observation" />
-          <RangeInputs
-            label="Observation keys"
-            value={agent.observation_key_range}
+          <RangeSlider
+            range={agent.observation_key_range}
+            agentIndex={index}
+            kind="observation"
             onChange={(value) => set(["design", "config", "agents", index, "observation_key_range"], value)}
           />
           {showVisibility && <VisibilityEditor agent={agent} index={index} hands={hands} set={set} />}

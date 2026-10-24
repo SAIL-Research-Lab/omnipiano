@@ -125,6 +125,12 @@ test("registered and custom MARL tasks expose the correct controls", () => {
   assert.match(custom, /Number of Agents/);
   assert.match(custom, /Hand assignment/);
   assert.match(custom, /Action &amp; observation ranges/);
+  assert.match(custom, /aria-label="action start"/);
+  assert.match(custom, /aria-label="action end"/);
+  assert.match(custom, /aria-label="observation start"/);
+  assert.match(custom, /aria-label="observation end"/);
+  assert.equal((custom.match(/role="slider"/g) ?? []).length, 8);
+  assert.doesNotMatch(custom, /Action keys start|Action keys end|Observation keys start|Observation keys end/);
   assert.doesNotMatch(custom, /Hands \/ agents|Action overlap|Observation overlap|Critic/);
   assert.doesNotMatch(custom, /Maximum 4|Moving an agent|Keys 1–22|wrist key range|visible keyboard state|Action ranges constrain/);
   assert.doesNotMatch(custom, /primo|secondo/);
