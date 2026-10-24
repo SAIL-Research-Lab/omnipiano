@@ -106,15 +106,17 @@ const BLACK_KEYS = Array.from({ length: 88 }, (_, index) => index + 1)
 function HandGlyph({ mirrored }) {
   return (
     <svg viewBox="0 0 64 92" aria-hidden="true">
-      <g transform={mirrored ? "translate(64 0) scale(-1 1)" : undefined}>
-        <rect x="21" y="2" width="23" height="28" rx="8" />
-        <rect x="15" y="25" width="36" height="37" rx="13" />
-        <rect x="8" y="46" width="9" height="34" rx="4.5" transform="rotate(13 12.5 63)" />
-        <rect x="18" y="53" width="8" height="35" rx="4" transform="rotate(5 22 70.5)" />
-        <rect x="28" y="54" width="8" height="36" rx="4" />
-        <rect x="38" y="52" width="8" height="35" rx="4" transform="rotate(-5 42 69.5)" />
-        <rect x="48" y="48" width="8" height="31" rx="4" transform="rotate(-12 52 63.5)" />
-        <rect x="49" y="32" width="9" height="27" rx="4.5" transform="rotate(-42 53.5 45.5)" />
+      <g transform="translate(0 92) scale(1 -1)">
+        <g transform={mirrored ? "translate(64 0) scale(-1 1)" : undefined}>
+          <rect x="21" y="2" width="23" height="28" rx="8" />
+          <rect x="15" y="25" width="36" height="37" rx="13" />
+          <rect x="8" y="46" width="9" height="34" rx="4.5" transform="rotate(13 12.5 63)" />
+          <rect x="18" y="53" width="8" height="35" rx="4" transform="rotate(5 22 70.5)" />
+          <rect x="28" y="54" width="8" height="36" rx="4" />
+          <rect x="38" y="52" width="8" height="35" rx="4" transform="rotate(-5 42 69.5)" />
+          <rect x="48" y="48" width="8" height="31" rx="4" transform="rotate(-12 52 63.5)" />
+          <rect x="49" y="32" width="9" height="27" rx="4.5" transform="rotate(-42 53.5 45.5)" />
+        </g>
       </g>
     </svg>
   );
@@ -168,9 +170,12 @@ function PianoWorkbench({ fullConfig, config, set, update }) {
       <div className="piano-range-lanes">
       {agents.map((agent, index) => (
         <article className="piano-range-agent" key={agent.name}>
-          <header><i className={`agent-swatch agent-swatch--${index + 1}`} /><strong>Agent {index + 1}</strong></header>
           <div className="piano-range-row">
-            <span>Action</span>
+            <span className="piano-range-row__label">
+              <i className={`agent-swatch agent-swatch--${index + 1}`} />
+              <strong>Agent {index + 1}</strong>
+              <em>Action</em>
+            </span>
             <RangeSlider
               range={agent.action_key_range}
               agentIndex={index}
@@ -179,7 +184,11 @@ function PianoWorkbench({ fullConfig, config, set, update }) {
             />
           </div>
           <div className="piano-range-row">
-            <span>Observation</span>
+            <span className="piano-range-row__label">
+              <i className={`agent-swatch agent-swatch--${index + 1}`} />
+              <strong>Agent {index + 1}</strong>
+              <em>Observation</em>
+            </span>
             <RangeSlider
               range={agent.observation_key_range}
               agentIndex={index}

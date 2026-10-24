@@ -1221,7 +1221,7 @@ textarea.control {
 .budget-formula__result { padding: 10px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); }
 
 .piano-workbench {
-  --piano-label-offset: 182px;
+  --piano-label-offset: 122px;
   padding: 16px;
   overflow-x: auto;
   border: 1px solid var(--line);
@@ -1238,15 +1238,12 @@ textarea.control {
 .piano-range-agent {
   padding: 10px 0;
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
   align-items: center;
-  gap: 7px 12px;
+  gap: 7px;
   border-top: 1px solid var(--line);
 }
 
 .piano-range-agent:first-child { border-top: 0; }
-.piano-range-agent header { grid-row: 1 / 3; display: flex; align-items: center; gap: 8px; }
-.piano-range-agent header strong { font-size: 11px; }
 .agent-swatch { width: 9px; height: 9px; border-radius: 2px; background: #e4a526; }
 .agent-swatch--2 { background: #2466b8; }
 .agent-swatch--3 { background: #df645e; }
@@ -1255,12 +1252,23 @@ textarea.control {
 
 .piano-range-row {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 110px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-.piano-range-row > span { color: #344157; font-size: 9px; font-weight: 750; }
+.piano-range-row__label {
+  display: grid;
+  grid-template-columns: 9px auto;
+  align-items: center;
+  justify-content: start;
+  gap: 1px 7px;
+  color: #344157;
+}
+
+.piano-range-row__label .agent-swatch { grid-row: 1 / 3; }
+.piano-range-row__label strong { font-size: 9px; line-height: 1.2; }
+.piano-range-row__label em { grid-column: 2; color: #7b8798; font-size: 8px; font-style: normal; font-weight: 700; line-height: 1.2; }
 .agent-range__track { position: relative; height: 32px; overflow: hidden; border: 1px solid #c9d2dc; border-radius: 6px; background: repeating-linear-gradient(90deg, white 0, white calc(100% / 22 - 1px), #e0e5ea calc(100% / 22 - 1px), #e0e5ea calc(100% / 22)); }
 .agent-range__track--interactive { touch-action: none; }
 .agent-range__bar { --agent-color: #e4a526; position: absolute; top: 3px; bottom: 3px; border-radius: 4px; background: var(--agent-color); cursor: grab; touch-action: none; user-select: none; }

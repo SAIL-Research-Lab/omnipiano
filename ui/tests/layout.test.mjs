@@ -143,6 +143,9 @@ test("MARL removes registered tasks and folds its custom task controls into Task
   assert.match(custom, /aria-label="observation start"/);
   assert.match(custom, /aria-label="observation end"/);
   assert.equal((custom.match(/role="slider"/g) ?? []).length, 8);
+  assert.equal((custom.match(/class="piano-range-row__label"/g) ?? []).length, 4);
+  assert.doesNotMatch(custom, /<header><i class="agent-swatch/);
+  assert.match(custom, /transform="translate\(0 92\) scale\(1 -1\)"/);
   assert.doesNotMatch(custom, /Action keys start|Action keys end|Observation keys start|Observation keys end/);
   assert.doesNotMatch(custom, /Hands \/ agents|Action overlap|Observation overlap|Critic/);
   assert.doesNotMatch(custom, /Maximum 4|Moving an agent|Keys 1–22|wrist key range|visible keyboard state|Action ranges constrain/);
