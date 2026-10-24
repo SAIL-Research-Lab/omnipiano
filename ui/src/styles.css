@@ -1221,22 +1221,26 @@ textarea.control {
 .budget-formula__result { padding: 10px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); }
 
 .piano-workbench {
-  --piano-label-offset: 122px;
-  padding: 16px;
-  overflow-x: auto;
+  --piano-label-offset: 100px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--soft);
 }
 
 .piano-range-lanes {
-  min-width: 720px;
+  min-width: 0;
+  width: 100%;
   display: grid;
-  gap: 5px;
+  gap: 3px;
 }
 
 .piano-range-agent {
-  padding: 10px 0;
+  min-width: 0;
+  padding: 8px 0;
   display: grid;
   align-items: center;
   gap: 7px;
@@ -1251,10 +1255,11 @@ textarea.control {
 .agent-swatch--5 { background: #8b62c4; }
 
 .piano-range-row {
+  min-width: 0;
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
+  grid-template-columns: 92px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .piano-range-row__label {
@@ -1308,8 +1313,9 @@ textarea.control {
 .piano-assignment-stage {
   position: relative;
   height: 150px;
-  min-width: calc(720px - var(--piano-label-offset));
-  margin: 16px 0 0 var(--piano-label-offset);
+  width: calc(100% - var(--piano-label-offset));
+  min-width: 0;
+  margin: 12px 0 0 var(--piano-label-offset);
   overflow: hidden;
   border: 1px solid #b8c4d0;
   border-radius: 10px;

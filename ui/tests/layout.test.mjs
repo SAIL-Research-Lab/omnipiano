@@ -19,6 +19,7 @@ const standard = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipia
 const robust = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/robust.json", import.meta.url))));
 const safety = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/safety.json", import.meta.url))));
 const marl = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/marl.json", import.meta.url))));
+const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 const customMarl = makeCustomMarl(marl);
 const panel = (id, open = []) => ({ advanced: open.includes(id), onToggleAdvanced: () => {} });
 const noop = () => {};
@@ -151,6 +152,13 @@ test("MARL removes registered tasks and folds its custom task controls into Task
   assert.doesNotMatch(custom, /Maximum 4|Moving an agent|Keys 1–22|wrist key range|visible keyboard state|Action ranges constrain/);
   assert.doesNotMatch(custom, /Registered environment|Custom MARL task|Task source|Collision penalty|hand-overview|Agent 1 name|Action &amp; observation ranges|Show advanced settings/);
   assert.doesNotMatch(custom, /primo|secondo/);
+});
+
+test("the MARL piano workbench fits its panel without horizontal scrolling", () => {
+  assert.match(styles, /\.piano-workbench\s*\{[^}]*overflow:\s*hidden;/s);
+  assert.match(styles, /\.piano-range-lanes\s*\{[^}]*min-width:\s*0;[^}]*width:\s*100%;/s);
+  assert.match(styles, /\.piano-assignment-stage\s*\{[^}]*width:\s*calc\(100% - var\(--piano-label-offset\)\);[^}]*min-width:\s*0;/s);
+  assert.doesNotMatch(styles, /\.piano-workbench\s*\{[^}]*overflow-x:\s*auto;/s);
 });
 
 test("non-MARL tracks do not render a design section", () => {
