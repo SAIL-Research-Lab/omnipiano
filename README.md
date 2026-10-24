@@ -266,12 +266,10 @@ else, register a new ID (see [Contributing](#-contributing)).
 ### Unified experiment composer
 
 The optional local composer gives all four tracks one schema-v3 JSON format
-while preserving their existing trainers. Start the loopback API and UI in
-separate terminals:
+while preserving their existing trainers. Start the loopback API and UI
+together:
 
 ```bash
-python -m omnipiano.experiments serve --allowed-root runs
-
 cd ui
 npm install
 npm run dev

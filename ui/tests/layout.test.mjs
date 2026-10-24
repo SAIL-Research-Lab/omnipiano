@@ -41,6 +41,7 @@ test("seeds stay in run settings and advanced controls stay local", () => {
   }));
   assert.doesNotMatch(identity, /Seeds/);
   assert.match(identity, /Experiment name/);
+  assert.match(identity, /field--prominent/);
   assert.doesNotMatch(identity, /Experiment details|Description|Tags|Basic|Advanced/);
   const basic = renderToStaticMarkup(createElement(RunSection, {
     config: marl, set: noop, update: noop, panel: (id) => panel(id),

@@ -89,14 +89,8 @@ performance requires training a policy with an RL algorithm.
 ## Configure all four tracks with one JSON format
 
 The optional experiment composer translates one schema-v3 JSON document into
-the existing Standard, Robust, Safe, or Multi-Agent training entrypoint. To
-use the browser interface, start its loopback API from the repository root:
-
-```bash
-python -m omnipiano.experiments serve --allowed-root runs
-```
-
-In a second terminal:
+the existing Standard, Robust, Safe, or Multi-Agent training entrypoint. Start
+its loopback API and browser interface together:
 
 ```bash
 cd ui

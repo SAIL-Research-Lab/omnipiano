@@ -43,7 +43,10 @@ export function ExperimentSection({ config, track, onTrack, set }) {
       </section>
       <section className="section-card section-card--minimal">
         <div className="field-grid">
-          <TextField label="Experiment name" value={config.experiment.name} onChange={(value) => set("experiment.name", value)} wide />
+          <label className="field field--wide field--prominent">
+            <span className="field__label">Experiment name</span>
+            <input className="control" value={config.experiment.name} onChange={(event) => set("experiment.name", event.target.value)} />
+          </label>
         </div>
       </section>
     </>

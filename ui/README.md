@@ -6,13 +6,7 @@ the four trainers.
 
 ## Run locally
 
-Terminal 1, from the repository root:
-
-```bash
-python -m omnipiano.experiments serve --allowed-root runs
-```
-
-Terminal 2:
+From the repository root:
 
 ```bash
 cd ui
@@ -20,7 +14,9 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173/`. Vite proxies `/api` to the loopback service.
+Open `http://127.0.0.1:5173/`. The development command starts both the
+loopback experiment API and Vite. If the API is already running, it is reused.
+Use `npm run dev:ui` only when managing the API separately.
 
 The single scrollable page lets a user:
 

@@ -384,6 +384,14 @@ button {
   padding: 20px 24px;
 }
 
+.field--prominent .field__label {
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-transform: none;
+}
+
 .environment-select {
   cursor: pointer;
 }
