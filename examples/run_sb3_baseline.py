@@ -55,7 +55,6 @@ from omnipiano import make
 from omnipiano.configs import BenchmarkProtocolConfig
 from omnipiano.integrations.sb3_reward_curve import make_vec_env
 from omnipiano.utils.info_keys import InfoKeys
-from omnipiano.experiments.parameter_profiles import STANDARD_PARAMETER_TEMPLATES
 
 
 # algo -> (class, policy, default n_envs on this host, default constructor extras)
@@ -184,11 +183,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "dual gradient ascent (Haarnoja 2019). Pass a float (e.g. ``0.1``) to "
         "fix α — recommended for N-hand StaticPartition tasks where auto-α can "
         "diverge (see ``static_partition_design.md`` §7).",
-    )
-    p.add_argument(
-        "--algorithm-parameters-json",
-        default=None,
-        help="JSON object with algorithm constructor overrides exposed by the unified UI.",
     )
     p.add_argument(
         "--gamma",
@@ -474,21 +468,6 @@ def main():
     )
 
     extra_hparams: Dict[str, Any] = dict(default_extras)
-    if args.algorithm_parameters_json is not None:
-        try:
-            supplied = json.loads(args.algorithm_parameters_json)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"invalid --algorithm-parameters-json: {exc}") from exc
-        if not isinstance(supplied, dict):
-            raise ValueError("--algorithm-parameters-json must contain a JSON object")
-        allowed = set(STANDARD_PARAMETER_TEMPLATES[args.algo])
-        unknown = sorted(set(supplied) - allowed)
-        if unknown:
-            raise ValueError(f"unsupported {args.algo} parameters: {unknown}")
-        supplied = dict(supplied)
-        if "net_arch" in supplied:
-            supplied["policy_kwargs"] = {"net_arch": supplied.pop("net_arch")}
-        extra_hparams.update(supplied)
     if args.algo in ("crossq", "sac", "td3", "tqc") and args.gradient_steps is not None:
         # CLI overrides the algo-default gradient_steps in ALGO_REGISTRY.
         extra_hparams["gradient_steps"] = args.gradient_steps

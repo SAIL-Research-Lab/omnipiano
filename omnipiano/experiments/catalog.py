@@ -7,24 +7,13 @@ OmniSafe.  Drift tests compare these declarations with the backend registries.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Tuple
 
 from omnipiano.experiments.models import ExperimentRequest
-from omnipiano.experiments.parameter_profiles import (
-    MARL_PARAMETER_TEMPLATES,
-    ROBUST_PARAMETER_TEMPLATES,
-    STANDARD_PARAMETER_TEMPLATES,
-    copy_template,
-)
-from omnipiano.safety.parameters import (
-    configurable_sections as safety_configurable_sections,
-    parameter_template as safety_parameter_template,
-)
 
 
-CATALOG_VERSION = 2
+CATALOG_VERSION = 1
 TRACKS = ("standard", "robust", "safety", "marl")
 
 
@@ -41,7 +30,6 @@ class AlgorithmCapability:
     execution: Optional[str] = None
     required_num_agents: Optional[int] = None
     configurable_parameters: Tuple[str, ...] = ()
-    parameter_template: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def selectable(self) -> bool:
@@ -58,7 +46,6 @@ class AlgorithmCapability:
             "recommended": self.recommended,
             "role": self.role,
             "configurable_parameters": list(self.configurable_parameters),
-            "parameter_template": deepcopy(dict(self.parameter_template)),
         }
         if self.critic is not None:
             result["critic"] = self.critic
@@ -125,30 +112,22 @@ def _algo(
 
 
 _STANDARD_ALGORITHMS = (
-    _algo(
-        "ppo", "PPO", "stable_baselines3", "on_policy_ppo", recommended=True,
-        configurable_parameters=tuple(STANDARD_PARAMETER_TEMPLATES["ppo"]),
-        parameter_template=copy_template(STANDARD_PARAMETER_TEMPLATES, "ppo"),
-    ),
+    _algo("ppo", "PPO", "stable_baselines3", "on_policy_ppo", recommended=True),
     _algo(
         "sac", "SAC", "stable_baselines3", "off_policy_sac", recommended=True,
-        configurable_parameters=tuple(STANDARD_PARAMETER_TEMPLATES["sac"]),
-        parameter_template=copy_template(STANDARD_PARAMETER_TEMPLATES, "sac"),
+        configurable_parameters=("gradient_steps", "learning_starts", "ent_coef"),
     ),
     _algo(
         "td3", "TD3", "stable_baselines3", "off_policy_ddpg",
-        configurable_parameters=tuple(STANDARD_PARAMETER_TEMPLATES["td3"]),
-        parameter_template=copy_template(STANDARD_PARAMETER_TEMPLATES, "td3"),
+        configurable_parameters=("gradient_steps", "learning_starts"),
     ),
     _algo(
         "crossq", "CrossQ", "sb3_contrib", "off_policy_sac",
-        configurable_parameters=tuple(STANDARD_PARAMETER_TEMPLATES["crossq"]),
-        parameter_template=copy_template(STANDARD_PARAMETER_TEMPLATES, "crossq"),
+        configurable_parameters=("gradient_steps", "learning_starts"),
     ),
     _algo(
         "tqc", "TQC", "sb3_contrib", "off_policy_sac",
-        configurable_parameters=tuple(STANDARD_PARAMETER_TEMPLATES["tqc"]),
-        parameter_template=copy_template(STANDARD_PARAMETER_TEMPLATES, "tqc"),
+        configurable_parameters=("gradient_steps", "learning_starts", "ent_coef"),
     ),
 )
 
@@ -165,19 +144,16 @@ _ROBUST_ALGORITHMS = (
     _algo(
         "ppo", "PPO", "torchrl", "on_policy_ppo", recommended=True,
         configurable_parameters=_ROBUST_PPO_PARAMETERS,
-        parameter_template=copy_template(ROBUST_PARAMETER_TEMPLATES, "ppo"),
     ),
     _algo(
         "sac", "SAC", "torchrl", "off_policy_sac", recommended=True,
         configurable_parameters=_ROBUST_SAC_PARAMETERS,
-        parameter_template=copy_template(ROBUST_PARAMETER_TEMPLATES, "sac"),
     ),
     _algo(
         "eppo", "EPPO", "torchrl", "on_policy_ppo",
         configurable_parameters=(
             *_ROBUST_PPO_PARAMETERS, "eppo_mode", "kappa", "evidential_reg",
         ),
-        parameter_template=copy_template(ROBUST_PARAMETER_TEMPLATES, "eppo"),
     ),
     _algo(
         "a2p_sac", "A2P-SAC", "torchrl", "off_policy_sac",
@@ -186,7 +162,6 @@ _ROBUST_ALGORITHMS = (
             "a2p_epsilon_mode", "a2p_epsilon", "adversary_learning_rate",
             "adversary_update_freq", "a2p_warmup_steps",
         ),
-        parameter_template=copy_template(ROBUST_PARAMETER_TEMPLATES, "a2p_sac"),
     ),
     _algo(
         "ompo", "OMPO", "torchrl", "off_policy_sac",
@@ -196,7 +171,6 @@ _ROBUST_ALGORITHMS = (
             "ompo_discriminator_observation", "ompo_exponent",
             "ompo_correction_coeff", "ompo_reward_max",
         ),
-        parameter_template=copy_template(ROBUST_PARAMETER_TEMPLATES, "ompo"),
     ),
     _algo(
         "scpo", "SCPO", "torchrl", "off_policy_sac",
@@ -204,7 +178,6 @@ _ROBUST_ALGORITHMS = (
             *_ROBUST_SAC_PARAMETERS,
             "scpo_state_noise", "scpo_gradient_observation",
         ),
-        parameter_template=copy_template(ROBUST_PARAMETER_TEMPLATES, "scpo"),
     ),
 )
 
@@ -229,65 +202,62 @@ _SAFETY_ALGORITHMS = tuple(
         "on_policy_safe_rl" if name in _SAFETY_ON_POLICY else "off_policy_safe_rl",
         recommended=name in _SAFETY_PAPER_DEFAULTS,
         role="paper_baseline" if name in _SAFETY_PAPER_DEFAULTS else "extended_baseline",
-        configurable_parameters=safety_configurable_sections(name),
-        parameter_template=safety_parameter_template(name),
+        configurable_parameters=("buffer_size",) if name in _SAFETY_OFF_POLICY else (),
     )
     for name in _SAFETY_ON_POLICY + _SAFETY_OFF_POLICY
 )
 
 
-_MARL_PPO_PARAMETERS = tuple(MARL_PARAMETER_TEMPLATES["ippo"])
+_MARL_PPO_PARAMETERS = (
+    "learning_rate", "critic_learning_rate", "train_batch_size",
+    "minibatch_size", "num_epochs", "adam_epsilon", "gae_lambda",
+    "clip_param", "value_clip_param", "value_loss_coefficient",
+    "entropy_coefficient", "use_kl_loss", "gradient_clip",
+    "gradient_clip_mode", "hidden_sizes", "activation", "input_layer_norm",
+    "value_norm",
+)
 _MARL_ALGORITHMS = (
     _algo(
         "ippo", "IPPO", "rllib", "on_policy_ppo", recommended=True,
         critic="own", execution="decentralized",
         configurable_parameters=_MARL_PPO_PARAMETERS,
-        parameter_template=copy_template(MARL_PARAMETER_TEMPLATES, "ippo"),
     ),
     _algo(
         "ippo-rllib-module", "IPPO · RLlib module control", "rllib",
         "on_policy_ppo", critic="own", execution="decentralized",
         role="diagnostic_control",
         configurable_parameters=_MARL_PPO_PARAMETERS,
-        parameter_template=copy_template(MARL_PARAMETER_TEMPLATES, "ippo-rllib-module"),
     ),
     _algo(
         "mappo", "MAPPO", "rllib", "on_policy_ppo", recommended=True,
         critic="global", execution="decentralized",
         configurable_parameters=_MARL_PPO_PARAMETERS,
-        parameter_template=copy_template(MARL_PARAMETER_TEMPLATES, "mappo"),
     ),
     _algo(
         "mappo-own-critic", "MAPPO · own-critic ablation", "rllib",
         "on_policy_ppo", critic="own", execution="decentralized",
         role="ablation",
         configurable_parameters=_MARL_PPO_PARAMETERS,
-        parameter_template=copy_template(MARL_PARAMETER_TEMPLATES, "mappo-own-critic"),
     ),
     _algo(
         "happo", "HAPPO", "native", "on_policy_ppo_sequential",
         recommended=True, critic="global", execution="decentralized",
         configurable_parameters=_MARL_PPO_PARAMETERS,
-        parameter_template=copy_template(MARL_PARAMETER_TEMPLATES, "happo"),
     ),
     _algo(
         "a2po", "A2PO", "native", "on_policy_ppo_sequential",
         recommended=True, critic="global", execution="decentralized",
-        configurable_parameters=tuple(MARL_PARAMETER_TEMPLATES["a2po"]),
-        parameter_template=copy_template(MARL_PARAMETER_TEMPLATES, "a2po"),
+        configurable_parameters=_MARL_PPO_PARAMETERS,
     ),
     _algo(
         "facmac", "FACMAC", "native", "off_policy_ddpg", recommended=True,
         critic="global_joint_action", execution="decentralized",
-        configurable_parameters=tuple(MARL_PARAMETER_TEMPLATES["facmac"]),
-        parameter_template=copy_template(MARL_PARAMETER_TEMPLATES, "facmac"),
     ),
     _algo(
         "ppo-monolithic", "PPO · monolithic single-agent baseline", "rllib",
         "on_policy_ppo", critic="own", execution="centralized",
         required_num_agents=1, role="single_agent_control",
         configurable_parameters=_MARL_PPO_PARAMETERS,
-        parameter_template=copy_template(MARL_PARAMETER_TEMPLATES, "ppo-monolithic"),
     ),
     _algo(
         "mat", "MAT", "native", "on_policy_ppo_sequential", status="planned",

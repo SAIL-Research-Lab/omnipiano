@@ -42,7 +42,6 @@ setup(
             "contract/*.json",
             "examples/*.json",
         ],
-        "omnipiano.safety": ["parameter_defaults.json"],
     },
     include_package_data=True,
     python_requires=">=3.10",

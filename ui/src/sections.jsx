@@ -16,6 +16,7 @@ import {
   makeRegisteredTask,
   parameterTemplate,
   parseIntegerList,
+  readOnlyParameterTemplate,
   REPERTOIRE,
   selectAlgorithm,
   TRACKS,
@@ -158,10 +159,11 @@ export function DesignSection({ config, environments, set, update, panel }) {
   return <Section title="Standard task"><div className="inline-callout field--wide">The registered environment fully defines the nominal control task.</div></Section>;
 }
 
-function ParameterEditor({ parameters, allowed, template, onChange }) {
+function ParameterEditor({ parameters, allowed, template, readOnlyTemplate, onChange }) {
   const hasOverrides = Object.keys(parameters).length > 0;
   const templateText = JSON.stringify(template, null, 2);
   const serialized = JSON.stringify(hasOverrides ? parameters : template, null, 2);
+  const readOnlyText = JSON.stringify(readOnlyTemplate, null, 2);
   const [draft, setDraft] = useState(serialized);
   const [error, setError] = useState("");
   useEffect(() => setDraft(serialized), [serialized]);
@@ -182,11 +184,27 @@ function ParameterEditor({ parameters, allowed, template, onChange }) {
     }
   };
   return (
-    <label className="field field--wide">
-      <span className="field__label">Parameter overrides</span>
-      <textarea className="control" rows="14" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />
-      {error && <span className="field__hint">{error}</span>}
-    </label>
+    <div className="parameter-editor field--wide">
+      {allowed.length > 0 && (
+        <label className="field">
+          <span className="field__label">Editable parameters</span>
+          <textarea className="control" rows="14" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />
+          {error && <span className="field__hint">{error}</span>}
+        </label>
+      )}
+      {Object.keys(readOnlyTemplate).length > 0 && (
+        <label className="field">
+          <span className="field__label field__label--muted">Read-only parameters</span>
+          <textarea
+            className="control parameter-editor__readonly"
+            rows="14"
+            value={readOnlyText}
+            readOnly
+            aria-readonly="true"
+          />
+        </label>
+      )}
+    </div>
   );
 }
 
@@ -194,12 +212,10 @@ export function AlgorithmSection({ config, algorithms, update, panel }) {
   const algorithmPanel = panel("algorithm");
   const selected = algorithms.find((item) => item.name === config.algorithm.name);
   const template = selected
-    ? parameterTemplate(
-      config.design.type,
-      selected.name,
-      selected.configurable_parameters,
-      selected.parameter_template,
-    )
+    ? parameterTemplate(config.design.type, selected.name, selected.configurable_parameters)
+    : {};
+  const readOnlyTemplate = selected
+    ? readOnlyParameterTemplate(config.design.type, selected.name, selected.configurable_parameters)
     : {};
   return (
     <Section title="Available algorithms" {...algorithmPanel}>
@@ -212,7 +228,7 @@ export function AlgorithmSection({ config, algorithms, update, panel }) {
       </div>
       {!algorithms.length && <div className="inline-callout field--wide">Start the local API to load the live algorithm catalog.</div>}
       {algorithmPanel.advanced && selected && (
-        <ParameterEditor parameters={config.algorithm.parameters} allowed={selected.configurable_parameters} template={template} onChange={(parameters) => update((current) => ({ ...current, algorithm: { ...current.algorithm, parameters } }))} />
+        <ParameterEditor parameters={config.algorithm.parameters} allowed={selected.configurable_parameters} template={template} readOnlyTemplate={readOnlyTemplate} onChange={(parameters) => update((current) => ({ ...current, algorithm: { ...current.algorithm, parameters } }))} />
       )}
     </Section>
   );

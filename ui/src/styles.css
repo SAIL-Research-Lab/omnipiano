@@ -801,6 +801,29 @@ textarea.control {
   resize: vertical;
 }
 
+.parameter-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.field__label--muted {
+  color: #929baa;
+}
+
+.parameter-editor__readonly {
+  border-color: #e0e5ea;
+  background: #f3f5f7;
+  color: #929baa;
+  cursor: default;
+  resize: none;
+}
+
+.parameter-editor__readonly:hover,
+.parameter-editor__readonly:focus {
+  border-color: #e0e5ea;
+  box-shadow: none;
+}
+
 .control:hover {
   border-color: #a9b6c3;
 }

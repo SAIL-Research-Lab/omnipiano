@@ -1,3 +1,5 @@
+import { completeParameterTemplate } from "./parameterProfiles.js";
+
 export const TRACKS = [
   { id: "standard", short: "S", title: "Standard RL" },
   { id: "robust", short: "R", title: "Robust RL" },
@@ -22,11 +24,21 @@ export const REPERTOIRE = [
   "PianoSonataNo301StMov",
 ].map((value) => ({ value, label: value.replace(/([a-z])([A-Z])/g, "$1 $2") }));
 
-export function parameterTemplate(_track, _algorithm, allowed, catalogTemplate = {}) {
-  const reference = catalogTemplate ?? {};
+export function parameterTemplate(track, algorithm, allowed) {
+  const reference = completeParameterTemplate(track, algorithm);
+  const fallbacks = track === "safety" ? { buffer_size: 100_000 } : {};
   return Object.fromEntries(
-    allowed.filter((name) => Object.hasOwn(reference, name))
-      .map((name) => [name, structuredClone(reference[name])]),
+    allowed.filter((name) => Object.hasOwn(reference, name) || Object.hasOwn(fallbacks, name))
+      .map((name) => [name, structuredClone(reference[name] ?? fallbacks[name])]),
+  );
+}
+
+export function readOnlyParameterTemplate(track, algorithm, allowed) {
+  const reference = completeParameterTemplate(track, algorithm);
+  return Object.fromEntries(
+    Object.entries(reference)
+      .filter(([name]) => !allowed.includes(name))
+      .map(([name, value]) => [name, structuredClone(value)]),
   );
 }
 
