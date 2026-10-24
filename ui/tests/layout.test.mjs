@@ -130,8 +130,12 @@ test("MARL removes registered tasks and folds its custom task controls into Task
   assert.match(custom, />Piece</);
   assert.match(custom, /Number of hands/);
   assert.match(custom, /Number of agents/);
-  assert.match(custom, /Hand assignment/);
-  assert.match(custom, /Action &amp; observation ranges/);
+  assert.match(custom, /Hand assignment &amp; ranges/);
+  assert.match(custom, /piano-workbench/);
+  assert.equal((custom.match(/class="piano-hand piano-hand--/g) ?? []).length, 4);
+  assert.equal((custom.match(/class="piano-keyboard__black-key"/g) ?? []).length, 36);
+  assert.match(custom, /H1/);
+  assert.match(custom, /Agent 1/);
   assert.match(custom, /aria-label="action start"/);
   assert.match(custom, /aria-label="action end"/);
   assert.match(custom, /aria-label="observation start"/);
@@ -140,7 +144,7 @@ test("MARL removes registered tasks and folds its custom task controls into Task
   assert.doesNotMatch(custom, /Action keys start|Action keys end|Observation keys start|Observation keys end/);
   assert.doesNotMatch(custom, /Hands \/ agents|Action overlap|Observation overlap|Critic/);
   assert.doesNotMatch(custom, /Maximum 4|Moving an agent|Keys 1–22|wrist key range|visible keyboard state|Action ranges constrain/);
-  assert.doesNotMatch(custom, /Registered environment|Custom MARL task|Task source|Collision penalty|hand-overview/);
+  assert.doesNotMatch(custom, /Registered environment|Custom MARL task|Task source|Collision penalty|hand-overview|Agent 1 name|Action &amp; observation ranges|Show advanced settings/);
   assert.doesNotMatch(custom, /primo|secondo/);
 });
 

@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-import { ChoiceRow, NumberField, Section, SelectField, TextField } from "../fields";
+import { ChoiceRow, NumberField, Section, SelectField } from "../fields";
 import { applyHandLayout, applyMarlAgentCount, assignMarlHandOwner, REPERTOIRE } from "../config";
 
 function clamp(value, minimum, maximum) {
@@ -78,8 +78,9 @@ function RangeSlider({ range, agentIndex, kind, onChange }) {
           aria-valuenow={range[0]}
           onPointerDown={(event) => beginDrag("start", event)}
           onKeyDown={(event) => handleKey("start", event)}
-        />
-        {range[0]}–{range[1]}
+        >
+          {range[0]}
+        </span>
         <span
           className="agent-range__handle agent-range__handle--end"
           role="slider"
@@ -90,109 +91,112 @@ function RangeSlider({ range, agentIndex, kind, onChange }) {
           aria-valuenow={range[1]}
           onPointerDown={(event) => beginDrag("end", event)}
           onKeyDown={(event) => handleKey("end", event)}
-        />
+        >
+          {range[1]}
+        </span>
       </span>
     </div>
   );
 }
 
-function OwnershipEditor({ hands, agents, update }) {
+const BLACK_PITCH_CLASSES = new Set([1, 3, 6, 8, 10]);
+const BLACK_KEYS = Array.from({ length: 88 }, (_, index) => index + 1)
+  .filter((key) => BLACK_PITCH_CLASSES.has((20 + key) % 12));
+
+function HandGlyph({ mirrored }) {
   return (
-    <div className="ownership-board field--wide">
-      {hands.map((hand) => {
-        const ownerIndex = agents.findIndex((agent) => agent.hand_ids.includes(hand.id));
-        return (
-          <div className={`ownership-hand ownership-hand--${ownerIndex + 1}`} key={hand.id}>
-            <strong>H{hand.id + 1} · {hand.name}</strong>
-            <select
-              className="control"
-              value={ownerIndex}
-              aria-label={`${hand.name} owner`}
-              onChange={(event) => update((current) => assignMarlHandOwner(current, hand.id, Number(event.target.value)))}
-            >
-              {agents.map((agent, index) => <option value={index} key={agent.name}>{agent.name}</option>)}
-            </select>
-          </div>
-        );
-      })}
-    </div>
+    <svg viewBox="0 0 64 92" aria-hidden="true">
+      <g transform={mirrored ? "translate(64 0) scale(-1 1)" : undefined}>
+        <rect x="21" y="2" width="23" height="28" rx="8" />
+        <rect x="15" y="25" width="36" height="37" rx="13" />
+        <rect x="8" y="46" width="9" height="34" rx="4.5" transform="rotate(13 12.5 63)" />
+        <rect x="18" y="53" width="8" height="35" rx="4" transform="rotate(5 22 70.5)" />
+        <rect x="28" y="54" width="8" height="36" rx="4" />
+        <rect x="38" y="52" width="8" height="35" rx="4" transform="rotate(-5 42 69.5)" />
+        <rect x="48" y="48" width="8" height="31" rx="4" transform="rotate(-12 52 63.5)" />
+        <rect x="49" y="32" width="9" height="27" rx="4.5" transform="rotate(-42 53.5 45.5)" />
+      </g>
+    </svg>
   );
 }
 
-function VisibilityEditor({ agent, index, hands, set }) {
-  const mode = Array.isArray(agent.visible_teammate_hands) ? "custom" : agent.visible_teammate_hands;
-  const teammateHands = hands.filter((hand) => !agent.hand_ids.includes(hand.id));
-  const setMode = (nextMode) => {
-    set(
-      ["design", "config", "agents", index, "visible_teammate_hands"],
-      nextMode === "custom" ? teammateHands.map((hand) => hand.id) : nextMode,
-    );
-  };
-  const toggleHand = (handId) => {
-    const current = Array.isArray(agent.visible_teammate_hands) ? agent.visible_teammate_hands : [];
-    const next = current.includes(handId)
-      ? current.filter((id) => id !== handId)
-      : [...current, handId];
-    set(["design", "config", "agents", index, "visible_teammate_hands"], next);
+function PianoKeyboard({ hands, agents, update }) {
+  const assignNextAgent = (handId, ownerIndex) => {
+    if (agents.length < 2) return;
+    update((current) => assignMarlHandOwner(current, handId, (ownerIndex + 1) % agents.length));
   };
   return (
-    <div className="visibility-editor">
-      <ChoiceRow
-        label="Teammate hand visibility"
-        value={mode}
-        options={["none", "boundary", "all", "custom"]}
-        onChange={setMode}
-      />
-      {mode === "custom" && (
-        <div className="chip-selector chip-selector--compact">
-          {teammateHands.map((hand) => (
+    <div className="piano-assignment-stage">
+      <div className="piano-keyboard" aria-hidden="true">
+        {BLACK_KEYS.map((key) => (
+          <i
+            className="piano-keyboard__black-key"
+            style={{ left: `${((key - 0.5) / 88) * 100}%` }}
+            key={key}
+          />
+        ))}
+      </div>
+      <div className="piano-hands">
+        {hands.map((hand) => {
+          const ownerIndex = agents.findIndex((agent) => agent.hand_ids.includes(hand.id));
+          const [start, end] = hand.initial_key_range;
+          const center = (((start + end) / 2 - 1) / 87) * 100;
+          return (
             <button
               type="button"
-              className={agent.visible_teammate_hands.includes(hand.id) ? "active" : ""}
-              aria-pressed={agent.visible_teammate_hands.includes(hand.id)}
+              className={`piano-hand piano-hand--${ownerIndex + 1}`}
+              style={{ left: `${center}%` }}
+              aria-label={`H${hand.id + 1} ${hand.name}, assigned to ${agents[ownerIndex]?.name}; assign next agent`}
+              onClick={() => assignNextAgent(hand.id, ownerIndex)}
               key={hand.id}
-              onClick={() => toggleHand(hand.id)}
             >
-              H{hand.id + 1} · {hand.name}
+              <HandGlyph mirrored={hand.side === "left"} />
+              <span className="piano-hand__identity">H{hand.id + 1}</span>
+              <strong>Agent {ownerIndex + 1}</strong>
             </button>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function RangeEditor({ agents, hands, set, showVisibility }) {
+function PianoWorkbench({ fullConfig, config, set, update }) {
+  const agents = config.agents;
   return (
-    <div className="agent-range-map field--wide">
+    <div className="piano-workbench field--wide">
+      <div className="piano-range-lanes">
       {agents.map((agent, index) => (
-        <article className="agent-range" key={agent.name}>
-          <header><i className={`agent-swatch agent-swatch--${index + 1}`} /><strong>{agent.name}</strong></header>
-          <div className="agent-range__label"><span>Action</span></div>
-          <RangeSlider
-            range={agent.action_key_range}
-            agentIndex={index}
-            kind="action"
-            onChange={(value) => set(["design", "config", "agents", index, "action_key_range"], value)}
-          />
-          <div className="agent-range__label"><span>Observation</span></div>
-          <RangeSlider
-            range={agent.observation_key_range}
-            agentIndex={index}
-            kind="observation"
-            onChange={(value) => set(["design", "config", "agents", index, "observation_key_range"], value)}
-          />
-          {showVisibility && <VisibilityEditor agent={agent} index={index} hands={hands} set={set} />}
+        <article className="piano-range-agent" key={agent.name}>
+          <header><i className={`agent-swatch agent-swatch--${index + 1}`} /><strong>Agent {index + 1}</strong></header>
+          <div className="piano-range-row">
+            <span>Action</span>
+            <RangeSlider
+              range={agent.action_key_range}
+              agentIndex={index}
+              kind="action"
+              onChange={(value) => set(["design", "config", "agents", index, "action_key_range"], value)}
+            />
+          </div>
+          <div className="piano-range-row">
+            <span>Observation</span>
+            <RangeSlider
+              range={agent.observation_key_range}
+              agentIndex={index}
+              kind="observation"
+              onChange={(value) => set(["design", "config", "agents", index, "observation_key_range"], value)}
+            />
+          </div>
         </article>
       ))}
+      </div>
+      <PianoKeyboard hands={fullConfig.task.embodiment.hands} agents={agents} update={update} />
     </div>
   );
 }
 
-export default function MarlDesign({ fullConfig, config, set, update, panel }) {
+export default function MarlDesign({ fullConfig, config, set, update }) {
   const hands = fullConfig.task.embodiment.hands;
-  const ownershipPanel = panel("marl.ownership");
-  const rangePanel = panel("marl.ranges");
 
   return (
     <>
@@ -218,39 +222,14 @@ export default function MarlDesign({ fullConfig, config, set, update, panel }) {
         />
       </Section>
 
-      <Section title="Hand assignment" {...ownershipPanel}>
+      <Section title="Hand assignment & ranges">
         <SelectField
           label="Sustain owner"
           value={config.sustain_owner}
           onChange={(value) => set("design.config.sustain_owner", value)}
-          options={config.agents.map((agent) => ({ value: agent.name, label: agent.name }))}
+          options={config.agents.map((agent, index) => ({ value: agent.name, label: `Agent ${index + 1}` }))}
         />
-        <OwnershipEditor hands={hands} agents={config.agents} update={update} />
-        {ownershipPanel.advanced && config.agents.map((agent, index) => (
-          <TextField
-            key={agent.name}
-            label={`Agent ${index + 1} name`}
-            value={agent.name}
-            onChange={(value) => update((current) => {
-              const next = structuredClone(current);
-              const oldName = next.design.config.agents[index].name;
-              next.design.config.agents[index].name = value;
-              if (next.design.config.sustain_owner === oldName) {
-                next.design.config.sustain_owner = value;
-              }
-              return next;
-            })}
-          />
-        ))}
-      </Section>
-
-      <Section title="Action & observation ranges" {...rangePanel}>
-        <RangeEditor
-          agents={config.agents}
-          hands={hands}
-          set={set}
-          showVisibility={rangePanel.advanced}
-        />
+        <PianoWorkbench fullConfig={fullConfig} config={config} set={set} update={update} />
       </Section>
     </>
   );
