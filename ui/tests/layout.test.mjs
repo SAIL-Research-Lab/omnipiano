@@ -122,10 +122,11 @@ test("registered and custom MARL tasks expose the correct controls", () => {
   const custom = renderToStaticMarkup(createElement(DesignSection, {
     config: customMarl, environments: [], set: noop, update: noop, panel: (id) => panel(id),
   }));
-  assert.match(custom, /Hands \/ agents/);
   assert.match(custom, /Number of Agents/);
   assert.match(custom, /Hand assignment/);
   assert.match(custom, /Action &amp; observation ranges/);
+  assert.doesNotMatch(custom, /Hands \/ agents|Action overlap|Observation overlap|Critic/);
+  assert.doesNotMatch(custom, /Maximum 4|Moving an agent|Keys 1–22|wrist key range|visible keyboard state|Action ranges constrain/);
   assert.doesNotMatch(custom, /primo|secondo/);
 });
 

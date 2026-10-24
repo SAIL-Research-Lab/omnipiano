@@ -1303,61 +1303,16 @@ textarea.control {
 .budget-formula i { color: #9aa5b2; font-style: normal; }
 .budget-formula__result { padding: 10px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); }
 
-.metric-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--soft);
-}
-
-.marl-stats {
-  position: sticky;
-  top: 12px;
-  z-index: 10;
-  margin-bottom: 18px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  box-shadow: 0 8px 24px rgba(29, 44, 64, 0.1);
-}
-
-.marl-stats .metric-strip {
-  border: 0;
-  border-radius: 0;
-  background: var(--panel);
-}
-
-.metric-strip div {
-  padding: 11px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  border-right: 1px solid var(--line);
-}
-
-.metric-strip div:last-child { border-right: 0; }
-.metric-strip span { color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-.metric-strip strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; text-transform: capitalize; white-space: nowrap; }
-
 .ownership-board {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
 }
 
-.ownership-board > small {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 9px;
-}
-
 .ownership-hand {
   padding: 11px;
   display: grid;
-  grid-template-columns: 30px minmax(80px, 1fr) minmax(100px, 0.9fr);
+  grid-template-columns: minmax(100px, 1fr) minmax(100px, 0.9fr);
   align-items: center;
   gap: 9px;
   border: 1px solid var(--line);
@@ -1370,10 +1325,7 @@ textarea.control {
 .ownership-hand--3 { border-left-color: #df645e; }
 .ownership-hand--4 { border-left-color: #36a394; }
 .ownership-hand--5 { border-left-color: #8b62c4; }
-.ownership-hand__number { color: var(--muted); font-size: 10px; font-weight: 800; }
-.ownership-hand > div { display: flex; flex-direction: column; gap: 3px; }
 .ownership-hand strong { font-size: 11px; }
-.ownership-hand small { color: var(--muted); font-size: 9px; }
 .ownership-hand .control { min-height: 33px; padding: 6px 8px; font-size: 10px; }
 
 .agent-range-map {
@@ -1381,14 +1333,6 @@ textarea.control {
   border: 1px solid var(--line);
   border-radius: 9px;
   background: var(--soft);
-}
-
-.piano-scale {
-  margin: 0 3px 9px 92px;
-  display: flex;
-  justify-content: space-between;
-  color: #8a96a6;
-  font-size: 8px;
 }
 
 .agent-range {
@@ -1403,7 +1347,6 @@ textarea.control {
 .agent-range:first-of-type { border-top: 0; }
 .agent-range header { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; }
 .agent-range header strong { font-size: 11px; }
-.agent-range header small { margin-left: auto; color: var(--muted); font-size: 9px; }
 .agent-swatch { width: 9px; height: 9px; border-radius: 2px; background: #e4a526; }
 .agent-swatch--2 { background: #2466b8; }
 .agent-swatch--3 { background: #df645e; }
@@ -1412,7 +1355,6 @@ textarea.control {
 
 .agent-range__label { display: flex; flex-direction: column; gap: 2px; }
 .agent-range__label span { color: #344157; font-size: 9px; font-weight: 750; }
-.agent-range__label small { color: var(--muted); font-size: 8px; }
 .agent-range__track { position: relative; height: 28px; overflow: hidden; border: 1px solid #c9d2dc; border-radius: 5px; background: repeating-linear-gradient(90deg, white 0, white calc(100% / 22 - 1px), #e0e5ea calc(100% / 22 - 1px), #e0e5ea calc(100% / 22)); }
 .agent-range__bar { position: absolute; top: 3px; bottom: 3px; display: grid; place-items: center; border-radius: 3px; background: #e4a526; color: white; font-size: 8px; font-weight: 800; }
 .agent-range__bar--2 { background: #2466b8; }
@@ -1424,14 +1366,13 @@ textarea.control {
 .mini-range-editor {
   grid-column: 2;
   display: grid;
-  grid-template-columns: auto 70px 10px 70px;
+  grid-template-columns: 70px 10px 70px;
   align-items: center;
   justify-content: end;
   gap: 5px;
 }
 
-.mini-range-editor span { margin-right: 3px; color: var(--muted); font-size: 8px; }
-.mini-range-editor i { color: var(--muted); font-style: normal; text-align: center; }
+.mini-range-editor i { color: #344157; font-style: normal; text-align: center; }
 .mini-range-editor .control { min-height: 30px; padding: 5px 7px; font-size: 10px; }
 
 .visibility-editor {
@@ -1671,10 +1612,6 @@ textarea.control {
     scroll-margin-top: 76px;
   }
 
-  .marl-stats {
-    top: 68px;
-  }
-
   .field-grid,
   .track-grid,
   .design-option-grid,
@@ -1684,21 +1621,12 @@ textarea.control {
     grid-template-columns: 1fr;
   }
 
-  .mode-grid,
-  .metric-strip {
+  .mode-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .metric-strip div:nth-child(2) {
-    border-right: 0;
-  }
-
-  .metric-strip div:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
-  }
-
   .ownership-hand {
-    grid-template-columns: 28px minmax(70px, 1fr) minmax(92px, 0.9fr);
+    grid-template-columns: minmax(90px, 1fr) minmax(92px, 0.9fr);
   }
 
   .design-summary {
@@ -1721,12 +1649,8 @@ textarea.control {
     grid-template-columns: 70px minmax(0, 1fr);
   }
 
-  .piano-scale {
-    margin-left: 82px;
-  }
-
   .mini-range-editor {
-    grid-template-columns: auto minmax(52px, 1fr) 10px minmax(52px, 1fr);
+    grid-template-columns: minmax(52px, 1fr) 10px minmax(52px, 1fr);
   }
 
   .compact-table__header {

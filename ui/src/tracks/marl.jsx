@@ -1,20 +1,6 @@
 import { ChoiceRow, NumberField, NumberInput, Section, SelectField, TextField } from "../fields";
 import { applyMarlAgentCount, assignMarlHandOwner } from "../config";
 
-function rangeOverlap(left, right) {
-  return Math.max(0, Math.min(left[1], right[1]) - Math.max(left[0], right[0]) + 1);
-}
-
-function totalPairwiseOverlap(agents, key) {
-  let total = 0;
-  for (let left = 0; left < agents.length; left += 1) {
-    for (let right = left + 1; right < agents.length; right += 1) {
-      total += rangeOverlap(agents[left][key], agents[right][key]);
-    }
-  }
-  return total;
-}
-
 function RangeBar({ range, agentIndex, kind }) {
   const left = ((range[0] - 1) / 88) * 100;
   const width = ((range[1] - range[0] + 1) / 88) * 100;
@@ -33,7 +19,6 @@ function RangeBar({ range, agentIndex, kind }) {
 function RangeInputs({ label, value, onChange }) {
   return (
     <div className="mini-range-editor">
-      <span>{label}</span>
       <NumberInput
         min="1"
         max="88"
@@ -60,8 +45,7 @@ function OwnershipEditor({ hands, agents, update }) {
         const ownerIndex = agents.findIndex((agent) => agent.hand_ids.includes(hand.id));
         return (
           <div className={`ownership-hand ownership-hand--${ownerIndex + 1}`} key={hand.id}>
-            <span className="ownership-hand__number">H{hand.id + 1}</span>
-            <div><strong>{hand.name}</strong><small>Keys {hand.initial_key_range[0]}–{hand.initial_key_range[1]}</small></div>
+            <strong>H{hand.id + 1} · {hand.name}</strong>
             <select
               className="control"
               value={ownerIndex}
@@ -73,7 +57,6 @@ function OwnershipEditor({ hands, agents, update }) {
           </div>
         );
       })}
-      <small>Moving an agent's last hand swaps ownership.</small>
     </div>
   );
 }
@@ -124,18 +107,17 @@ function VisibilityEditor({ agent, index, hands, set }) {
 function RangeEditor({ agents, hands, set, showVisibility }) {
   return (
     <div className="agent-range-map field--wide">
-      <div className="piano-scale"><span>1 · A0</span><span>44</span><span>88 · C8</span></div>
       {agents.map((agent, index) => (
         <article className="agent-range" key={agent.name}>
-          <header><i className={`agent-swatch agent-swatch--${index + 1}`} /><strong>{agent.name}</strong><small>{agent.hand_ids.map((id) => `H${id + 1}`).join(" + ")}</small></header>
-          <div className="agent-range__label"><span>Action</span><small>wrist key range</small></div>
+          <header><i className={`agent-swatch agent-swatch--${index + 1}`} /><strong>{agent.name}</strong></header>
+          <div className="agent-range__label"><span>Action</span></div>
           <RangeBar range={agent.action_key_range} agentIndex={index} kind="action" />
           <RangeInputs
             label="Action keys"
             value={agent.action_key_range}
             onChange={(value) => set(["design", "config", "agents", index, "action_key_range"], value)}
           />
-          <div className="agent-range__label"><span>Observation</span><small>visible keyboard state</small></div>
+          <div className="agent-range__label"><span>Observation</span></div>
           <RangeBar range={agent.observation_key_range} agentIndex={index} kind="observation" />
           <RangeInputs
             label="Observation keys"
@@ -154,30 +136,9 @@ export default function MarlDesign({ fullConfig, config, set, update, panel }) {
   const agentsPanel = panel("marl.agents");
   const ownershipPanel = panel("marl.ownership");
   const rangePanel = panel("marl.ranges");
-  const actionOverlap = totalPairwiseOverlap(config.agents, "action_key_range");
-  const observationOverlap = totalPairwiseOverlap(config.agents, "observation_key_range");
-  const critic = {
-    ippo: "local",
-    "ippo-rllib-module": "local",
-    mappo: "global",
-    "mappo-own-critic": "own observation",
-    happo: "global",
-    a2po: "global",
-    facmac: "joint action",
-    "ppo-monolithic": "local",
-  }[fullConfig.algorithm.name] ?? "backend default";
 
   return (
     <>
-      <section className="marl-stats" aria-label="Multi-agent configuration summary">
-        <div className="metric-strip">
-          <div><span>Hands / agents</span><strong>{hands.length} / {config.num_agents}</strong></div>
-          <div><span>Action overlap</span><strong>{actionOverlap} keys</strong></div>
-          <div><span>Observation overlap</span><strong>{observationOverlap} keys</strong></div>
-          <div><span>Critic</span><strong>{critic}</strong></div>
-        </div>
-      </section>
-
       <Section title="Number of Agents" {...agentsPanel}>
         <NumberField
           label="Agents"
@@ -185,7 +146,6 @@ export default function MarlDesign({ fullConfig, config, set, update, panel }) {
           min={1}
           max={hands.length}
           onChange={(value) => update((current) => applyMarlAgentCount(current, value))}
-          hint={`Maximum ${hands.length}.`}
         />
         {agentsPanel.advanced && (
           <>
@@ -226,11 +186,7 @@ export default function MarlDesign({ fullConfig, config, set, update, panel }) {
         ))}
       </Section>
 
-      <Section
-        title="Action & observation ranges"
-        description="Action ranges constrain wrists; fingertips may extend beyond them."
-        {...rangePanel}
-      >
+      <Section title="Action & observation ranges" {...rangePanel}>
         <RangeEditor
           agents={config.agents}
           hands={hands}
