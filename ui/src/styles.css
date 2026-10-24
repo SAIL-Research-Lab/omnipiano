@@ -1627,42 +1627,7 @@ textarea.control {
   tab-size: 2;
 }
 
-.json-panel__runs {
-  max-height: 150px;
-  margin: 0 17px 12px;
-  overflow: auto;
-  border: 1px solid #2a384c;
-  border-radius: 6px;
-}
-
-.json-panel__runs > div {
-  padding: 8px 10px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid #2a384c;
-  font-size: 9px;
-}
-
-.json-panel__runs > div:last-child {
-  border-bottom: 0;
-}
-
-.json-panel__runs span {
-  overflow: hidden;
-  color: #b9c8dc;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.json-panel__runs strong {
-  color: #8293a9;
-  font-weight: 650;
-}
-
-.json-panel__runs button,
-.json-panel__launch-actions button {
+.json-panel__download-actions button {
   padding: 7px 9px;
   border: 1px solid #3c4d63;
   border-radius: 5px;
@@ -1673,21 +1638,20 @@ textarea.control {
   cursor: pointer;
 }
 
-.json-panel__launch-actions {
+.json-panel__download-actions {
   padding: 12px 17px 16px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
   border-top: 1px solid #2a384c;
 }
 
-.json-panel__launch-actions .json-panel__launch {
+.json-panel__download-actions .json-panel__download {
+  width: 100%;
   border-color: var(--accent);
   background: var(--accent);
   color: white;
 }
 
-.json-panel__launch-actions button:disabled {
+.json-panel__download-actions button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

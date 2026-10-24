@@ -5,7 +5,7 @@ import robustExample from "../../omnipiano/experiments/examples/robust.json";
 import safetyExample from "../../omnipiano/experiments/examples/safety.json";
 import marlExample from "../../omnipiano/experiments/examples/marl.json";
 
-import { getCatalog, getEnvironments, getRuns, postConfig, stopRun } from "./api";
+import { getCatalog, getEnvironments } from "./api";
 import { cloneConfig, environmentNameForConfig, makeCustomMarl, setAtPath, TRACKS, visibleStepsForTrack, withUiDefaults } from "./config";
 import {
   AlgorithmSection,
@@ -23,12 +23,11 @@ const EXAMPLES = Object.fromEntries(Object.entries(RAW_EXAMPLES).map(([key, valu
 EXAMPLES.marl = makeCustomMarl(EXAMPLES.marl);
 Object.values(EXAMPLES).forEach((example) => { example.experiment.name = environmentNameForConfig(example); });
 
-function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, onLaunch, onStop, backend, copyLabel }) {
-  const backendError = backend.type === "error";
-  const statusError = errors.length > 0 || backendError;
+function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, copyLabel }) {
+  const statusError = errors.length > 0;
   const statusMessage = errors.length
     ? `${errors.length} JSON issue${errors.length === 1 ? "" : "s"}`
-    : backend.message || "Schema valid";
+    : "Schema valid";
   return (
     <aside id="unified-json-panel" className={`json-panel ${collapsed ? "json-panel--collapsed" : ""}`}>
       <div className="json-panel__header">
@@ -45,20 +44,8 @@ function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, 
             {statusMessage}
           </div>
           <pre>{JSON.stringify(config, null, 2)}</pre>
-          {backend.runs?.length > 0 && (
-            <div className="json-panel__runs">
-              {backend.runs.map((run) => (
-                <div key={run.run_id}>
-                  <span>{run.run_id}</span>
-                  <strong>{run.process?.state ?? "prepared"}</strong>
-                  {run.process?.state === "running" && <button type="button" onClick={() => onStop(run.run_id)}>Stop</button>}
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="json-panel__launch-actions">
-            <button type="button" onClick={onDownload} disabled={errors.length > 0}>Download JSON</button>
-            <button type="button" className="json-panel__launch" onClick={onLaunch} disabled={errors.length > 0 || backend.busy}>{backend.busy ? "Working…" : "Launch runs"}</button>
+          <div className="json-panel__download-actions">
+            <button type="button" className="json-panel__download" onClick={onDownload} disabled={errors.length > 0}>Download JSON</button>
           </div>
         </>
       )}
@@ -95,7 +82,6 @@ export default function App() {
   const [message, setMessage] = useState(null);
   const [catalog, setCatalog] = useState(null);
   const [environments, setEnvironments] = useState({});
-  const [backend, setBackend] = useState({ type: "idle", message: "", busy: false, runs: [] });
   const fileInput = useRef(null);
   const [configs, setConfigs] = useState(() => Object.fromEntries(
     Object.entries(EXAMPLES).map(([key, value]) => [key, cloneConfig(value)]),
@@ -121,11 +107,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    getCatalog().then(setCatalog).catch(() => setBackend((previous) => ({
-      ...previous,
-      type: "error",
-      message: "Local API unavailable. Start it before backend validation or launch.",
-    })));
+    getCatalog().then(setCatalog).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -163,7 +145,6 @@ export default function App() {
 
   function set(path, value) {
     setConfigs((previous) => ({ ...previous, [track]: setAtPath(previous[track], path, value) }));
-    setBackend({ type: "idle", message: "", busy: false, runs: [] });
   }
 
   function changeTrack(nextTrack) {
@@ -176,19 +157,16 @@ export default function App() {
     setTrack(nextTrack);
     setShowBaselines(false);
     setActiveStep("experiment");
-    setBackend({ type: "idle", message: "", busy: false, runs: [] });
     setMessage(null);
   }
 
   function update(transform) {
     setConfigs((previous) => ({ ...previous, [track]: transform(previous[track]) }));
-    setBackend({ type: "idle", message: "", busy: false, runs: [] });
   }
 
   function resetTrack() {
     setConfigs((previous) => ({ ...previous, [track]: cloneConfig(EXAMPLES[track]) }));
     setShowBaselines(false);
-    setBackend({ type: "idle", message: "", busy: false, runs: [] });
     setMessage(null);
   }
 
@@ -231,44 +209,6 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
-  async function callBackend(action) {
-    setBackend({ type: "working", message: `${action}…`, busy: true, runs: [] });
-    try {
-      const payload = await postConfig(action, config);
-      let runs = [];
-      if (action === "plan") runs = payload.plan.runs;
-      if (action === "materialize") runs = payload.materialized.runs;
-      if (action === "launch") {
-        const status = await getRuns();
-        runs = status.runs.filter((run) => run.run_id.startsWith(`${config.experiment.name}--`));
-      }
-      setBackend({
-        type: "success",
-        message: action === "plan" ? "Backend validated; launch commands are ready." :
-          action === "materialize" ? "Run directories and manifests prepared." : "Training processes started.",
-        busy: false,
-        runs,
-      });
-    } catch (reason) {
-      setBackend({ type: "error", message: reason.message, busy: false, runs: [] });
-    }
-  }
-
-  async function launch() {
-    if (!window.confirm(`Launch ${config.experiment.seeds.length} run(s) for ${config.experiment.name}?`)) return;
-    await callBackend("launch");
-  }
-
-  async function stop(runId) {
-    try {
-      await stopRun(runId);
-      const status = await getRuns();
-      setBackend((previous) => ({ ...previous, runs: status.runs.filter((run) => run.run_id.startsWith(`${config.experiment.name}--`)) }));
-    } catch (reason) {
-      setBackend({ type: "error", message: reason.message, busy: false, runs: [] });
-    }
-  }
-
   function toggleBaselines() {
     if (!showBaselines) setPreviewCollapsed(false);
     setShowBaselines(!showBaselines);
@@ -285,11 +225,8 @@ export default function App() {
     algorithms,
     trackCapability: catalog?.tracks?.[track] ?? null,
     environments: environments[track] ?? [],
-    backend,
     onCopy: copyJson,
     onDownload: downloadJson,
-    onLaunch: launch,
-    onStop: stop,
     showBaselines,
     onToggleBaselines: toggleBaselines,
   };
@@ -338,9 +275,6 @@ export default function App() {
             onToggle={() => setPreviewCollapsed((value) => !value)}
             onCopy={copyJson}
             onDownload={downloadJson}
-            onLaunch={launch}
-            onStop={stop}
-            backend={backend}
             copyLabel={copyLabel}
           />
         )}

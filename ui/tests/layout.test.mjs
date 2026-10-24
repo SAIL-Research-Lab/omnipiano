@@ -55,6 +55,14 @@ test("the default workflow ends after environment export", () => {
   assert.match(html, /workspace workspace--environment-only/);
 });
 
+test("the baseline workflow downloads configuration without launching local runs", async () => {
+  const source = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(source, />Download JSON</);
+  assert.match(source, /className="json-panel__download"/);
+  assert.doesNotMatch(source, /Launch runs|onLaunch|postConfig|getRuns|stopRun|window\.confirm/);
+  assert.match(styles, /\.json-panel__download-actions \.json-panel__download\s*\{[^}]*background:\s*var\(--accent\)/s);
+});
+
 test("section 02 exposes the portable environment bundle actions", () => {
   for (const config of [standard, robust, safety, customMarl]) {
     const html = renderToStaticMarkup(createElement(EnvironmentExportSection, { config }));
