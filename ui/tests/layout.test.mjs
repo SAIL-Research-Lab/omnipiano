@@ -97,6 +97,18 @@ test("registered and custom MARL tasks expose the correct controls", () => {
   assert.doesNotMatch(custom, /primo|secondo/);
 });
 
+test("non-MARL track design is a shared disabled placeholder", () => {
+  for (const config of [standard, robust, safety]) {
+    const html = renderToStaticMarkup(createElement(DesignSection, {
+      config, set: noop, update: noop, panel: (id) => panel(id),
+    }));
+    assert.match(html, /Fixed by registered envs, not applicable right now/);
+    assert.match(html, /section-card--fixed/);
+    assert.match(html, /aria-disabled="true"/);
+    assert.doesNotMatch(html, /<select|<input|<button/);
+  }
+});
+
 test("advanced algorithm settings start with an editable reference template", () => {
   const config = {
     ...robust,

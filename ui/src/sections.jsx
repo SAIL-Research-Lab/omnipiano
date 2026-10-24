@@ -128,33 +128,18 @@ export function TaskSection({ config, environments, set, update }) {
   );
 }
 
-export function DesignSection({ config, environments, set, update, panel }) {
+export function DesignSection({ config, set, update, panel }) {
   if (config.design.type === "marl" && config.task.source === "custom") {
     return <MarlDesign fullConfig={config} config={config.design.config} set={set} update={update} panel={panel} />;
   }
-  if (config.design.type === "robust") {
+  if (config.design.type !== "marl") {
     return (
-      <Section title="Robustness protocol">
-        <SelectField label="Evaluation protocol" value={config.design.config.evaluation_protocol ?? "matched"} options={[{ value: "matched", label: "Matched perturbation" }]} onChange={(value) => set("design.config.evaluation_protocol", value)} />
-      </Section>
+      <section className="section-card section-card--fixed" aria-disabled="true">
+        <div className="fixed-design-placeholder">Fixed by registered envs, not applicable right now</div>
+      </section>
     );
   }
-  if (config.design.type === "safety") {
-    const selected = environments.find((item) => item.id === config.task.environment_id);
-    return (
-      <Section title="Safety task">
-        <div className="recipe-summary field--wide">
-          <span>Group <strong>{config.design.config.group}</strong></span>
-          <span>Task <strong>{config.design.config.task_index}</strong></span>
-          {selected && <span>Cost <strong>{selected.cost} · {selected.setting}</strong></span>}
-        </div>
-      </Section>
-    );
-  }
-  if (config.design.type === "marl") {
-    return <Section title="Agent assignment"><div className="inline-callout field--wide">This registered task uses its territorial agent layout.</div></Section>;
-  }
-  return <Section title="Standard task"><div className="inline-callout field--wide">The registered environment fully defines the nominal control task.</div></Section>;
+  return <Section title="Agent assignment"><div className="inline-callout field--wide">This registered task uses its territorial agent layout.</div></Section>;
 }
 
 function ParameterValue({ name, value, onCommit, comma }) {

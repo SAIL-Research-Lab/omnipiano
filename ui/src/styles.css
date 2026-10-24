@@ -381,6 +381,25 @@ button {
   padding: 20px 24px;
 }
 
+.section-card--fixed {
+  border-color: #e1e6eb;
+  background: #f3f5f7;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.fixed-design-placeholder {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa4b1;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+  user-select: none;
+}
+
 .field--prominent .field__label {
   color: var(--ink);
   font-size: 20px;
