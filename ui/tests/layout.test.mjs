@@ -29,7 +29,7 @@ test.after(async () => server.close());
 test("the default workflow ends after environment export", () => {
   const html = renderToStaticMarkup(createElement(App));
   assert.match(html, /Choose a track/);
-  assert.equal((html.match(/class="workflow-section(?: workflow-section--before-baselines)?"/g) ?? []).length, 2);
+  assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 2);
   for (const title of ["Experiment", "Task design"]) {
     assert.match(html, new RegExp(title));
   }
@@ -51,7 +51,8 @@ test("the default workflow ends after environment export", () => {
   assert.match(html, /Environment name/);
   assert.match(html, /winter-wind-4h-2a/);
   assert.doesNotMatch(html, /Experiment name|Import JSON|Reset track/);
-  assert.match(html, /reference-baseline-gateway/);
+  assert.match(html, /<nav class="step-nav"[^>]*>[\s\S]*reference-baseline-toggle[\s\S]*<\/nav>/);
+  assert.doesNotMatch(html, /reference-baseline-gateway|workflow-section--before-baselines/);
   assert.match(html, /workspace workspace--environment-only/);
 });
 

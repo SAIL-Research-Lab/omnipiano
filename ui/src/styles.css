@@ -323,10 +323,6 @@ button {
   margin-bottom: 0;
 }
 
-.workflow-section--before-baselines {
-  margin-bottom: 26px;
-}
-
 .workflow-section__heading {
   margin: 0 2px 20px;
   padding-bottom: 12px;
@@ -476,43 +472,36 @@ button {
   font-weight: 700;
 }
 
-.reference-baseline-gateway {
-  margin-bottom: 72px;
-  padding-top: 24px;
-  border-top: 2px solid color-mix(in srgb, var(--accent) 20%, var(--line));
-}
-
 .reference-baseline-toggle {
   width: 100%;
-  min-height: 78px;
-  padding: 15px 17px;
+  min-height: 48px;
+  margin-top: 16px;
+  padding: 8px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 15px;
-  border: 2px solid color-mix(in srgb, var(--accent) 64%, var(--line));
-  border-radius: 14px;
-  background: linear-gradient(105deg, color-mix(in srgb, var(--accent-soft) 74%, white), white 70%);
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent-soft) 58%, white);
   color: var(--ink);
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .reference-baseline-toggle:hover,
 .reference-baseline-toggle--expanded {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 78%, white);
-  transform: translateY(-1px);
+  background: var(--accent-soft);
 }
 
 .reference-baseline-toggle__number {
-  min-width: 58px;
-  padding: 9px 10px;
-  border-radius: 9px;
+  min-width: 43px;
+  padding: 6px 5px;
+  border-radius: 6px;
   background: var(--accent);
   color: white;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 800;
   text-align: center;
   letter-spacing: 0.04em;
@@ -523,18 +512,19 @@ button {
 }
 
 .reference-baseline-toggle__copy strong {
-  font-size: 15px;
+  font-size: 10px;
+  line-height: 1.2;
 }
 
 .reference-baseline-toggle__arrow {
-  width: 34px;
-  height: 34px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
   border-radius: 50%;
   background: var(--accent);
   color: white;
-  font-size: 15px;
+  font-size: 10px;
   font-weight: 800;
 }
 

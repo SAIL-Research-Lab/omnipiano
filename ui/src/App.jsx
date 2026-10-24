@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import standardExample from "../../omnipiano/experiments/examples/standard.json";
 import robustExample from "../../omnipiano/experiments/examples/robust.json";
@@ -251,20 +251,14 @@ export default function App() {
         <nav className="step-nav" aria-label="Experiment configuration steps">
           <div className="step-nav__track"><span className={`track-card__mark track-card__mark--${track}`}>{trackInfo.short}</span><strong>{trackInfo.title}</strong></div>
           <ol>{steps.map((step) => <li key={step.id}><a href={`#step-${step.id}`} className={activeStep === step.id ? "active" : ""}><span>{step.number}</span><strong>{step.title}</strong></a></li>)}</ol>
+          <ReferenceBaselineToggle expanded={showBaselines} onToggle={toggleBaselines} />
         </nav>
         <main className="editor">
-          {steps.map((step, index) => (
-            <Fragment key={step.id}>
-              <section className={`workflow-section ${index === 1 ? "workflow-section--before-baselines" : ""}`.trim()} data-step={step.id} id={`step-${step.id}`}>
-                <div className="workflow-section__heading"><span>{step.number}</span><h1>{step.title}</h1></div>
-                <StepContent step={step.id} {...sharedProps} />
-              </section>
-              {index === 1 && (
-                <div className="reference-baseline-gateway">
-                  <ReferenceBaselineToggle expanded={showBaselines} onToggle={toggleBaselines} />
-                </div>
-              )}
-            </Fragment>
+          {steps.map((step) => (
+            <section className="workflow-section" data-step={step.id} id={`step-${step.id}`} key={step.id}>
+              <div className="workflow-section__heading"><span>{step.number}</span><h1>{step.title}</h1></div>
+              <StepContent step={step.id} {...sharedProps} />
+            </section>
           ))}
         </main>
         {showBaselines && (
