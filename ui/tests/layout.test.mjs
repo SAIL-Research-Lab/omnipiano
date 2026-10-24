@@ -13,7 +13,7 @@ const server = await createServer({
   server: { middlewareMode: true, hmr: false, ws: false, fs: { allow: [".."] } },
 });
 const { default: App } = await server.ssrLoadModule("/src/App.jsx");
-const { DesignSection, ExperimentSection, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
+const { AlgorithmSection, DesignSection, ExperimentSection, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
 const { makeCustomMarl, withUiDefaults } = await server.ssrLoadModule("/src/config.js");
 const standard = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/standard.json", import.meta.url))));
 const robust = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/robust.json", import.meta.url))));
@@ -91,4 +91,28 @@ test("registered and custom MARL tasks expose the correct controls", () => {
   assert.match(custom, /Hand assignment/);
   assert.match(custom, /Action &amp; observation ranges/);
   assert.doesNotMatch(custom, /primo|secondo/);
+});
+
+test("advanced algorithm settings start with an editable reference template", () => {
+  const config = {
+    ...robust,
+    algorithm: { name: "sac", preset: "default", parameters: {} },
+  };
+  const html = renderToStaticMarkup(createElement(AlgorithmSection, {
+    config,
+    algorithms: [{
+      name: "sac",
+      label: "SAC",
+      configurable_parameters: [
+        "net_arch", "batch_size", "buffer_size", "learning_starts", "tau", "utd", "learning_rate",
+      ],
+    }],
+    update: noop,
+    panel: (id) => panel(id, ["algorithm"]),
+  }));
+  assert.match(html, /Parameter overrides/);
+  assert.match(html, /&quot;learning_rate&quot;: 0.0003/);
+  assert.match(html, /&quot;buffer_size&quot;: 1000000/);
+  assert.match(html, /&quot;net_arch&quot;:/);
+  assert.match(html, /Reference values/);
 });

@@ -9,6 +9,7 @@ import {
   applyTrackingProvider,
   assignMarlHandOwner,
   makeCustomMarl,
+  parameterTemplate,
   parseIntegerList,
   selectAlgorithm,
   withUiDefaults,
@@ -57,4 +58,26 @@ test("tracking provider always produces a compatible mode", async () => {
   const disabled = applyTrackingProvider(base, "none");
   assert.equal(disabled.run.tracking.mode, "disabled");
   assert.equal(applyTrackingProvider(disabled, "wandb").run.tracking.mode, "offline");
+});
+
+test("algorithm parameter templates match the selected backend family", () => {
+  assert.deepEqual(
+    parameterTemplate("robust", "sac", [
+      "net_arch", "batch_size", "buffer_size", "learning_starts", "tau", "utd", "learning_rate",
+    ]),
+    {
+      net_arch: [256, 256],
+      batch_size: 256,
+      buffer_size: 1_000_000,
+      learning_starts: 5_000,
+      tau: 0.005,
+      utd: 1,
+      learning_rate: 0.0003,
+    },
+  );
+  assert.deepEqual(
+    parameterTemplate("marl", "mappo", ["learning_rate", "train_batch_size", "hidden_sizes"]),
+    { learning_rate: 0.0003, train_batch_size: 4_000, hidden_sizes: [256, 256] },
+  );
+  assert.deepEqual(parameterTemplate("standard", "ppo", []), {});
 });

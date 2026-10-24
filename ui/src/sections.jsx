@@ -14,6 +14,7 @@ import {
   applyTrackingProvider,
   makeCustomMarl,
   makeRegisteredTask,
+  parameterTemplate,
   parseIntegerList,
   REPERTOIRE,
   selectAlgorithm,
@@ -157,16 +158,23 @@ export function DesignSection({ config, environments, set, update, panel }) {
   return <Section title="Standard task"><div className="inline-callout field--wide">The registered environment fully defines the nominal control task.</div></Section>;
 }
 
-function ParameterEditor({ parameters, allowed, onChange }) {
-  const [draft, setDraft] = useState(() => JSON.stringify(parameters, null, 2));
+function ParameterEditor({ parameters, allowed, template, onChange }) {
+  const hasOverrides = Object.keys(parameters).length > 0;
+  const templateText = JSON.stringify(template, null, 2);
+  const serialized = JSON.stringify(hasOverrides ? parameters : template, null, 2);
+  const [draft, setDraft] = useState(serialized);
   const [error, setError] = useState("");
-  useEffect(() => setDraft(JSON.stringify(parameters, null, 2)), [parameters]);
+  useEffect(() => setDraft(serialized), [serialized]);
   const commit = () => {
     try {
       const value = JSON.parse(draft);
       if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("Use a JSON object");
       const unknown = Object.keys(value).filter((name) => !allowed.includes(name));
       if (unknown.length) throw new Error(`Unsupported: ${unknown.join(", ")}`);
+      if (!hasOverrides && JSON.stringify(value, null, 2) === templateText) {
+        setError("");
+        return;
+      }
       onChange(value);
       setError("");
     } catch (reason) {
@@ -177,7 +185,7 @@ function ParameterEditor({ parameters, allowed, onChange }) {
     <label className="field field--wide">
       <span className="field__label">Parameter overrides</span>
       <textarea className="control" rows="7" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />
-      <span className="field__hint">Allowed keys: {allowed.length ? allowed.join(", ") : "none"}</span>
+      <span className="field__hint">Reference values. Allowed keys: {allowed.length ? allowed.join(", ") : "none"}</span>
       {error && <span className="field__hint">{error}</span>}
     </label>
   );
@@ -186,6 +194,9 @@ function ParameterEditor({ parameters, allowed, onChange }) {
 export function AlgorithmSection({ config, algorithms, update, panel }) {
   const algorithmPanel = panel("algorithm");
   const selected = algorithms.find((item) => item.name === config.algorithm.name);
+  const template = selected
+    ? parameterTemplate(config.design.type, selected.name, selected.configurable_parameters)
+    : {};
   return (
     <Section title="Available algorithms" {...algorithmPanel}>
       <div className="algorithm-grid field--wide">
@@ -197,7 +208,7 @@ export function AlgorithmSection({ config, algorithms, update, panel }) {
       </div>
       {!algorithms.length && <div className="inline-callout field--wide">Start the local API to load the live algorithm catalog.</div>}
       {algorithmPanel.advanced && selected && (
-        <ParameterEditor parameters={config.algorithm.parameters} allowed={selected.configurable_parameters} onChange={(parameters) => update((current) => ({ ...current, algorithm: { ...current.algorithm, parameters } }))} />
+        <ParameterEditor parameters={config.algorithm.parameters} allowed={selected.configurable_parameters} template={template} onChange={(parameters) => update((current) => ({ ...current, algorithm: { ...current.algorithm, parameters } }))} />
       )}
     </Section>
   );
