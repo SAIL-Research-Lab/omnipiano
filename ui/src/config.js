@@ -10,9 +10,8 @@ export const TRACKS = [
 export const STEPS = [
   { id: "experiment", number: "01", title: "Experiment" },
   { id: "task", number: "02", title: "Piano task" },
-  { id: "design", number: "03", title: "Track design" },
-  { id: "algorithm", number: "04", title: "Algorithm" },
-  { id: "run", number: "05", title: "Train & evaluate" },
+  { id: "algorithm", number: "03", title: "Algorithm" },
+  { id: "run", number: "04", title: "Train & evaluate" },
 ];
 
 const MARL_STEPS = [

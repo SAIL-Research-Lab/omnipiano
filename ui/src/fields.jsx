@@ -145,9 +145,9 @@ export function ToggleField({ label, checked, onChange, hint }) {
   );
 }
 
-export function ChoiceRow({ label, value, options, onChange }) {
+export function ChoiceRow({ label, value, options, onChange, wide = true }) {
   return (
-    <div className="choice-block field--wide">
+    <div className={`choice-block ${wide ? "field--wide" : ""}`.trim()}>
       <span className="field__label">{label}</span>
       <div className="choice-row">
         {options.map((option) => {

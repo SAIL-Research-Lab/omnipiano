@@ -212,6 +212,7 @@ export default function MarlDesign({ fullConfig, config, set, update }) {
           value={fullConfig.task.embodiment.num_hands}
           options={[3, 4, 5].map((value) => ({ value, label: String(value) }))}
           onChange={(value) => update((current) => applyHandLayout(current, value))}
+          wide={false}
         />
         <NumberField
           label="Number of agents"
@@ -220,15 +221,15 @@ export default function MarlDesign({ fullConfig, config, set, update }) {
           max={hands.length}
           onChange={(value) => update((current) => applyMarlAgentCount(current, value))}
         />
-      </Section>
-
-      <Section title="Hand assignment & ranges">
         <SelectField
           label="Sustain owner"
           value={config.sustain_owner}
           onChange={(value) => set("design.config.sustain_owner", value)}
           options={config.agents.map((agent, index) => ({ value: agent.name, label: `Agent ${index + 1}` }))}
         />
+      </Section>
+
+      <Section title="Hand assignment & ranges">
         <PianoWorkbench fullConfig={fullConfig} config={config} set={set} update={update} />
       </Section>
     </>

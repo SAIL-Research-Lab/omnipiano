@@ -77,17 +77,8 @@ export function TaskSection({ config, environments, set, update }) {
 }
 
 export function DesignSection({ config, set, update, panel }) {
-  if (config.design.type === "marl") {
-    return <MarlDesign fullConfig={config} config={config.design.config} set={set} update={update} panel={panel} />;
-  }
-  if (config.design.type !== "marl") {
-    return (
-      <section className="section-card section-card--fixed" aria-disabled="true">
-        <div className="fixed-design-placeholder">Fixed by registered envs, not applicable right now</div>
-      </section>
-    );
-  }
-  return null;
+  if (config.design.type !== "marl") return null;
+  return <MarlDesign fullConfig={config} config={config.design.config} set={set} update={update} panel={panel} />;
 }
 
 function ParameterValue({ name, value, onCommit, comma, ariaLabel = name, className = "" }) {

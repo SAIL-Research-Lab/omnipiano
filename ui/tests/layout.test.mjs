@@ -25,7 +25,7 @@ const noop = () => {};
 
 test.after(async () => server.close());
 
-test("MARL uses a four-step page while the other tracks retain their five steps", () => {
+test("all tracks use focused four-step workflows", () => {
   const html = renderToStaticMarkup(createElement(App));
   assert.match(html, /Choose a track/);
   assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 4);
@@ -35,7 +35,7 @@ test("MARL uses a four-step page while the other tracks retain their five steps"
   assert.doesNotMatch(html, /Piano task|Track design/);
   for (const track of ["standard", "robust", "safety"]) {
     assert.deepEqual(stepsForTrack(track).map(({ title }) => title), [
-      "Experiment", "Piano task", "Track design", "Algorithm", "Train & evaluate",
+      "Experiment", "Piano task", "Algorithm", "Train & evaluate",
     ]);
   }
   assert.doesNotMatch(html, /Review &amp; launch|Validate &amp; preview|Prepare files/);
@@ -129,7 +129,9 @@ test("MARL removes registered tasks and folds its custom task controls into Task
   assert.match(custom, /General configuration/);
   assert.match(custom, />Piece</);
   assert.match(custom, /Number of hands/);
+  assert.match(custom, /class="choice-block"><span class="field__label">Number of hands/);
   assert.match(custom, /Number of agents/);
+  assert.match(custom, /Sustain owner/);
   assert.match(custom, /Hand assignment &amp; ranges/);
   assert.match(custom, /piano-workbench/);
   assert.equal((custom.match(/class="piano-hand piano-hand--/g) ?? []).length, 4);
@@ -148,15 +150,12 @@ test("MARL removes registered tasks and folds its custom task controls into Task
   assert.doesNotMatch(custom, /primo|secondo/);
 });
 
-test("non-MARL track design is a shared disabled placeholder", () => {
+test("non-MARL tracks do not render a design section", () => {
   for (const config of [standard, robust, safety]) {
     const html = renderToStaticMarkup(createElement(DesignSection, {
       config, set: noop, update: noop, panel: (id) => panel(id),
     }));
-    assert.match(html, /Fixed by registered envs, not applicable right now/);
-    assert.match(html, /section-card--fixed/);
-    assert.match(html, /aria-disabled="true"/);
-    assert.doesNotMatch(html, /<select|<input|<button/);
+    assert.equal(html, "");
   }
 });
 
