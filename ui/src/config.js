@@ -1,8 +1,8 @@
 export const TRACKS = [
-  { id: "standard", short: "S", title: "Standard RL", description: "Nominal control" },
-  { id: "robust", short: "R", title: "Robust RL", description: "Perturbed tasks" },
-  { id: "safety", short: "C", title: "Safe RL", description: "Constrained learning" },
-  { id: "marl", short: "M", title: "Multi-Agent RL", description: "Multi-agent coordination" },
+  { id: "standard", short: "S", title: "Standard RL" },
+  { id: "robust", short: "R", title: "Robust RL" },
+  { id: "safety", short: "C", title: "Safe RL" },
+  { id: "marl", short: "M", title: "Multi-Agent RL" },
 ];
 
 export const STEPS = [
@@ -22,96 +22,8 @@ export const REPERTOIRE = [
   "PianoSonataNo301StMov",
 ].map((value) => ({ value, label: value.replace(/([a-z])([A-Z])/g, "$1 $2") }));
 
-const ROBUST_PPO_TEMPLATE = {
-  net_arch: [256, 256],
-  n_steps: 2048,
-  n_epochs: 10,
-  gae_lambda: 0.95,
-  clip_epsilon: 0.2,
-  entropy_coeff: 0.0,
-  critic_coeff: 0.5,
-};
-
-const ROBUST_SAC_TEMPLATE = {
-  net_arch: [256, 256],
-  batch_size: 256,
-  buffer_size: 1_000_000,
-  learning_starts: 5_000,
-  tau: 0.005,
-  utd: 1,
-  learning_rate: 0.0003,
-};
-
-const PARAMETER_TEMPLATES = {
-  standard: {
-    sac: { gradient_steps: -1, learning_starts: 100, ent_coef: "auto" },
-    td3: { gradient_steps: -1, learning_starts: 100 },
-    crossq: { gradient_steps: -1, learning_starts: 100 },
-    tqc: { gradient_steps: -1, learning_starts: 100, ent_coef: "auto" },
-  },
-  robust: {
-    ppo: ROBUST_PPO_TEMPLATE,
-    sac: ROBUST_SAC_TEMPLATE,
-    eppo: {
-      ...ROBUST_PPO_TEMPLATE,
-      eppo_mode: "cor",
-      kappa: 0.05,
-      evidential_reg: 0.001,
-    },
-    a2p_sac: {
-      ...ROBUST_SAC_TEMPLATE,
-      a2p_epsilon_mode: "adaptive",
-      a2p_epsilon: 0.1,
-      adversary_learning_rate: 0.0003,
-      adversary_update_freq: 10,
-      a2p_warmup_steps: null,
-    },
-    ompo: {
-      ...ROBUST_SAC_TEMPLATE,
-      ompo_local_buffer_size: 1_000,
-      ompo_updates_per_step: 3,
-      ompo_discriminator_observation: "dynamic",
-      ompo_exponent: 1.5,
-      ompo_correction_coeff: 0.001,
-      ompo_reward_max: 1.0,
-    },
-    scpo: {
-      ...ROBUST_SAC_TEMPLATE,
-      scpo_state_noise: 0.005,
-      scpo_gradient_observation: "dynamic",
-    },
-  },
-  safety: {
-    default: { buffer_size: 100_000 },
-  },
-  marl: {
-    default: {
-      learning_rate: 0.0003,
-      critic_learning_rate: 0.0003,
-      train_batch_size: 4_000,
-      minibatch_size: 4_000,
-      num_epochs: 5,
-      adam_epsilon: 0.00001,
-      gae_lambda: 0.95,
-      clip_param: 0.2,
-      value_clip_param: 0.2,
-      value_loss_coefficient: 1.0,
-      entropy_coefficient: 0.0,
-      use_kl_loss: false,
-      gradient_clip: 10.0,
-      gradient_clip_mode: "global_norm",
-      hidden_sizes: [256, 256],
-      activation: "tanh",
-      input_layer_norm: true,
-      value_norm: true,
-    },
-  },
-};
-
-export function parameterTemplate(track, algorithm, allowed) {
-  const reference = PARAMETER_TEMPLATES[track]?.[algorithm]
-    ?? PARAMETER_TEMPLATES[track]?.default
-    ?? {};
+export function parameterTemplate(_track, _algorithm, allowed, catalogTemplate = {}) {
+  const reference = catalogTemplate ?? {};
   return Object.fromEntries(
     allowed.filter((name) => Object.hasOwn(reference, name))
       .map((name) => [name, structuredClone(reference[name])]),

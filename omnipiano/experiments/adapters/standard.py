@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from typing import Any, Mapping
 
 from omnipiano.experiments.adapters.common import (
     AdapterError,
-    append_option,
     backend_device,
     reject_compute_fields,
     reject_unknown,
@@ -17,30 +17,13 @@ from omnipiano.experiments.adapters.common import (
     require_single_agent_environment,
 )
 from omnipiano.experiments.models import ResolvedExperiment, RunPlan
+from omnipiano.experiments.parameter_profiles import STANDARD_PARAMETER_TEMPLATES
 
 
 BACKEND = "stable_baselines3"
 ENTRYPOINT = "examples/run_sb3_baseline.py"
 ALGORITHM_PARAMETERS = {
-    "ppo": {},
-    "sac": {
-        "gradient_steps": "gradient_steps",
-        "learning_starts": "learning_starts",
-        "ent_coef": "ent_coef",
-    },
-    "td3": {
-        "gradient_steps": "gradient_steps",
-        "learning_starts": "learning_starts",
-    },
-    "crossq": {
-        "gradient_steps": "gradient_steps",
-        "learning_starts": "learning_starts",
-    },
-    "tqc": {
-        "gradient_steps": "gradient_steps",
-        "learning_starts": "learning_starts",
-        "ent_coef": "ent_coef",
-    },
+    name: frozenset(values) for name, values in STANDARD_PARAMETER_TEMPLATES.items()
 }
 
 
@@ -53,9 +36,9 @@ def bind_run(resolved: ResolvedExperiment, run: RunPlan) -> RunPlan:
     evaluation = require_evaluation(document, track="standard")
     algorithm = document["algorithm"]["name"]
     parameters: Mapping[str, Any] = document["algorithm"]["parameters"]
-    parameter_flags = ALGORITHM_PARAMETERS[algorithm]
+    allowed_parameters = ALGORITHM_PARAMETERS[algorithm]
     reject_unknown(
-        parameters, parameter_flags, context="standard algorithm.parameters"
+        parameters, allowed_parameters, context="standard algorithm.parameters"
     )
 
     compute = document["run"]["compute"]
@@ -88,9 +71,11 @@ def bind_run(resolved: ResolvedExperiment, run: RunPlan) -> RunPlan:
         "--n-envs", str(compute["num_envs"]),
         "--device", backend_device(compute["device"], auto="auto"),
     ]
-    for name, flag in parameter_flags.items():
-        if name in parameters:
-            append_option(command, flag, parameters[name])
+    if parameters:
+        command.extend((
+            "--algorithm-parameters-json",
+            json.dumps(parameters, separators=(",", ":"), sort_keys=True),
+        ))
     return replace(
         run,
         launch_status="bound",

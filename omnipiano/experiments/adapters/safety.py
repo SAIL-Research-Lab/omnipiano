@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from typing import Any, Mapping
 
 from omnipiano.experiments.adapters.common import (
@@ -85,12 +86,20 @@ def bind_run(resolved: ResolvedExperiment, run: RunPlan) -> RunPlan:
     if steps % 20_000:
         raise AdapterError("Safety RL total_steps must be a multiple of 20,000")
     parameters: Mapping[str, Any] = document["algorithm"]["parameters"]
-    from omnipiano.safety.algorithms import OFF_POLICY
+    from omnipiano.safety.parameters import (
+        apply_parameter_overrides,
+        configurable_sections,
+    )
 
-    allowed_parameters = {"buffer_size"} if document["algorithm"]["name"] in OFF_POLICY else set()
+    algorithm = document["algorithm"]["name"]
+    allowed_parameters = set(configurable_sections(algorithm))
     reject_unknown(
         parameters, allowed_parameters, context="safety algorithm.parameters"
     )
+    try:
+        apply_parameter_overrides({}, algorithm, parameters)
+    except ValueError as exc:
+        raise AdapterError(str(exc)) from exc
 
     compute = document["run"]["compute"]
     reject_compute_fields(compute, {"cpus", "gpus"}, track="safety")
@@ -106,7 +115,7 @@ def bind_run(resolved: ResolvedExperiment, run: RunPlan) -> RunPlan:
     command = [
         "python", "-m", ENTRYPOINT,
         "--group", group,
-        "--algorithms", document["algorithm"]["name"],
+        "--algorithms", algorithm,
         "--task-index", str(task_index),
         "--seeds", str(run.seed),
         "--steps", str(steps),
@@ -114,8 +123,11 @@ def bind_run(resolved: ResolvedExperiment, run: RunPlan) -> RunPlan:
         "--device", device,
         "--out", run.output_dir,
     ]
-    if "buffer_size" in parameters:
-        command.extend(("--buffer-size", str(parameters["buffer_size"])))
+    if parameters:
+        command.extend((
+            "--algorithm-parameters-json",
+            json.dumps(parameters, separators=(",", ":"), sort_keys=True),
+        ))
     command.append("--execute")
     return replace(
         run,

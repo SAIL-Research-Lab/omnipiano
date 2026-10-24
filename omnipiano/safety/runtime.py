@@ -50,7 +50,8 @@ def atomic_json(path, value):
 
 
 def algorithm_config(algorithm, budget, steps=5_000_000, seed=1, device="cpu", *,
-                     smoke=False, max_ep_len=None, buffer_size=None):
+                     smoke=False, max_ep_len=None, buffer_size=None,
+                     parameters=None):
     if algorithm not in SUPPORTED_ALGORITHMS:
         raise ValueError(algorithm)
     checkpoint_interval = 2_000 if smoke else 20_000
@@ -83,15 +84,33 @@ def algorithm_config(algorithm, budget, steps=5_000_000, seed=1, device="cpu", *
             cfg["algo_cfgs"]["upper_budget"] = budget
     if algorithm in OFF_POLICY:
         cfg["algo_cfgs"].pop("cost_gamma")  # off-policy critics use gamma for both
-        size = buffer_size if buffer_size is not None else (2_000 if smoke else 100_000)
-        if type(size) is not int or size < 256:
-            raise ValueError("buffer_size must be an integer >= 256")
-        cfg["algo_cfgs"]["size"] = size
+        cfg["algo_cfgs"]["size"] = 100_000
         cfg["train_cfgs"]["eval_episodes"] = 1
-        if smoke:
-            cfg["algo_cfgs"]["start_learning_steps"] = 256
-            if algorithm not in ("DDPG", "TD3", "SAC"):
-                cfg["algo_cfgs"]["warmup_epochs"] = 0
     elif buffer_size is not None:
         raise ValueError("buffer_size is only meaningful for off-policy algorithms")
+
+    from omnipiano.safety.parameters import apply_parameter_overrides
+
+    merged_parameters = dict(parameters or {})
+    if buffer_size is not None:
+        if "buffer_size" in merged_parameters:
+            raise ValueError("buffer_size was provided twice")
+        merged_parameters["buffer_size"] = buffer_size
+    cfg = apply_parameter_overrides(cfg, algorithm, merged_parameters)
+
+    epoch = cfg["algo_cfgs"]["steps_per_epoch"]
+    if type(epoch) is not int or epoch <= 0:
+        raise ValueError("algo_cfgs.steps_per_epoch must be a positive integer")
+    cfg["logger_cfgs"]["save_model_freq"] = max(checkpoint_interval // epoch, 1)
+    if algorithm in OFF_POLICY:
+        size = cfg["algo_cfgs"]["size"]
+        if type(size) is not int or size < 256:
+            raise ValueError("algo_cfgs.size must be an integer >= 256")
+        if smoke:
+            cfg["algo_cfgs"]["size"] = min(size, 2_000)
+            cfg["algo_cfgs"]["start_learning_steps"] = min(
+                int(cfg["algo_cfgs"].get("start_learning_steps", 256)), 256
+            )
+            if algorithm not in ("DDPG", "TD3", "SAC"):
+                cfg["algo_cfgs"]["warmup_epochs"] = 0
     return cfg

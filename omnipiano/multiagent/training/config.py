@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import sys
@@ -80,6 +81,11 @@ def build_arg_parser(
         "--eval-native", default=None,
         help=("Evaluate a trusted native-backend checkpoint and exit without "
               "creating training artifacts."),
+    )
+    core.add_argument(
+        "--native-options-json",
+        default=None,
+        help="JSON object containing validated native-algorithm overrides.",
     )
 
     proto_g = p.add_argument_group("protocol (BenchmarkProtocolConfig)")
@@ -303,6 +309,16 @@ def _resolve_args(args: argparse.Namespace) -> AlgoSpec:
         )
     if args.resume_native and args.eval_native:
         raise ValueError("--resume-native and --eval-native are mutually exclusive")
+    if args.native_options_json is not None:
+        if not spec.is_native:
+            raise ValueError("--native-options-json requires a native algorithm")
+        try:
+            supplied_native = json.loads(args.native_options_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid --native-options-json: {exc}") from exc
+        if not isinstance(supplied_native, dict):
+            raise ValueError("--native-options-json must contain a JSON object")
+        args._native_options = {**args._native_options, **supplied_native}
     if (getattr(args, "_resolved_task", None) is not None
             and "env_id" in getattr(args, "_explicit_cli_destinations", set())):
         raise ValueError(

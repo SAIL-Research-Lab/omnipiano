@@ -1,0 +1,1719 @@
+{
+  "source": {
+    "library": "omnisafe",
+    "version": "0.5.0",
+    "commit": "acf201a3022b66e27d1ed6b9c3657190b84a1768",
+    "note": "JSON-compatible algorithm/model defaults; OmniPiano protocol and task-budget fields are intentionally excluded."
+  },
+  "algorithms": {
+    "CPO": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      }
+    },
+    "CPPOPID": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "pid_kp": 0.1,
+        "pid_ki": 0.01,
+        "pid_kd": 0.01,
+        "pid_d_delay": 10,
+        "pid_delta_p_ema_alpha": 0.95,
+        "pid_delta_d_ema_alpha": 0.95,
+        "sum_norm": true,
+        "diff_norm": false,
+        "penalty_max": 100.0,
+        "lagrangian_multiplier_init": 0.001
+      }
+    },
+    "CUP": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 0.035,
+        "lambda_optimizer": "Adam",
+        "lagrangian_upper_bound": 2.0
+      }
+    },
+    "FOCOPS": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "focops_eta": 0.02,
+        "focops_lam": 1.5,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 0.035,
+        "lambda_optimizer": "Adam",
+        "lagrangian_upper_bound": 2.0
+      }
+    },
+    "IPO": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "kappa": 0.01,
+        "penalty_max": 1.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 0.035,
+        "lambda_optimizer": "Adam"
+      }
+    },
+    "NaturalPG": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": false,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      }
+    },
+    "OnCRPO": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "distance": 2.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      }
+    },
+    "P3O": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "kappa": 20.0,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      }
+    },
+    "PCPO": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      }
+    },
+    "PDO": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 0.035,
+        "lambda_optimizer": "Adam"
+      }
+    },
+    "PPO": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      }
+    },
+    "PPOEarlyTerminated": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      }
+    },
+    "PPOLag": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 0.035,
+        "lambda_optimizer": "Adam"
+      }
+    },
+    "PPOSaute": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "saute_gamma": 0.999,
+        "unsafe_reward": -1.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      }
+    },
+    "PPOSimmerPID": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 40,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "saute_gamma": 0.999,
+        "unsafe_reward": -1.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      }
+    },
+    "PolicyGradient": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 64,
+        "target_kl": 0.02,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": true,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": true,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.0003
+        }
+      }
+    },
+    "RCPO": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": false,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 0.035,
+        "lambda_optimizer": "Adam"
+      }
+    },
+    "TRPO": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": false,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      }
+    },
+    "TRPOEarlyTerminated": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": false,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      }
+    },
+    "TRPOLag": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": false,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 0.035,
+        "lambda_optimizer": "Adam"
+      }
+    },
+    "TRPOPID": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "clip": 0.2,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": false,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      },
+      "lagrange_cfgs": {
+        "pid_kp": 0.1,
+        "pid_ki": 0.01,
+        "pid_kd": 0.01,
+        "pid_d_delay": 10,
+        "pid_delta_p_ema_alpha": 0.95,
+        "pid_delta_d_ema_alpha": 0.95,
+        "sum_norm": true,
+        "diff_norm": false,
+        "penalty_max": 100.0,
+        "lagrangian_multiplier_init": 0.001
+      }
+    },
+    "TRPOSaute": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1,
+        "saute_gamma": 0.999,
+        "unsafe_reward": -1.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": false,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      }
+    },
+    "TRPOSimmerPID": {
+      "algo_cfgs": {
+        "steps_per_epoch": 20000,
+        "update_iters": 10,
+        "batch_size": 128,
+        "target_kl": 0.01,
+        "entropy_coef": 0.0,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "kl_early_stop": false,
+        "use_max_grad_norm": true,
+        "max_grad_norm": 40.0,
+        "use_critic_norm": true,
+        "critic_norm_coef": 0.001,
+        "lam": 0.95,
+        "lam_c": 0.95,
+        "adv_estimation_method": "gae",
+        "standardized_rew_adv": true,
+        "standardized_cost_adv": true,
+        "penalty_coef": 0.0,
+        "cg_damping": 0.1,
+        "cg_iters": 15,
+        "fvp_obs": "None",
+        "fvp_sample_freq": 1,
+        "saute_gamma": 0.999,
+        "unsafe_reward": -1.0
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_learning",
+        "linear_lr_decay": false,
+        "exploration_noise_anneal": false,
+        "std_range": [
+          0.5,
+          0.1
+        ],
+        "actor": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": null
+        },
+        "critic": {
+          "hidden_sizes": [
+            64,
+            64
+          ],
+          "activation": "tanh",
+          "lr": 0.001
+        }
+      }
+    },
+    "DDPG": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 25000,
+        "policy_delay": 1,
+        "use_exploration_noise": true,
+        "exploration_noise": 0.1
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "mlp",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        },
+        "critic": {
+          "num_critics": 1,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      }
+    },
+    "DDPGLag": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 25000,
+        "policy_delay": 1,
+        "use_exploration_noise": true,
+        "exploration_noise": 0.1,
+        "warmup_epochs": 100
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "mlp",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        },
+        "critic": {
+          "num_critics": 1,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 1e-05,
+        "lambda_optimizer": "Adam"
+      }
+    },
+    "DDPGPID": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 25000,
+        "policy_delay": 1,
+        "use_exploration_noise": true,
+        "exploration_noise": 0.1,
+        "warmup_epochs": 100
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "mlp",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0001
+        },
+        "critic": {
+          "num_critics": 1,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "pid_kp": 1e-06,
+        "pid_ki": 1e-07,
+        "pid_kd": 1e-07,
+        "pid_d_delay": 10,
+        "pid_delta_p_ema_alpha": 0.95,
+        "pid_delta_d_ema_alpha": 0.95,
+        "sum_norm": true,
+        "diff_norm": false,
+        "penalty_max": 100.0,
+        "lagrangian_multiplier_init": 0.0
+      }
+    },
+    "SAC": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 10000,
+        "policy_delay": 2,
+        "use_exploration_noise": false,
+        "exploration_noise": 0.1,
+        "policy_noise": 0.2,
+        "policy_noise_clip": 0.5,
+        "alpha": 0.2,
+        "auto_alpha": false
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_sac",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        },
+        "critic": {
+          "num_critics": 2,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      }
+    },
+    "SACLag": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 10000,
+        "policy_delay": 2,
+        "use_exploration_noise": false,
+        "exploration_noise": 0.1,
+        "policy_noise": 0.2,
+        "policy_noise_clip": 0.5,
+        "alpha": 0.2,
+        "auto_alpha": false,
+        "warmup_epochs": 100
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_sac",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        },
+        "critic": {
+          "num_critics": 2,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 1e-05,
+        "lambda_optimizer": "Adam"
+      }
+    },
+    "SACPID": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 10000,
+        "policy_delay": 2,
+        "use_exploration_noise": false,
+        "exploration_noise": 0.1,
+        "policy_noise": 0.2,
+        "policy_noise_clip": 0.5,
+        "alpha": 0.2,
+        "auto_alpha": false,
+        "warmup_epochs": 100
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "gaussian_sac",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0001
+        },
+        "critic": {
+          "num_critics": 2,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "pid_kp": 1e-06,
+        "pid_ki": 1e-07,
+        "pid_kd": 1e-07,
+        "pid_d_delay": 10,
+        "pid_delta_p_ema_alpha": 0.95,
+        "pid_delta_d_ema_alpha": 0.95,
+        "sum_norm": true,
+        "diff_norm": false,
+        "penalty_max": 100.0,
+        "lagrangian_multiplier_init": 0.001
+      }
+    },
+    "TD3": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 25000,
+        "policy_delay": 2,
+        "use_exploration_noise": true,
+        "exploration_noise": 0.1,
+        "policy_noise": 0.2,
+        "policy_noise_clip": 0.5
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "mlp",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        },
+        "critic": {
+          "num_critics": 2,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      }
+    },
+    "TD3Lag": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 25000,
+        "policy_delay": 2,
+        "use_exploration_noise": true,
+        "exploration_noise": 0.1,
+        "policy_noise": 0.2,
+        "policy_noise_clip": 0.5,
+        "warmup_epochs": 100
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "mlp",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        },
+        "critic": {
+          "num_critics": 2,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "lagrangian_multiplier_init": 0.001,
+        "lambda_lr": 1e-05,
+        "lambda_optimizer": "Adam"
+      }
+    },
+    "TD3PID": {
+      "algo_cfgs": {
+        "steps_per_epoch": 2000,
+        "update_cycle": 1,
+        "update_iters": 1,
+        "size": 100000,
+        "batch_size": 256,
+        "reward_normalize": false,
+        "cost_normalize": false,
+        "obs_normalize": true,
+        "max_grad_norm": 40,
+        "use_critic_norm": false,
+        "critic_norm_coeff": 0.001,
+        "polyak": 0.005,
+        "start_learning_steps": 25000,
+        "policy_delay": 2,
+        "use_exploration_noise": true,
+        "exploration_noise": 0.1,
+        "policy_noise": 0.2,
+        "policy_noise_clip": 0.5,
+        "warmup_epochs": 100
+      },
+      "model_cfgs": {
+        "weight_initialization_mode": "kaiming_uniform",
+        "actor_type": "mlp",
+        "linear_lr_decay": false,
+        "actor": {
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0001
+        },
+        "critic": {
+          "num_critics": 2,
+          "hidden_sizes": [
+            256,
+            256
+          ],
+          "activation": "relu",
+          "lr": 0.0003
+        }
+      },
+      "lagrange_cfgs": {
+        "pid_kp": 1e-06,
+        "pid_ki": 1e-07,
+        "pid_kd": 1e-07,
+        "pid_d_delay": 10,
+        "pid_delta_p_ema_alpha": 0.95,
+        "pid_delta_d_ema_alpha": 0.95,
+        "sum_norm": true,
+        "diff_norm": false,
+        "penalty_max": 100.0,
+        "lagrangian_multiplier_init": 0.001
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ from omnipiano.safety.algorithms import (
     AUGMENTED, UNCONSTRAINED, evaluation_budget,
 )
 from omnipiano.safety.runtime import algorithm_config
+from omnipiano.safety.parameters import parameter_template
 
 
 def test_algorithm_partition():
@@ -76,3 +77,23 @@ def test_zero_steps_not_replaced_by_default():
     args = SimpleNamespace(steps=0, smoke_test=False, device="cpu", buffer_size=None)
     with pytest.raises(ValueError, match="positive multiple"):
         custom_cell("main", 0, MAIN[0], "PPO", 1, args)
+
+
+def test_p3o_parameter_profile_merges_without_overriding_protocol_or_budget():
+    profile = parameter_template("P3O")
+    profile["algo_cfgs"]["kappa"] = 12.0
+    profile["model_cfgs"]["actor"]["hidden_sizes"] = [128, 128]
+    cfg = algorithm_config("P3O", 14.4, parameters=profile)
+    assert cfg["algo_cfgs"]["kappa"] == 12.0
+    assert cfg["model_cfgs"]["actor"]["hidden_sizes"] == [128, 128]
+    assert cfg["algo_cfgs"]["gamma"] == cfg["algo_cfgs"]["cost_gamma"] == 0.8
+    assert cfg["algo_cfgs"]["cost_limit"] == 14.4
+
+
+def test_safety_parameter_profile_rejects_unknown_nested_fields():
+    with pytest.raises(ValueError, match="unsupported Safety RL parameter fields"):
+        algorithm_config(
+            "P3O",
+            14.4,
+            parameters={"algo_cfgs": {"not_a_real_parameter": 1}},
+        )

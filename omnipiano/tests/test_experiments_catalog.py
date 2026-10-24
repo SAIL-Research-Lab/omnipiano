@@ -48,7 +48,7 @@ def _catalog_names(track: str, *, include_unavailable: bool = False) -> set[str]
 
 def test_catalog_is_json_serializable_and_has_four_tracks() -> None:
     payload = catalog_dict()
-    assert payload["catalog_version"] == 1
+    assert payload["catalog_version"] == 2
     assert payload["contract_version"] == 3
     assert tuple(payload["tracks"]) == ("standard", "robust", "safety", "marl")
     assert json.loads(json.dumps(payload, allow_nan=False)) == payload
@@ -159,6 +159,7 @@ def test_catalog_records_current_track_specific_limits() -> None:
 
 def test_catalog_parameter_lists_match_adapter_allowlists() -> None:
     from omnipiano.experiments.adapters.marl import (
+        NATIVE_PARAMETER_NAMES,
         PARAMETER_FLAGS as MARL_PARAMETERS,
         PPO_PARAMETER_ALGORITHMS,
     )
@@ -170,10 +171,30 @@ def test_catalog_parameter_lists_match_adapter_allowlists() -> None:
     for capability in get_track_capability("robust").algorithms:
         assert set(capability.configurable_parameters) == set(ROBUST[capability.name])
     for capability in get_track_capability("safety").algorithms:
-        expected = {"buffer_size"} if capability.family == "off_policy_safe_rl" else set()
-        assert set(capability.configurable_parameters) == expected
+        from omnipiano.safety.parameters import configurable_sections
+
+        assert set(capability.configurable_parameters) == set(
+            configurable_sections(capability.name)
+        )
     for capability in get_track_capability("marl").algorithms:
         if capability.status != "supported":
             continue
         expected = set(MARL_PARAMETERS) if capability.name in PPO_PARAMETER_ALGORITHMS else set()
+        expected.update(NATIVE_PARAMETER_NAMES.get(capability.name, set()))
         assert set(capability.configurable_parameters) == expected
+
+
+def test_every_selectable_algorithm_has_a_complete_reference_template() -> None:
+    for track in ("standard", "robust", "safety", "marl"):
+        for capability in get_track_capability(track).algorithms:
+            if not capability.selectable:
+                continue
+            assert capability.parameter_template
+            assert set(capability.parameter_template) <= set(
+                capability.configurable_parameters
+            )
+
+    p3o = get_track_capability("safety").algorithm("P3O").parameter_template
+    assert p3o["algo_cfgs"]["kappa"] == 20.0
+    assert p3o["algo_cfgs"]["update_iters"] == 10
+    assert p3o["model_cfgs"]["actor"]["hidden_sizes"] == [64, 64]

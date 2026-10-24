@@ -64,7 +64,10 @@ test("algorithm parameter templates match the selected backend family", () => {
   assert.deepEqual(
     parameterTemplate("robust", "sac", [
       "net_arch", "batch_size", "buffer_size", "learning_starts", "tau", "utd", "learning_rate",
-    ]),
+    ], {
+      net_arch: [256, 256], batch_size: 256, buffer_size: 1_000_000,
+      learning_starts: 5_000, tau: 0.005, utd: 1, learning_rate: 0.0003,
+    }),
     {
       net_arch: [256, 256],
       batch_size: 256,
@@ -76,8 +79,20 @@ test("algorithm parameter templates match the selected backend family", () => {
     },
   );
   assert.deepEqual(
-    parameterTemplate("marl", "mappo", ["learning_rate", "train_batch_size", "hidden_sizes"]),
+    parameterTemplate(
+      "marl", "mappo", ["learning_rate", "train_batch_size", "hidden_sizes"],
+      { learning_rate: 0.0003, train_batch_size: 4_000, hidden_sizes: [256, 256] },
+    ),
     { learning_rate: 0.0003, train_batch_size: 4_000, hidden_sizes: [256, 256] },
   );
-  assert.deepEqual(parameterTemplate("standard", "ppo", []), {});
+  assert.deepEqual(
+    parameterTemplate("safety", "P3O", ["algo_cfgs", "model_cfgs"], {
+      algo_cfgs: { kappa: 20, update_iters: 10 },
+      model_cfgs: { actor: { hidden_sizes: [64, 64] } },
+    }),
+    {
+      algo_cfgs: { kappa: 20, update_iters: 10 },
+      model_cfgs: { actor: { hidden_sizes: [64, 64] } },
+    },
+  );
 });

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import PurePath
 import re
 from typing import Any, Mapping
@@ -36,12 +37,34 @@ PARAMETER_FLAGS = {
     "gradient_clip_mode": "grad_clip_by",
     "hidden_sizes": "hidden_sizes",
     "activation": "activation",
+    "hidden_orthogonal_gain": "hidden_orthogonal_gain",
+    "policy_output_gain": "policy_output_gain",
+    "value_output_gain": "value_output_gain",
+    "initial_log_std": "initial_log_std",
+    "log_std_min": "log_std_min",
+    "log_std_max": "log_std_max",
     "input_layer_norm": "input_layer_norm",
     "value_norm": "value_norm",
+    "value_norm_beta": "value_norm_beta",
+    "value_norm_epsilon": "value_norm_epsilon",
+    "value_norm_variance_floor": "value_norm_variance_floor",
 }
 PPO_PARAMETER_ALGORITHMS = {
     "ippo", "ippo-rllib-module", "mappo", "mappo-own-critic",
     "happo", "a2po", "ppo-monolithic",
+}
+NATIVE_PARAMETER_NAMES = {
+    "a2po": {
+        "order_score_epsilon", "preceding_ratio_clip", "adaptive_clip_weight",
+    },
+    "facmac": {
+        "actor_hidden_sizes", "utility_hidden_sizes", "actor_lr", "critic_lr",
+        "adam_epsilon", "grad_clip", "replay_capacity", "batch_size",
+        "buffer_warmup", "random_action_steps", "collect_steps",
+        "updates_per_env_step", "tau", "noise_std", "action_l2",
+        "mixer_embed", "hypernet_embed", "max_replay_gib",
+        "checkpoint_replay_transitions",
+    },
 }
 
 
@@ -181,11 +204,9 @@ def bind_run(resolved: ResolvedExperiment, run: RunPlan) -> RunPlan:
     if compute["num_envs"] != 1:
         raise AdapterError("the MARL backend currently requires run.compute.num_envs=1")
     parameters: Mapping[str, Any] = document["algorithm"]["parameters"]
-    allowed_parameters = (
-        PARAMETER_FLAGS
-        if document["algorithm"]["name"] in PPO_PARAMETER_ALGORITHMS
-        else {}
-    )
+    algorithm = document["algorithm"]["name"]
+    allowed_parameters = set(PARAMETER_FLAGS) if algorithm in PPO_PARAMETER_ALGORITHMS else set()
+    allowed_parameters.update(NATIVE_PARAMETER_NAMES.get(algorithm, set()))
     reject_unknown(
         parameters, allowed_parameters, context="MARL algorithm.parameters"
     )
@@ -234,8 +255,17 @@ def bind_run(resolved: ResolvedExperiment, run: RunPlan) -> RunPlan:
     if tracking["tags"]:
         command.extend(("--wandb-tags", ",".join(tracking["tags"])))
 
+    native_parameters = {}
     for name, value in parameters.items():
-        append_option(command, PARAMETER_FLAGS[name], value)
+        if algorithm in PPO_PARAMETER_ALGORITHMS and name in PARAMETER_FLAGS:
+            append_option(command, PARAMETER_FLAGS[name], value)
+        else:
+            native_parameters[name] = value
+    if native_parameters:
+        command.extend((
+            "--native-options-json",
+            json.dumps(native_parameters, separators=(",", ":"), sort_keys=True),
+        ))
     environment = {}
     if compute["device"] == "cpu":
         environment["CUDA_VISIBLE_DEVICES"] = ""

@@ -43,6 +43,7 @@ test("seeds stay in run settings and advanced controls stay local", () => {
   assert.match(identity, /Experiment name/);
   assert.match(identity, /field--prominent/);
   assert.doesNotMatch(identity, /Experiment details|Description|Tags|Basic|Advanced/);
+  assert.doesNotMatch(identity, /Nominal control|Perturbed tasks|Constrained learning|Multi-agent coordination/);
   const basic = renderToStaticMarkup(createElement(RunSection, {
     config: marl, set: noop, update: noop, panel: (id) => panel(id),
   }));
@@ -106,6 +107,10 @@ test("advanced algorithm settings start with an editable reference template", ()
       configurable_parameters: [
         "net_arch", "batch_size", "buffer_size", "learning_starts", "tau", "utd", "learning_rate",
       ],
+      parameter_template: {
+        net_arch: [256, 256], batch_size: 256, buffer_size: 1_000_000,
+        learning_starts: 5_000, tau: 0.005, utd: 1, learning_rate: 0.0003,
+      },
     }],
     update: noop,
     panel: (id) => panel(id, ["algorithm"]),
@@ -114,5 +119,32 @@ test("advanced algorithm settings start with an editable reference template", ()
   assert.match(html, /&quot;learning_rate&quot;: 0.0003/);
   assert.match(html, /&quot;buffer_size&quot;: 1000000/);
   assert.match(html, /&quot;net_arch&quot;:/);
-  assert.match(html, /Reference values/);
+  assert.doesNotMatch(html, /Reference values|Allowed keys/);
+});
+
+test("nested Safe RL profiles render every P3O configuration section", () => {
+  const config = {
+    ...safety,
+    algorithm: { name: "P3O", preset: "default", parameters: {} },
+  };
+  const html = renderToStaticMarkup(createElement(AlgorithmSection, {
+    config,
+    algorithms: [{
+      name: "P3O",
+      label: "P3O",
+      configurable_parameters: ["algo_cfgs", "model_cfgs"],
+      parameter_template: {
+        algo_cfgs: { update_iters: 10, target_kl: 0.02, kappa: 20, penalty_coef: 0 },
+        model_cfgs: {
+          actor: { hidden_sizes: [64, 64], lr: 0.0003 },
+          critic: { hidden_sizes: [64, 64], lr: 0.0003 },
+        },
+      },
+    }],
+    update: noop,
+    panel: (id) => panel(id, ["algorithm"]),
+  }));
+  for (const name of ["algo_cfgs", "update_iters", "target_kl", "kappa", "penalty_coef", "model_cfgs", "actor", "critic"]) {
+    assert.match(html, new RegExp(name));
+  }
 });

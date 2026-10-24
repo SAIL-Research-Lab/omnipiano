@@ -37,7 +37,7 @@ export function ExperimentSection({ config, track, onTrack, set }) {
               onClick={() => onTrack(item.id)}
             >
               <span className="track-card__mark">{item.short}</span>
-              <span className="track-card__copy"><strong>{item.title}</strong><small>{item.description}</small></span>
+              <span className="track-card__copy"><strong>{item.title}</strong></span>
             </button>
           ))}
         </div>
@@ -184,8 +184,7 @@ function ParameterEditor({ parameters, allowed, template, onChange }) {
   return (
     <label className="field field--wide">
       <span className="field__label">Parameter overrides</span>
-      <textarea className="control" rows="7" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />
-      <span className="field__hint">Reference values. Allowed keys: {allowed.length ? allowed.join(", ") : "none"}</span>
+      <textarea className="control" rows="14" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />
       {error && <span className="field__hint">{error}</span>}
     </label>
   );
@@ -195,7 +194,12 @@ export function AlgorithmSection({ config, algorithms, update, panel }) {
   const algorithmPanel = panel("algorithm");
   const selected = algorithms.find((item) => item.name === config.algorithm.name);
   const template = selected
-    ? parameterTemplate(config.design.type, selected.name, selected.configurable_parameters)
+    ? parameterTemplate(
+      config.design.type,
+      selected.name,
+      selected.configurable_parameters,
+      selected.parameter_template,
+    )
     : {};
   return (
     <Section title="Available algorithms" {...algorithmPanel}>

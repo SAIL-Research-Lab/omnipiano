@@ -511,12 +511,6 @@ button {
   font-size: 14px;
 }
 
-.track-card__copy small {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

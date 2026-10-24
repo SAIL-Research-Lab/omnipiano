@@ -87,6 +87,25 @@ def test_every_advertised_multiagent_algorithm_binds_on_a_compatible_task() -> N
         assert all(run.backend == "omnipiano_marl" for run in bundle.runs)
 
 
+@pytest.mark.parametrize("track", ["standard", "robust", "safety", "marl"])
+def test_every_reference_parameter_template_binds_without_ignored_fields(
+    track: str,
+) -> None:
+    base = json.loads((EXAMPLES / f"{track}.json").read_text(encoding="utf-8"))
+    for capability in get_track_capability(track).algorithms:
+        if not capability.selectable:
+            continue
+        if track == "marl" and capability.name == "ppo-monolithic":
+            continue  # Requires the dedicated one-agent custom task tested below.
+        document = json.loads(json.dumps(base))
+        document["algorithm"] = {
+            "name": capability.name,
+            "parameters": capability.parameter_template,
+        }
+        bundle = bind_plan(parse_request(document))
+        assert all(run.launch_status == "bound" for run in bundle.runs)
+
+
 def test_standard_command_round_trips_through_backend_parser() -> None:
     pytest.importorskip("sb3_contrib")
     from examples.run_sb3_baseline import _build_arg_parser
@@ -266,11 +285,15 @@ def test_ppo_monolithic_binds_with_one_agent_custom_task() -> None:
     assert artifact["experiment"]["algo"] == "ppo-monolithic"
 
 
-def test_adapter_rejects_parameter_the_backend_cannot_apply() -> None:
+def test_standard_adapter_routes_complete_constructor_parameters() -> None:
     document = json.loads((EXAMPLES / "standard.json").read_text(encoding="utf-8"))
-    document["algorithm"]["parameters"] = {"learning_rate": 3e-4}
-    with pytest.raises(AdapterError, match="unsupported fields"):
-        bind_plan(parse_request(document))
+    document["algorithm"]["parameters"] = {
+        "learning_rate": 3e-4,
+        "net_arch": [128, 128],
+    }
+    run = bind_plan(parse_request(document)).runs[0]
+    index = run.command.index("--algorithm-parameters-json")
+    assert json.loads(run.command[index + 1]) == document["algorithm"]["parameters"]
 
 
 def test_adapter_rejects_nondefault_preset_instead_of_ignoring_it() -> None:
@@ -289,13 +312,41 @@ def test_adapter_rejects_unrepresentable_compute_request() -> None:
         bind_plan(parse_request(document))
 
 
-def test_facmac_parameters_are_not_silently_routed_to_ppo_flags() -> None:
+def test_facmac_parameters_route_to_native_options_not_ppo_flags() -> None:
     document = json.loads((EXAMPLES / "marl.json").read_text(encoding="utf-8"))
     document["algorithm"] = {
-        "name": "facmac", "parameters": {"learning_rate": 1e-3}
+        "name": "facmac", "parameters": {
+            "actor_lr": 1e-3,
+            "critic_lr": 1e-3,
+            "replay_capacity": 100_000,
+        }
     }
-    with pytest.raises(AdapterError, match="unsupported fields"):
-        bind_plan(parse_request(document))
+    run = bind_plan(parse_request(document)).runs[0]
+    index = run.command.index("--native-options-json")
+    assert json.loads(run.command[index + 1]) == document["algorithm"]["parameters"]
+    assert "--critic-lr" not in run.command
+    from omnipiano.multiagent.training.config import _parse_args, _resolve_args
+    from omnipiano.multiagent.training.native import native_options
+
+    args = _parse_args(run.command[3:])
+    assert _resolve_args(args).name == "facmac"
+    options = native_options(args)
+    assert options["critic_lr"] == 1e-3
+    assert options["replay_capacity"] == 100_000
+
+
+def test_p3o_complete_nested_parameters_bind_to_safety_runner() -> None:
+    document = json.loads((EXAMPLES / "safety.json").read_text(encoding="utf-8"))
+    document["algorithm"] = {
+        "name": "P3O",
+        "parameters": {
+            "algo_cfgs": {"kappa": 12.0, "update_iters": 8},
+            "model_cfgs": {"actor": {"hidden_sizes": [128, 128]}},
+        },
+    }
+    run = bind_plan(parse_request(document)).runs[0]
+    index = run.command.index("--algorithm-parameters-json")
+    assert json.loads(run.command[index + 1]) == document["algorithm"]["parameters"]
 
 
 def test_on_policy_safety_rejects_off_policy_buffer_size() -> None:

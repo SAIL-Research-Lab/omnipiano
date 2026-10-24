@@ -27,7 +27,8 @@ def custom_cell(group, index, item, algorithm, seed, args):
     steps = args.steps if args.steps is not None else (2_000 if args.smoke_test else 2_000_000 if group == "extensions" else 5_000_000)
     cfg = algorithm_config(algorithm, item.budget, steps, seed, args.device,
                            smoke=args.smoke_test, max_ep_len=SONGS[item.song][1],
-                           buffer_size=args.buffer_size)
+                           buffer_size=args.buffer_size,
+                           parameters=getattr(args, "algorithm_parameters", None))
     row = dict(version=VERSION, group=group, index=index, task=asdict(item), env_id=item.env_id,
                algorithm=algorithm, seed=seed, steps=steps, device=args.device,
                smoke=args.smoke_test, custom=True, algorithm_config=cfg,
@@ -55,7 +56,21 @@ def main():
     parser.add_argument("--steps", type=int)
     parser.add_argument("--eval-episodes", type=int)
     parser.add_argument("--buffer-size", type=int, help="Off-policy replay capacity; default 100000")
+    parser.add_argument(
+        "--algorithm-parameters-json",
+        default=None,
+        help="JSON object containing validated algo_cfgs/model_cfgs/lagrange_cfgs overrides.",
+    )
     args = parser.parse_args()
+    if args.algorithm_parameters_json is None:
+        args.algorithm_parameters = {}
+    else:
+        try:
+            args.algorithm_parameters = json.loads(args.algorithm_parameters_json)
+        except json.JSONDecodeError as exc:
+            parser.error(f"invalid --algorithm-parameters-json: {exc}")
+        if not isinstance(args.algorithm_parameters, dict):
+            parser.error("--algorithm-parameters-json must contain a JSON object")
     if args.list_algorithms:
         print(f"{len(SUPPORTED_ALGORITHMS)} native algorithms:\n" + "\n".join(SUPPORTED_ALGORITHMS))
         return
@@ -77,7 +92,7 @@ def main():
                 for a in dict.fromkeys(args.algorithms) for s in seeds]
         suffix = "custom_" + hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()[:12]
     else:
-        if any(x is not None for x in (args.task_index, args.seeds, args.steps, args.eval_episodes, args.buffer_size)):
+        if any(x is not None for x in (args.task_index, args.seeds, args.steps, args.eval_episodes, args.buffer_size, args.algorithm_parameters_json)):
             parser.error("Custom options require --algorithms")
         if args.index is not None and not 0 <= args.index < len(cells(args.group)):
             parser.error("index outside the selected group")
