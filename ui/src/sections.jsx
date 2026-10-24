@@ -46,7 +46,7 @@ export function ExperimentSection({ config, track, onTrack, set }) {
       <section className="section-card section-card--minimal">
         <div className="field-grid">
           <label className="field field--wide field--prominent">
-            <span className="field__label">Experiment name</span>
+            <span className="field__label">Environment name</span>
             <input className="control" value={config.experiment.name} onChange={(event) => set("experiment.name", event.target.value)} />
           </label>
         </div>
@@ -105,10 +105,7 @@ export function EnvironmentExportSection({ config }) {
     <section className="environment-export" aria-labelledby="environment-export-title">
       <div className="environment-export__copy">
         <span className="environment-export__mark" aria-hidden="true">↓</span>
-        <div>
-          <strong id="environment-export-title">Export environment</strong>
-          <span>Task specification, importable Python adapter, and smoke test.</span>
-        </div>
+        <strong id="environment-export-title">Export environment</strong>
       </div>
       <div className="environment-export__actions">
         <button type="button" onClick={() => act(() => downloadEnvironmentTask(config), "Task JSON downloaded")}>Task JSON</button>
@@ -132,7 +129,6 @@ export function ReferenceBaselineToggle({ expanded, onToggle }) {
       <span className="reference-baseline-toggle__number">03–04</span>
       <span className="reference-baseline-toggle__copy">
         <strong>{expanded ? "Hide OmniPiano baselines" : "Reproduce OmniPiano baselines"}</strong>
-        <small>Integrated algorithms and reference training runs</small>
       </span>
       <span className="reference-baseline-toggle__arrow" aria-hidden="true">{expanded ? "↑" : "↓"}</span>
     </button>

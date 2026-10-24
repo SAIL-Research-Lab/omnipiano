@@ -323,6 +323,10 @@ button {
   margin-bottom: 0;
 }
 
+.workflow-section--before-baselines {
+  margin-bottom: 26px;
+}
+
 .workflow-section__heading {
   margin: 0 2px 20px;
   padding-bottom: 12px;
@@ -418,22 +422,9 @@ button {
   gap: 12px;
 }
 
-.environment-export__copy > div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
 .environment-export__copy strong {
   color: var(--ink);
   font-size: 14px;
-}
-
-.environment-export__copy span:not(.environment-export__mark) {
-  color: var(--muted);
-  font-size: 9.5px;
-  line-height: 1.35;
 }
 
 .environment-export__mark {
@@ -485,71 +476,65 @@ button {
   font-weight: 700;
 }
 
+.reference-baseline-gateway {
+  margin-bottom: 72px;
+  padding-top: 24px;
+  border-top: 2px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+}
+
 .reference-baseline-toggle {
   width: 100%;
-  min-height: 64px;
-  margin-top: 34px;
-  padding: 12px 15px;
+  min-height: 78px;
+  padding: 15px 17px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fbfcfd;
+  gap: 15px;
+  border: 2px solid color-mix(in srgb, var(--accent) 64%, var(--line));
+  border-radius: 14px;
+  background: linear-gradient(105deg, color-mix(in srgb, var(--accent-soft) 74%, white), white 70%);
   color: var(--ink);
   text-align: left;
   cursor: pointer;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .reference-baseline-toggle:hover,
 .reference-baseline-toggle--expanded {
-  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
-  background: color-mix(in srgb, var(--accent-soft) 35%, white);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 78%, white);
+  transform: translateY(-1px);
 }
 
 .reference-baseline-toggle__number {
-  min-width: 48px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  background: var(--soft);
-  color: var(--muted);
-  font-size: 10px;
+  min-width: 58px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: white;
+  font-size: 11px;
   font-weight: 800;
   text-align: center;
   letter-spacing: 0.04em;
 }
 
-.reference-baseline-toggle--expanded .reference-baseline-toggle__number {
-  background: var(--accent);
-  color: white;
-}
-
 .reference-baseline-toggle__copy {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
 .reference-baseline-toggle__copy strong {
-  font-size: 13px;
-}
-
-.reference-baseline-toggle__copy small {
-  color: var(--muted);
-  font-size: 9.5px;
+  font-size: 15px;
 }
 
 .reference-baseline-toggle__arrow {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--soft);
-  color: var(--accent);
-  font-size: 13px;
+  background: var(--accent);
+  color: white;
+  font-size: 15px;
   font-weight: 800;
 }
 

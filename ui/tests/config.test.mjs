@@ -8,6 +8,7 @@ import {
   applyMarlAgentCount,
   applyTrackingProvider,
   assignMarlHandOwner,
+  environmentNameForConfig,
   makeCustomMarl,
   parameterTemplate,
   parseIntegerList,
@@ -33,6 +34,18 @@ test("all four backend-neutral examples validate after UI defaults", async () =>
     assert.equal(validate(document), true, JSON.stringify(validate.errors));
     assert.equal(document.schema_version, 3);
   }
+});
+
+test("environment names summarize the selected task instead of its baseline algorithm", async () => {
+  const standard = withUiDefaults(await readJson("omnipiano/experiments/examples/standard.json"));
+  const robust = withUiDefaults(await readJson("omnipiano/experiments/examples/robust.json"));
+  const safety = withUiDefaults(await readJson("omnipiano/experiments/examples/safety.json"));
+  const marl = makeCustomMarl(withUiDefaults(await readJson("omnipiano/experiments/examples/marl.json")));
+
+  assert.equal(environmentNameForConfig(standard), "winter-wind-2h");
+  assert.equal(environmentNameForConfig(robust), "clair-de-lune-action-gaussian-p05");
+  assert.equal(environmentNameForConfig(safety), "for-elise-2h-hand-collision-event");
+  assert.equal(environmentNameForConfig(marl), "winter-wind-4h-2a");
 });
 
 test("registered MARL can become an exact custom task", async () => {

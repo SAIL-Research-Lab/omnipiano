@@ -30,6 +30,48 @@ export function visibleStepsForTrack(track, showReferenceBaselines = false) {
   return showReferenceBaselines ? steps : steps.slice(0, 2);
 }
 
+function kebabCase(value) {
+  return String(value ?? "")
+    .replace(/(\d)H\b/g, "$1h")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/_/g, "-")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+}
+
+export function environmentNameForConfig(config) {
+  if (config.design.type === "marl" && config.task.source === "custom") {
+    return [
+      kebabCase(config.task.music.piece),
+      `${config.task.embodiment.num_hands}h`,
+      `${config.design.config.num_agents}a`,
+    ].join("-");
+  }
+
+  let stem = String(config.task.environment_id ?? "omnipiano-environment")
+    .replace(/^OmniPiano-/, "")
+    .replace(/-v\d+$/, "");
+
+  if (config.design.type === "standard") {
+    stem = stem
+      .replace(/-GeneralRL$/, "")
+      .replace(/OneHand/g, "1H")
+      .replace(/TwoHand/g, "2H")
+      .replace(/ThreeHand/g, "3H")
+      .replace(/FourHand/g, "4H")
+      .replace(/FiveHand/g, "5H");
+  } else if (config.design.type === "robust") {
+    const channels = { A: "action", O: "observation", R: "reward", G: "gravity", CF: "contact-friction", HP: "hand-position" };
+    const distributions = { Gauss: "gaussian" };
+    stem = stem.split("-").map((token) => channels[token] ?? distributions[token] ?? token).join("-");
+  } else if (config.design.type === "safety") {
+    stem = stem.replace(/^Safety-/, "").replace(/-[a-f0-9]{8,}$/, "");
+  }
+
+  return kebabCase(stem);
+}
+
 export const REPERTOIRE = [
   "WinterWind",
   "PicturesGreatKiev",

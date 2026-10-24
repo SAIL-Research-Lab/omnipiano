@@ -29,7 +29,7 @@ test.after(async () => server.close());
 test("the default workflow ends after environment export", () => {
   const html = renderToStaticMarkup(createElement(App));
   assert.match(html, /Choose a track/);
-  assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 2);
+  assert.equal((html.match(/class="workflow-section(?: workflow-section--before-baselines)?"/g) ?? []).length, 2);
   for (const title of ["Experiment", "Task design"]) {
     assert.match(html, new RegExp(title));
   }
@@ -48,6 +48,10 @@ test("the default workflow ends after environment export", () => {
   assert.doesNotMatch(html, /Download JSON|Launch runs|Unified JSON · v3/);
   assert.match(html, /Export Environment/);
   assert.match(html, /Reproduce OmniPiano baselines/);
+  assert.match(html, /Environment name/);
+  assert.match(html, /winter-wind-4h-2a/);
+  assert.doesNotMatch(html, /Experiment name|Import JSON|Reset track/);
+  assert.match(html, /reference-baseline-gateway/);
   assert.match(html, /workspace workspace--environment-only/);
 });
 
@@ -58,7 +62,7 @@ test("section 02 exposes the portable environment bundle actions", () => {
     assert.match(html, />Task JSON</);
     assert.match(html, />Copy Python</);
     assert.match(html, />Export Environment</);
-    assert.match(html, /Task specification, importable Python adapter, and smoke test/);
+    assert.doesNotMatch(html, /Task specification, importable Python adapter, and smoke test/);
   }
 });
 
@@ -70,6 +74,7 @@ test("the reference-baseline button communicates collapsed and expanded states",
   assert.match(collapsed, /aria-expanded="false"/);
   assert.match(collapsed, /Reproduce OmniPiano baselines/);
   assert.match(collapsed, /03–04/);
+  assert.doesNotMatch(collapsed, /Integrated algorithms and reference training runs/);
 
   const expanded = renderToStaticMarkup(createElement(ReferenceBaselineToggle, {
     expanded: true,
@@ -85,7 +90,8 @@ test("training controls share one compact panel with a comprehensive advanced JS
     config: marl, track: "marl", onTrack: noop, set: noop, panel: (id) => panel(id),
   }));
   assert.doesNotMatch(identity, /Seeds/);
-  assert.match(identity, /Experiment name/);
+  assert.match(identity, /Environment name/);
+  assert.doesNotMatch(identity, /Experiment name/);
   assert.match(identity, /field--prominent/);
   assert.doesNotMatch(identity, /Experiment details|Description|Tags|Basic|Advanced/);
   assert.doesNotMatch(identity, /Nominal control|Perturbed tasks|Constrained learning|Multi-agent coordination/);

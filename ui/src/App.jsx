@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import standardExample from "../../omnipiano/experiments/examples/standard.json";
 import robustExample from "../../omnipiano/experiments/examples/robust.json";
@@ -6,7 +6,7 @@ import safetyExample from "../../omnipiano/experiments/examples/safety.json";
 import marlExample from "../../omnipiano/experiments/examples/marl.json";
 
 import { getCatalog, getEnvironments, getRuns, postConfig, stopRun } from "./api";
-import { cloneConfig, makeCustomMarl, setAtPath, TRACKS, visibleStepsForTrack, withUiDefaults } from "./config";
+import { cloneConfig, environmentNameForConfig, makeCustomMarl, setAtPath, TRACKS, visibleStepsForTrack, withUiDefaults } from "./config";
 import {
   AlgorithmSection,
   DesignSection,
@@ -21,6 +21,7 @@ import { validateExperiment } from "./validation";
 const RAW_EXAMPLES = { standard: standardExample, robust: robustExample, safety: safetyExample, marl: marlExample };
 const EXAMPLES = Object.fromEntries(Object.entries(RAW_EXAMPLES).map(([key, value]) => [key, withUiDefaults(value)]));
 EXAMPLES.marl = makeCustomMarl(EXAMPLES.marl);
+Object.values(EXAMPLES).forEach((example) => { example.experiment.name = environmentNameForConfig(example); });
 
 function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, onLaunch, onStop, backend, copyLabel }) {
   const backendError = backend.type === "error";
@@ -72,14 +73,12 @@ function StepContent(props) {
     <>
       <TaskSection {...props} />
       <EnvironmentExportSection {...props} />
-      <ReferenceBaselineToggle expanded={props.showBaselines} onToggle={props.onToggleBaselines} />
     </>
   );
   if (step === "design") return (
     <>
       <DesignSection {...props} />
       <EnvironmentExportSection {...props} />
-      <ReferenceBaselineToggle expanded={props.showBaselines} onToggle={props.onToggleBaselines} />
     </>
   );
   if (step === "algorithm") return <AlgorithmSection {...props} />;
@@ -302,11 +301,13 @@ export default function App() {
           <span className="brand__keys" aria-hidden="true"><i /><i /><i /><i /><i /></span>
           <span><strong>OmniPiano</strong><small>Experiment Composer</small></span>
         </a>
-        <div className="topbar__context">
-          <input ref={fileInput} className="visually-hidden" type="file" accept="application/json,.json" onChange={importJson} />
-          <button className="reset-button" type="button" onClick={() => fileInput.current?.click()}>Import JSON</button>
-          <button className="reset-button" type="button" onClick={resetTrack}>Reset track</button>
-        </div>
+        {showBaselines && (
+          <div className="topbar__context">
+            <input ref={fileInput} className="visually-hidden" type="file" accept="application/json,.json" onChange={importJson} />
+            <button className="reset-button" type="button" onClick={() => fileInput.current?.click()}>Import JSON</button>
+            <button className="reset-button" type="button" onClick={resetTrack}>Reset track</button>
+          </div>
+        )}
       </header>
       {message && <div className={`import-message import-message--${message.type}`} role="status"><span>{message.type === "success" ? "✓" : "!"}</span>{message.text}<button type="button" onClick={() => setMessage(null)}>×</button></div>}
       <div className={`workspace ${showBaselines ? "" : "workspace--environment-only"}`.trim()} id="top">
@@ -315,11 +316,18 @@ export default function App() {
           <ol>{steps.map((step) => <li key={step.id}><a href={`#step-${step.id}`} className={activeStep === step.id ? "active" : ""}><span>{step.number}</span><strong>{step.title}</strong></a></li>)}</ol>
         </nav>
         <main className="editor">
-          {steps.map((step) => (
-            <section className="workflow-section" data-step={step.id} id={`step-${step.id}`} key={step.id}>
-              <div className="workflow-section__heading"><span>{step.number}</span><h1>{step.title}</h1></div>
-              <StepContent step={step.id} {...sharedProps} />
-            </section>
+          {steps.map((step, index) => (
+            <Fragment key={step.id}>
+              <section className={`workflow-section ${index === 1 ? "workflow-section--before-baselines" : ""}`.trim()} data-step={step.id} id={`step-${step.id}`}>
+                <div className="workflow-section__heading"><span>{step.number}</span><h1>{step.title}</h1></div>
+                <StepContent step={step.id} {...sharedProps} />
+              </section>
+              {index === 1 && (
+                <div className="reference-baseline-gateway">
+                  <ReferenceBaselineToggle expanded={showBaselines} onToggle={toggleBaselines} />
+                </div>
+              )}
+            </Fragment>
           ))}
         </main>
         {showBaselines && (
