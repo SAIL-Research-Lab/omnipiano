@@ -41,10 +41,11 @@ export function ExperimentSection({ config, track, onTrack, set }) {
           ))}
         </div>
       </section>
-      <Section title="Experiment details">
-        <TextField label="Experiment name" value={config.experiment.name} onChange={(value) => set("experiment.name", value)} />
-        <TextField label="Description" value={config.experiment.description} onChange={(value) => set("experiment.description", value)} wide multiline />
-      </Section>
+      <section className="section-card section-card--minimal">
+        <div className="field-grid">
+          <TextField label="Experiment name" value={config.experiment.name} onChange={(value) => set("experiment.name", value)} wide />
+        </div>
+      </section>
     </>
   );
 }
@@ -69,11 +70,13 @@ function HandOverview({ hands }) {
   );
 }
 
-export function TaskSection({ config, environments, set, update, panel }) {
-  const taskPanel = panel("task");
+export function TaskSection({ config, environments, set, update }) {
   const isMarl = config.design.type === "marl";
   const isCustom = config.task.source === "custom";
-  const environmentOptions = environments.map((item) => ({ value: item.id, label: item.label }));
+  const environmentOptions = [...new Set([
+    config.task.environment_id,
+    ...environments.map((item) => item.id),
+  ].filter(Boolean))];
   const chooseEnvironment = (id) => {
     const metadata = environments.find((item) => item.id === id) ?? { id };
     update((current) => makeRegisteredTask(current, metadata));
@@ -83,8 +86,25 @@ export function TaskSection({ config, environments, set, update, panel }) {
     else if (environments.length) chooseEnvironment(environments[0].id);
   };
 
+  if (!isMarl) {
+    return (
+      <section className="section-card section-card--minimal">
+        <div className="field-grid">
+          <select
+            className="control field--wide environment-select"
+            aria-label="Environment ID"
+            value={config.task.environment_id}
+            onChange={(event) => chooseEnvironment(event.target.value)}
+          >
+            {environmentOptions.map((id) => <option value={id} key={id}>{id}</option>)}
+          </select>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <Section title="Task" {...taskPanel} description={isCustom ? "Custom MARL tasks use the existing task compiler." : "Choose a registered task exposed by the current backend."}>
+    <Section title="Task">
       {isMarl && (
         <ChoiceRow label="Task source" value={config.task.source} options={[
           { value: "registered", label: "Registered environment" },
@@ -92,20 +112,13 @@ export function TaskSection({ config, environments, set, update, panel }) {
         ]} onChange={changeSource} />
       )}
       {!isCustom && (
-        environmentOptions.length ? (
-          <SelectField label="Environment" value={config.task.environment_id} options={environmentOptions} onChange={chooseEnvironment} />
-        ) : (
-          <TextField label="Environment ID" value={config.task.environment_id} onChange={(value) => set("task.environment_id", value)} hint="Start the local API to load registered choices." wide />
-        )
+        <SelectField label="Environment" value={config.task.environment_id} options={environmentOptions} onChange={chooseEnvironment} />
       )}
       {isCustom && (
         <>
           <SelectField label="Piece" value={config.task.music.piece} options={REPERTOIRE} onChange={(value) => set("task.music.piece", value)} />
           <ChoiceRow label="Number of hands" value={config.task.embodiment.num_hands} options={[3, 4, 5].map((value) => ({ value, label: String(value) }))} onChange={(value) => update((current) => applyHandLayout(current, value))} />
           <HandOverview hands={config.task.embodiment.hands} />
-          {taskPanel.advanced && (
-            <div className="inline-callout field--wide">The current zero-intrusion MARL adapter accepts repertoire music with its fixed 3/4/5-hand layouts. Unsupported preprocessing changes are intentionally not shown.</div>
-          )}
         </>
       )}
     </Section>

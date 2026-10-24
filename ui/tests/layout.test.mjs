@@ -15,6 +15,9 @@ const server = await createServer({
 const { default: App } = await server.ssrLoadModule("/src/App.jsx");
 const { DesignSection, ExperimentSection, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
 const { makeCustomMarl, withUiDefaults } = await server.ssrLoadModule("/src/config.js");
+const standard = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/standard.json", import.meta.url))));
+const robust = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/robust.json", import.meta.url))));
+const safety = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/safety.json", import.meta.url))));
 const marl = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/marl.json", import.meta.url))));
 const customMarl = makeCustomMarl(marl);
 const panel = (id, open = []) => ({ advanced: open.includes(id), onToggleAdvanced: () => {} });
@@ -37,7 +40,8 @@ test("seeds stay in run settings and advanced controls stay local", () => {
     config: marl, track: "marl", onTrack: noop, set: noop, panel: (id) => panel(id),
   }));
   assert.doesNotMatch(identity, /Seeds/);
-  assert.doesNotMatch(identity, /Tags|Basic|Advanced/);
+  assert.match(identity, /Experiment name/);
+  assert.doesNotMatch(identity, /Experiment details|Description|Tags|Basic|Advanced/);
   const basic = renderToStaticMarkup(createElement(RunSection, {
     config: marl, set: noop, update: noop, panel: (id) => panel(id),
   }));
@@ -49,13 +53,34 @@ test("seeds stay in run settings and advanced controls stay local", () => {
   assert.match(advanced, /Output root/);
 });
 
+test("standard, robust, and safety tasks are ID-only environment selectors", () => {
+  for (const config of [standard, robust, safety]) {
+    const current = config.task.environment_id;
+    const alternate = `${current}-alternate`;
+    const html = renderToStaticMarkup(createElement(TaskSection, {
+      config,
+      environments: [
+        { id: current, label: "Decorated environment label" },
+        { id: alternate, label: "Another decorated label" },
+      ],
+      set: noop,
+      update: noop,
+    }));
+    assert.match(html, /<select/);
+    assert.match(html, new RegExp(current));
+    assert.match(html, new RegExp(alternate));
+    assert.doesNotMatch(html, />Task<|>Choose|Decorated|>Environment ID<|>Basic<|>Advanced</);
+  }
+});
+
 test("registered and custom MARL tasks expose the correct controls", () => {
   const registered = renderToStaticMarkup(createElement(TaskSection, {
     config: marl, environments: [{ id: marl.task.environment_id, label: marl.task.environment_id }],
-    set: noop, update: noop, panel: (id) => panel(id),
+    set: noop, update: noop,
   }));
   assert.match(registered, /Registered environment/);
   assert.doesNotMatch(registered, /Number of hands/);
+  assert.doesNotMatch(registered, /Basic|Advanced/);
 
   const custom = renderToStaticMarkup(createElement(DesignSection, {
     config: customMarl, environments: [], set: noop, update: noop, panel: (id) => panel(id),

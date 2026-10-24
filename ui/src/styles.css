@@ -380,6 +380,14 @@ button {
   margin-bottom: 18px;
 }
 
+.section-card--minimal {
+  padding: 20px 24px;
+}
+
+.environment-select {
+  cursor: pointer;
+}
+
 .section-card__title-row {
   display: flex;
   align-items: flex-start;
