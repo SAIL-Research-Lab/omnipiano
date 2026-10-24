@@ -14,7 +14,7 @@ const server = await createServer({
 });
 const { default: App } = await server.ssrLoadModule("/src/App.jsx");
 const { AlgorithmSection, DesignSection, ExperimentSection, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
-const { makeCustomMarl, withUiDefaults } = await server.ssrLoadModule("/src/config.js");
+const { makeCustomMarl, stepsForTrack, withUiDefaults } = await server.ssrLoadModule("/src/config.js");
 const standard = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/standard.json", import.meta.url))));
 const robust = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/robust.json", import.meta.url))));
 const safety = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/safety.json", import.meta.url))));
@@ -25,12 +25,18 @@ const noop = () => {};
 
 test.after(async () => server.close());
 
-test("the composer remains one scrollable five-section page", () => {
+test("MARL uses a four-step page while the other tracks retain their five steps", () => {
   const html = renderToStaticMarkup(createElement(App));
   assert.match(html, /Choose a track/);
-  assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 5);
-  for (const title of ["Experiment", "Piano task", "Track design", "Algorithm", "Train &amp; evaluate"]) {
+  assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 4);
+  for (const title of ["Experiment", "Task design", "Algorithm", "Train &amp; evaluate"]) {
     assert.match(html, new RegExp(title));
+  }
+  assert.doesNotMatch(html, /Piano task|Track design/);
+  for (const track of ["standard", "robust", "safety"]) {
+    assert.deepEqual(stepsForTrack(track).map(({ title }) => title), [
+      "Experiment", "Piano task", "Track design", "Algorithm", "Train & evaluate",
+    ]);
   }
   assert.doesNotMatch(html, /Review &amp; launch|Validate &amp; preview|Prepare files/);
   assert.match(html, /Download JSON/);
@@ -110,19 +116,20 @@ test("standard, robust, and safety tasks are ID-only environment selectors", () 
   }
 });
 
-test("registered and custom MARL tasks expose the correct controls", () => {
-  const registered = renderToStaticMarkup(createElement(TaskSection, {
+test("MARL removes registered tasks and folds its custom task controls into Task design", () => {
+  const removedTaskSection = renderToStaticMarkup(createElement(TaskSection, {
     config: marl, environments: [{ id: marl.task.environment_id, label: marl.task.environment_id }],
     set: noop, update: noop,
   }));
-  assert.match(registered, /Registered environment/);
-  assert.doesNotMatch(registered, /Number of hands/);
-  assert.doesNotMatch(registered, /Basic|Advanced/);
+  assert.equal(removedTaskSection, "");
 
   const custom = renderToStaticMarkup(createElement(DesignSection, {
     config: customMarl, environments: [], set: noop, update: noop, panel: (id) => panel(id),
   }));
-  assert.match(custom, /Number of Agents/);
+  assert.match(custom, /General configuration/);
+  assert.match(custom, />Piece</);
+  assert.match(custom, /Number of hands/);
+  assert.match(custom, /Number of agents/);
   assert.match(custom, /Hand assignment/);
   assert.match(custom, /Action &amp; observation ranges/);
   assert.match(custom, /aria-label="action start"/);
@@ -133,6 +140,7 @@ test("registered and custom MARL tasks expose the correct controls", () => {
   assert.doesNotMatch(custom, /Action keys start|Action keys end|Observation keys start|Observation keys end/);
   assert.doesNotMatch(custom, /Hands \/ agents|Action overlap|Observation overlap|Critic/);
   assert.doesNotMatch(custom, /Maximum 4|Moving an agent|Keys 1–22|wrist key range|visible keyboard state|Action ranges constrain/);
+  assert.doesNotMatch(custom, /Registered environment|Custom MARL task|Task source|Collision penalty|hand-overview/);
   assert.doesNotMatch(custom, /primo|secondo/);
 });
 

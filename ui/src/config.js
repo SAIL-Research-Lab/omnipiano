@@ -15,6 +15,17 @@ export const STEPS = [
   { id: "run", number: "05", title: "Train & evaluate" },
 ];
 
+const MARL_STEPS = [
+  { id: "experiment", number: "01", title: "Experiment" },
+  { id: "design", number: "02", title: "Task design" },
+  { id: "algorithm", number: "03", title: "Algorithm" },
+  { id: "run", number: "04", title: "Train & evaluate" },
+];
+
+export function stepsForTrack(track) {
+  return track === "marl" ? MARL_STEPS : STEPS;
+}
+
 export const REPERTOIRE = [
   "WinterWind",
   "PicturesGreatKiev",

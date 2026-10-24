@@ -1,7 +1,7 @@
 import { useRef } from "react";
 
 import { ChoiceRow, NumberField, Section, SelectField, TextField } from "../fields";
-import { applyMarlAgentCount, assignMarlHandOwner } from "../config";
+import { applyHandLayout, applyMarlAgentCount, assignMarlHandOwner, REPERTOIRE } from "../config";
 
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -191,31 +191,31 @@ function RangeEditor({ agents, hands, set, showVisibility }) {
 
 export default function MarlDesign({ fullConfig, config, set, update, panel }) {
   const hands = fullConfig.task.embodiment.hands;
-  const agentsPanel = panel("marl.agents");
   const ownershipPanel = panel("marl.ownership");
   const rangePanel = panel("marl.ranges");
 
   return (
     <>
-      <Section title="Number of Agents" {...agentsPanel}>
+      <Section title="General configuration">
+        <SelectField
+          label="Piece"
+          value={fullConfig.task.music.piece}
+          options={REPERTOIRE}
+          onChange={(value) => set("task.music.piece", value)}
+        />
+        <ChoiceRow
+          label="Number of hands"
+          value={fullConfig.task.embodiment.num_hands}
+          options={[3, 4, 5].map((value) => ({ value, label: String(value) }))}
+          onChange={(value) => update((current) => applyHandLayout(current, value))}
+        />
         <NumberField
-          label="Agents"
+          label="Number of agents"
           value={config.num_agents}
           min={1}
           max={hands.length}
           onChange={(value) => update((current) => applyMarlAgentCount(current, value))}
         />
-        {agentsPanel.advanced && (
-          <>
-            <NumberField
-              label="Collision penalty"
-              value={config.coordination.inter_agent_collision_penalty_coefficient}
-              min={0}
-              step={0.05}
-              onChange={(value) => set("design.config.coordination.inter_agent_collision_penalty_coefficient", value)}
-            />
-          </>
-        )}
       </Section>
 
       <Section title="Hand assignment" {...ownershipPanel}>

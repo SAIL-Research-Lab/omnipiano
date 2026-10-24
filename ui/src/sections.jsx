@@ -1,22 +1,18 @@
 import { useEffect, useState } from "react";
 
 import {
-  ChoiceRow,
   ListField,
   NumberField,
   Section,
   SelectField,
 } from "./fields";
 import {
-  applyHandLayout,
   applyTrackingProvider,
   deleteAtPath,
-  makeCustomMarl,
   parameterDisplayTemplate,
   makeRegisteredTask,
   parameterTemplate,
   parseIntegerList,
-  REPERTOIRE,
   selectAlgorithm,
   TRACKS,
 } from "./config";
@@ -53,28 +49,9 @@ export function ExperimentSection({ config, track, onTrack, set }) {
     </>
   );
 }
-function HandOverview({ hands }) {
-  return (
-    <div className="hand-overview field--wide">
-      <div className="hand-overview__keyboard">
-        {hands.map((hand, index) => {
-          const [start, end] = hand.initial_key_range;
-          return (
-            <span className={`hand-overview__range hand-overview__range--${index + 1}`} style={{ width: `${((end - start + 1) / 88) * 100}%` }} key={hand.id}>
-              {start}–{end}
-            </span>
-          );
-        })}
-      </div>
-      <div className="hand-overview__legend">
-        {hands.map((hand, index) => <span key={hand.id}><i className={`hand-dot hand-dot--${index + 1}`} />{hand.name}</span>)}
-      </div>
-    </div>
-  );
-}
 export function TaskSection({ config, environments, set, update }) {
   const isMarl = config.design.type === "marl";
-  const isCustom = config.task.source === "custom";
+  if (isMarl) return null;
   const environmentOptions = [...new Set([
     config.task.environment_id,
     ...environments.map((item) => item.id),
@@ -83,52 +60,24 @@ export function TaskSection({ config, environments, set, update }) {
     const metadata = environments.find((item) => item.id === id) ?? { id };
     update((current) => makeRegisteredTask(current, metadata));
   };
-  const changeSource = (source) => {
-    if (source === "custom") update(makeCustomMarl);
-    else if (environments.length) chooseEnvironment(environments[0].id);
-  };
-
-  if (!isMarl) {
-    return (
-      <section className="section-card section-card--minimal">
-        <div className="field-grid">
-          <select
-            className="control field--wide environment-select"
-            aria-label="Environment ID"
-            value={config.task.environment_id}
-            onChange={(event) => chooseEnvironment(event.target.value)}
-          >
-            {environmentOptions.map((id) => <option value={id} key={id}>{id}</option>)}
-          </select>
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <Section title="Task">
-      {isMarl && (
-        <ChoiceRow label="Task source" value={config.task.source} options={[
-          { value: "registered", label: "Registered environment" },
-          { value: "custom", label: "Custom MARL task" },
-        ]} onChange={changeSource} />
-      )}
-      {!isCustom && (
-        <SelectField label="Environment" value={config.task.environment_id} options={environmentOptions} onChange={chooseEnvironment} />
-      )}
-      {isCustom && (
-        <>
-          <SelectField label="Piece" value={config.task.music.piece} options={REPERTOIRE} onChange={(value) => set("task.music.piece", value)} />
-          <ChoiceRow label="Number of hands" value={config.task.embodiment.num_hands} options={[3, 4, 5].map((value) => ({ value, label: String(value) }))} onChange={(value) => update((current) => applyHandLayout(current, value))} />
-          <HandOverview hands={config.task.embodiment.hands} />
-        </>
-      )}
-    </Section>
+    <section className="section-card section-card--minimal">
+      <div className="field-grid">
+        <select
+          className="control field--wide environment-select"
+          aria-label="Environment ID"
+          value={config.task.environment_id}
+          onChange={(event) => chooseEnvironment(event.target.value)}
+        >
+          {environmentOptions.map((id) => <option value={id} key={id}>{id}</option>)}
+        </select>
+      </div>
+    </section>
   );
 }
 
 export function DesignSection({ config, set, update, panel }) {
-  if (config.design.type === "marl" && config.task.source === "custom") {
+  if (config.design.type === "marl") {
     return <MarlDesign fullConfig={config} config={config.design.config} set={set} update={update} panel={panel} />;
   }
   if (config.design.type !== "marl") {
@@ -138,7 +87,7 @@ export function DesignSection({ config, set, update, panel }) {
       </section>
     );
   }
-  return <Section title="Agent assignment"><div className="inline-callout field--wide">This registered task uses its territorial agent layout.</div></Section>;
+  return null;
 }
 
 function ParameterValue({ name, value, onCommit, comma, ariaLabel = name, className = "" }) {

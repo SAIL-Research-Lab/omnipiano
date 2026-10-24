@@ -6,7 +6,7 @@ import safetyExample from "../../omnipiano/experiments/examples/safety.json";
 import marlExample from "../../omnipiano/experiments/examples/marl.json";
 
 import { getCatalog, getEnvironments, getRuns, postConfig, stopRun } from "./api";
-import { cloneConfig, setAtPath, STEPS, TRACKS, withUiDefaults } from "./config";
+import { cloneConfig, makeCustomMarl, setAtPath, stepsForTrack, TRACKS, withUiDefaults } from "./config";
 import {
   AlgorithmSection,
   DesignSection,
@@ -18,6 +18,7 @@ import { validateExperiment } from "./validation";
 
 const RAW_EXAMPLES = { standard: standardExample, robust: robustExample, safety: safetyExample, marl: marlExample };
 const EXAMPLES = Object.fromEntries(Object.entries(RAW_EXAMPLES).map(([key, value]) => [key, withUiDefaults(value)]));
+EXAMPLES.marl = makeCustomMarl(EXAMPLES.marl);
 
 function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, onLaunch, onStop, backend, copyLabel }) {
   const backendError = backend.type === "error";
@@ -73,7 +74,7 @@ function StepContent(props) {
 
 export default function App() {
   const [track, setTrack] = useState("marl");
-  const [activeStep, setActiveStep] = useState(STEPS[0].id);
+  const [activeStep, setActiveStep] = useState("experiment");
   const [advancedPanels, setAdvancedPanels] = useState({});
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [copyLabel, setCopyLabel] = useState("Copy JSON");
@@ -87,6 +88,7 @@ export default function App() {
   ));
 
   const config = configs[track];
+  const steps = stepsForTrack(track);
   const validation = useMemo(() => validateExperiment(config), [config]);
   const { errors } = validation;
   const trackInfo = TRACKS.find((item) => item.id === track);
@@ -113,17 +115,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (track === "marl") return undefined;
     getEnvironments(track).then((payload) => setEnvironments((previous) => ({
       ...previous,
       [track]: payload.environments,
     }))).catch(() => {});
+    return undefined;
   }, [track]);
 
   useEffect(() => {
     let frame = null;
     const updateActiveStep = () => {
       const anchor = Math.min(180, window.innerHeight * 0.25);
-      const sections = STEPS.map((step) => document.getElementById(`step-${step.id}`)).filter(Boolean);
+      const sections = steps.map((step) => document.getElementById(`step-${step.id}`)).filter(Boolean);
       let current = sections[0];
       sections.forEach((section) => { if (section.getBoundingClientRect().top <= anchor) current = section; });
       if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) current = sections.at(-1);
@@ -141,7 +145,7 @@ export default function App() {
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
-  }, []);
+  }, [steps]);
 
   function set(path, value) {
     setConfigs((previous) => ({ ...previous, [track]: setAtPath(previous[track], path, value) }));
@@ -149,7 +153,14 @@ export default function App() {
   }
 
   function changeTrack(nextTrack) {
+    if (nextTrack === "marl") {
+      setConfigs((previous) => ({
+        ...previous,
+        marl: previous.marl.task.source === "custom" ? previous.marl : makeCustomMarl(previous.marl),
+      }));
+    }
     setTrack(nextTrack);
+    setActiveStep("experiment");
     setBackend({ type: "idle", message: "", busy: false, runs: [] });
     setMessage(null);
   }
@@ -170,9 +181,10 @@ export default function App() {
     event.target.value = "";
     if (!file) return;
     try {
-      const imported = withUiDefaults(JSON.parse(await file.text()));
+      let imported = withUiDefaults(JSON.parse(await file.text()));
       const importedTrack = imported?.design?.type;
       if (!TRACKS.some((item) => item.id === importedTrack)) throw new Error("Not a unified OmniPiano schema-v3 configuration.");
+      if (importedTrack === "marl" && imported.task.source !== "custom") imported = makeCustomMarl(imported);
       const result = validateExperiment(imported);
       if (result.errors.length) throw new Error(result.errors[0]);
       setConfigs((previous) => ({ ...previous, [importedTrack]: imported }));
@@ -275,10 +287,10 @@ export default function App() {
       <div className="workspace" id="top">
         <nav className="step-nav" aria-label="Experiment configuration steps">
           <div className="step-nav__track"><span className={`track-card__mark track-card__mark--${track}`}>{trackInfo.short}</span><strong>{trackInfo.title}</strong></div>
-          <ol>{STEPS.map((step) => <li key={step.id}><a href={`#step-${step.id}`} className={activeStep === step.id ? "active" : ""}><span>{step.number}</span><strong>{step.title}</strong></a></li>)}</ol>
+          <ol>{steps.map((step) => <li key={step.id}><a href={`#step-${step.id}`} className={activeStep === step.id ? "active" : ""}><span>{step.number}</span><strong>{step.title}</strong></a></li>)}</ol>
         </nav>
         <main className="editor">
-          {STEPS.map((step) => (
+          {steps.map((step) => (
             <section className="workflow-section" data-step={step.id} id={`step-${step.id}`} key={step.id}>
               <div className="workflow-section__heading"><span>{step.number}</span><h1>{step.title}</h1></div>
               <StepContent step={step.id} {...sharedProps} />
