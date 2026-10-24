@@ -157,7 +157,7 @@ export function AlgorithmSection({ config, algorithms, update, panel }) {
     ? parameterDisplayTemplate(config.design.type, selected.name, selected.configurable_parameters)
     : {};
   return (
-    <Section title="Available algorithms" {...algorithmPanel}>
+    <Section title="Algorithm" hideTitle advancedAtBottom {...algorithmPanel}>
       <div className="algorithm-grid field--wide">
         {algorithms.map((item) => (
           <button type="button" key={item.name} className={`algorithm-option ${config.algorithm.name === item.name ? "active" : ""}`} aria-pressed={config.algorithm.name === item.name} onClick={() => update((current) => selectAlgorithm(current, item.name))}>
@@ -307,7 +307,7 @@ export function RunSection({ config, track = config.design.type, set, update, pa
   const { evaluation, compute } = config.run;
   const training = panel("run");
   return (
-    <Section title="Training configuration" {...training}>
+    <Section title="Train & evaluate" hideTitle advancedAtBottom {...training}>
       <ListField label="Seeds" values={config.experiment.seeds} parse={parseIntegerList} onChange={(value) => set("experiment.seeds", value)} />
       <NumberField label="Total environment steps" value={config.run.total_steps} min={track === "safety" ? 20000 : 1} step={track === "safety" ? 20000 : 1} onChange={(value) => set("run.total_steps", value)} />
       {track === "safety" ? (

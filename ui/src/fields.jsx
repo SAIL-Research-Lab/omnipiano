@@ -171,30 +171,44 @@ export function ChoiceRow({ label, value, options, onChange, wide = true }) {
   );
 }
 
-export function Section({ eyebrow, title, description, children, advanced, onToggleAdvanced }) {
+export function Section({
+  eyebrow,
+  title,
+  description,
+  children,
+  advanced,
+  onToggleAdvanced,
+  hideTitle = false,
+  advancedAtBottom = false,
+}) {
+  const modeButton = onToggleAdvanced && (
+    <button
+      type="button"
+      className={`panel-mode ${advanced ? "panel-mode--active" : ""}`}
+      aria-pressed={advanced}
+      aria-label={`${advanced ? "Hide" : "Show"} advanced settings for ${title}`}
+      onClick={onToggleAdvanced}
+    >
+      {advanced ? "Basic" : "Advanced"}
+    </button>
+  );
+  const showHeading = !hideTitle && (eyebrow || title || description || (modeButton && !advancedAtBottom));
   return (
     <section className="section-card">
-      <div className="section-card__heading">
-        <div className="section-card__title-row">
-          <div>
-            {eyebrow && <span className="eyebrow">{eyebrow}</span>}
-            <h2>{title}</h2>
+      {showHeading && (
+        <div className="section-card__heading">
+          <div className="section-card__title-row">
+            <div>
+              {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+              {title && <h2>{title}</h2>}
+            </div>
+            {!advancedAtBottom && modeButton}
           </div>
-          {onToggleAdvanced && (
-            <button
-              type="button"
-              className={`panel-mode ${advanced ? "panel-mode--active" : ""}`}
-              aria-pressed={advanced}
-              aria-label={`${advanced ? "Hide" : "Show"} advanced settings for ${title}`}
-              onClick={onToggleAdvanced}
-            >
-              {advanced ? "Basic" : "Advanced"}
-            </button>
-          )}
+          {description && <p>{description}</p>}
         </div>
-        {description && <p>{description}</p>}
-      </div>
+      )}
       <div className="field-grid">{children}</div>
+      {advancedAtBottom && modeButton && <div className="section-card__footer">{modeButton}</div>}
     </section>
   );
 }

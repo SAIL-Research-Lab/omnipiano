@@ -377,6 +377,14 @@ button {
   margin-bottom: 18px;
 }
 
+.section-card__footer {
+  margin-top: 18px;
+  padding-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+}
+
 .section-card--minimal {
   padding: 20px 24px;
 }

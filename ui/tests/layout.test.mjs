@@ -58,12 +58,13 @@ test("training controls share one compact panel with a comprehensive advanced JS
     config: marl, track: "marl", set: noop, update: noop, panel: (id) => panel(id),
   }));
   assert.match(basic, /Seeds/);
-  assert.match(basic, /Training configuration/);
+  assert.doesNotMatch(basic, />Training configuration<|<h2>Train &amp; evaluate<\/h2>/);
   assert.match(basic, /Total environment steps/);
   assert.match(basic, /Evaluation episodes/);
   assert.match(basic, />Device</);
   assert.doesNotMatch(basic, /Output root/);
   assert.doesNotMatch(basic, /Advanced training configuration/);
+  assert.match(basic, /class="section-card__footer"><button[^>]*>Advanced<\/button><\/div><\/section>$/);
   const advanced = renderToStaticMarkup(createElement(RunSection, {
     config: marl, track: "marl", set: noop, update: noop, panel: (id) => panel(id, ["run"]),
   }));
@@ -75,6 +76,7 @@ test("training controls share one compact panel with a comprehensive advanced JS
   assert.match(advanced, /aria-label="output.root"/);
   assert.match(advanced, /parameter-json__readonly runtime-parameter-json__readonly/);
   assert.doesNotMatch(advanced, /Compute, tracking &amp; output|Run settings/);
+  assert.match(advanced, /class="section-card__footer"><button[^>]*>Basic<\/button><\/div><\/section>$/);
 });
 
 test("runtime JSON only enables fields consumed by each track adapter", () => {
@@ -187,12 +189,14 @@ test("advanced algorithm settings start with an editable reference template", ()
     update: noop,
     panel: (id) => panel(id, ["algorithm"]),
   }));
+  assert.doesNotMatch(html, />Available algorithms<|<h2>Algorithm<\/h2>/);
   assert.match(html, />Parameters</);
   assert.match(html, /aria-label="learning_rate" value="0.0003"/);
   assert.match(html, /aria-label="buffer_size" value="1000000"/);
   assert.match(html, /aria-label="net_arch" value="\[256,256\]"/);
   assert.equal((html.match(/class="parameter-json"/g) ?? []).length, 1);
   assert.doesNotMatch(html, /Editable parameters|Read-only parameters|Reference values|Allowed keys/);
+  assert.match(html, /class="section-card__footer"><button[^>]*>Basic<\/button><\/div><\/section>$/);
 });
 
 test("unsupported Safe RL profiles render as read-only parameters", () => {
