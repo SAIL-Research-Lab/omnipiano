@@ -474,18 +474,17 @@ button {
 
 .reference-baseline-toggle {
   width: 100%;
-  min-height: 48px;
+  min-height: 38px;
   margin-top: 16px;
-  padding: 8px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 8px 12px;
+  display: flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
   border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line));
   border-radius: 9px;
   background: color-mix(in srgb, var(--accent-soft) 58%, white);
   color: var(--ink);
-  text-align: left;
+  text-align: center;
   cursor: pointer;
 }
 
@@ -495,37 +494,10 @@ button {
   background: var(--accent-soft);
 }
 
-.reference-baseline-toggle__number {
-  min-width: 43px;
-  padding: 6px 5px;
-  border-radius: 6px;
-  background: var(--accent);
-  color: white;
-  font-size: 9px;
-  font-weight: 800;
-  text-align: center;
-  letter-spacing: 0.04em;
-}
-
-.reference-baseline-toggle__copy {
-  min-width: 0;
-}
-
-.reference-baseline-toggle__copy strong {
-  font-size: 10px;
+.reference-baseline-toggle strong {
+  font-size: 11px;
   line-height: 1.2;
-}
-
-.reference-baseline-toggle__arrow {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--accent);
-  color: white;
-  font-size: 10px;
-  font-weight: 800;
+  white-space: nowrap;
 }
 
 .field--prominent .field__label {

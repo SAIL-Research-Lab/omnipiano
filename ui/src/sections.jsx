@@ -126,11 +126,7 @@ export function ReferenceBaselineToggle({ expanded, onToggle }) {
       aria-controls="step-algorithm step-run unified-json-panel"
       onClick={onToggle}
     >
-      <span className="reference-baseline-toggle__number">03–04</span>
-      <span className="reference-baseline-toggle__copy">
-        <strong>{expanded ? "Hide OmniPiano baselines" : "Reproduce OmniPiano baselines"}</strong>
-      </span>
-      <span className="reference-baseline-toggle__arrow" aria-hidden="true">{expanded ? "↑" : "↓"}</span>
+      <strong>{expanded ? "Hide Baseline" : "Show Baselines"}</strong>
     </button>
   );
 }

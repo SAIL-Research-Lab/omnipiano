@@ -47,7 +47,7 @@ test("the default workflow ends after environment export", () => {
   assert.doesNotMatch(html, /Review &amp; launch|Validate &amp; preview|Prepare files/);
   assert.doesNotMatch(html, /Download JSON|Launch runs|Unified JSON · v3/);
   assert.match(html, /Export Environment/);
-  assert.match(html, /Reproduce OmniPiano baselines/);
+  assert.match(html, /Show Baselines/);
   assert.match(html, /Environment name/);
   assert.match(html, /winter-wind-4h-2a/);
   assert.doesNotMatch(html, /Experiment name|Import JSON|Reset track/);
@@ -81,16 +81,15 @@ test("the reference-baseline button communicates collapsed and expanded states",
     onToggle: noop,
   }));
   assert.match(collapsed, /aria-expanded="false"/);
-  assert.match(collapsed, /Reproduce OmniPiano baselines/);
-  assert.match(collapsed, /03–04/);
-  assert.doesNotMatch(collapsed, /Integrated algorithms and reference training runs/);
+  assert.match(collapsed, /Show Baselines/);
+  assert.doesNotMatch(collapsed, /03–04|Reproduce OmniPiano|Integrated algorithms/);
 
   const expanded = renderToStaticMarkup(createElement(ReferenceBaselineToggle, {
     expanded: true,
     onToggle: noop,
   }));
   assert.match(expanded, /aria-expanded="true"/);
-  assert.match(expanded, /Hide OmniPiano baselines/);
+  assert.match(expanded, /Hide Baseline/);
   assert.match(expanded, /reference-baseline-toggle--expanded/);
 });
 
