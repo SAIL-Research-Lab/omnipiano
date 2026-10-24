@@ -22,6 +22,8 @@ The single scrollable page lets a user:
 
 - select Standard, Robust, Safe, or Multi-Agent RL;
 - select a registered task (or define an exact custom MARL topology);
+- export the configured environment as a portable ZIP containing `task.json`,
+  an importable Python adapter, a manifest, and a runnable smoke test;
 - choose only algorithms and parameters accepted by that track;
 - configure seeds, budget, evaluation, video, compute, tracking, and output;
 - inspect, import, copy, or download the canonical JSON;

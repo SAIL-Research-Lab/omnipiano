@@ -13,7 +13,7 @@ const server = await createServer({
   server: { middlewareMode: true, hmr: false, ws: false, fs: { allow: [".."] } },
 });
 const { default: App } = await server.ssrLoadModule("/src/App.jsx");
-const { AlgorithmSection, DesignSection, ExperimentSection, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
+const { AlgorithmSection, DesignSection, EnvironmentExportSection, ExperimentSection, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
 const { makeCustomMarl, stepsForTrack, withUiDefaults } = await server.ssrLoadModule("/src/config.js");
 const standard = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/standard.json", import.meta.url))));
 const robust = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/robust.json", import.meta.url))));
@@ -42,7 +42,19 @@ test("all tracks use focused four-step workflows", () => {
   assert.doesNotMatch(html, /Review &amp; launch|Validate &amp; preview|Prepare files/);
   assert.match(html, /Download JSON/);
   assert.match(html, /Launch runs/);
+  assert.match(html, /Export Environment/);
   assert.match(html, /Unified JSON · v3/);
+});
+
+test("section 02 exposes the portable environment bundle actions", () => {
+  for (const config of [standard, robust, safety, customMarl]) {
+    const html = renderToStaticMarkup(createElement(EnvironmentExportSection, { config }));
+    assert.match(html, /Export environment/);
+    assert.match(html, />Task JSON</);
+    assert.match(html, />Copy Python</);
+    assert.match(html, />Export Environment</);
+    assert.match(html, /Task specification, importable Python adapter, and smoke test/);
+  }
 });
 
 test("training controls share one compact panel with a comprehensive advanced JSON editor", () => {

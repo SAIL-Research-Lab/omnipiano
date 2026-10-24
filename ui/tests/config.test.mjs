@@ -15,6 +15,12 @@ import {
   selectAlgorithm,
   withUiDefaults,
 } from "../src/config.js";
+import {
+  buildEnvironmentBundle,
+  buildEnvironmentSpec,
+  createEnvironmentArchive,
+} from "../src/exportEnvironment.js";
+import { strFromU8, unzipSync } from "fflate";
 
 const ROOT = new URL("../../", import.meta.url);
 async function readJson(path) { return JSON.parse(await readFile(new URL(path, ROOT), "utf8")); }
@@ -97,4 +103,55 @@ test("unsupported parameters remain available as UI-only read-only references", 
   ]);
   assert.equal(mappo.hidden_orthogonal_gain, Math.sqrt(2));
   assert.equal(Object.hasOwn(mappo, "learning_rate"), false);
+});
+
+test("registered environment exports are algorithm-independent importable bundles", async () => {
+  const base = withUiDefaults(await readJson("omnipiano/experiments/examples/standard.json"));
+  const bundle = buildEnvironmentBundle(base);
+  const task = bundle.specification;
+
+  assert.equal(task.track, "standard");
+  assert.equal(task.api, "gymnasium");
+  assert.equal(task.task.environment_id, base.task.environment_id);
+  assert.equal(Object.hasOwn(task, "algorithm"), false);
+  assert.equal(Object.hasOwn(task, "run"), false);
+  assert.match(bundle.files[`${bundle.packageName}/__init__.py`], /omnipiano\.make/);
+  assert.match(bundle.importSnippet, new RegExp(`from ${bundle.packageName} import make_env`));
+
+  const archive = createEnvironmentArchive(base);
+  const unzipped = unzipSync(archive.bytes);
+  assert.deepEqual(Object.keys(unzipped).sort(), Object.keys(bundle.files).sort());
+  assert.equal(
+    JSON.parse(strFromU8(unzipped[`${bundle.packageName}/task.json`])).task.environment_id,
+    base.task.environment_id,
+  );
+});
+
+test("safety exports register their on-demand suite before construction", async () => {
+  const base = withUiDefaults(await readJson("omnipiano/experiments/examples/safety.json"));
+  const bundle = buildEnvironmentBundle(base);
+  assert.match(bundle.files[`${bundle.packageName}/__init__.py`], /from omnipiano\.safety\.suite import register_all/);
+  assert.match(bundle.files[`${bundle.packageName}/__init__.py`], /register_all\(\)/);
+});
+
+test("custom MARL exports preserve topology, ranges, and runtime reward shaping", async () => {
+  const base = withUiDefaults(await readJson("omnipiano/experiments/examples/marl.json"));
+  const custom = makeCustomMarl(base);
+  const task = buildEnvironmentSpec(custom);
+
+  assert.equal(task.api, "pettingzoo_parallel");
+  assert.equal(task.task.source, "custom");
+  assert.equal(task.task.spec.song, "WinterWind");
+  assert.equal(task.task.spec.num_hands, 4);
+  assert.equal(task.task.spec.num_agents, 2);
+  assert.deepEqual(task.task.spec.agents[0].action_key_range, [1, 44]);
+  assert.deepEqual(task.task.spec.agents[1].observation_key_range, [45, 88]);
+  assert.equal(task.runtime.inter_agent_collision_penalty_coef, 0.1);
+
+  const bundle = buildEnvironmentBundle(custom);
+  const initializer = bundle.files[`${bundle.packageName}/__init__.py`];
+  assert.match(initializer, /compile_task/);
+  assert.match(initializer, /make_parallel_from_task/);
+  assert.match(initializer, /specification\.get\("runtime", \{\}\)\.items\(\)/);
+  assert.match(bundle.files[`${bundle.packageName}/task.json`], /inter_agent_collision_penalty_coef/);
 });

@@ -16,6 +16,11 @@ import {
   selectAlgorithm,
   TRACKS,
 } from "./config";
+import {
+  buildEnvironmentBundle,
+  downloadEnvironmentArchive,
+  downloadEnvironmentTask,
+} from "./exportEnvironment";
 import MarlDesign from "./tracks/marl";
 
 export function ExperimentSection({ config, track, onTrack, set }) {
@@ -79,6 +84,40 @@ export function TaskSection({ config, environments, set, update }) {
 export function DesignSection({ config, set, update, panel }) {
   if (config.design.type !== "marl") return null;
   return <MarlDesign fullConfig={config} config={config.design.config} set={set} update={update} panel={panel} />;
+}
+
+export function EnvironmentExportSection({ config }) {
+  const [status, setStatus] = useState("");
+  const act = async (action, success) => {
+    try {
+      await action();
+      setStatus(success);
+    } catch (reason) {
+      setStatus(reason?.message ?? "Export failed.");
+    }
+    window.setTimeout(() => setStatus(""), 2200);
+  };
+  const copyCode = () => act(async () => {
+    const { importSnippet } = buildEnvironmentBundle(config);
+    await navigator.clipboard.writeText(importSnippet);
+  }, "Python code copied");
+  return (
+    <section className="environment-export" aria-labelledby="environment-export-title">
+      <div className="environment-export__copy">
+        <span className="environment-export__mark" aria-hidden="true">↓</span>
+        <div>
+          <strong id="environment-export-title">Export environment</strong>
+          <span>Task specification, importable Python adapter, and smoke test.</span>
+        </div>
+      </div>
+      <div className="environment-export__actions">
+        <button type="button" onClick={() => act(() => downloadEnvironmentTask(config), "Task JSON downloaded")}>Task JSON</button>
+        <button type="button" onClick={copyCode}>Copy Python</button>
+        <button className="environment-export__primary" type="button" onClick={() => act(() => downloadEnvironmentArchive(config), "Environment bundle downloaded")}>Export Environment</button>
+      </div>
+      {status && <span className="environment-export__status" role="status">{status}</span>}
+    </section>
+  );
 }
 
 function ParameterValue({ name, value, onCommit, comma, ariaLabel = name, className = "" }) {

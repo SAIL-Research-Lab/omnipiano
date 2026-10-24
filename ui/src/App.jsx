@@ -10,6 +10,7 @@ import { cloneConfig, makeCustomMarl, setAtPath, stepsForTrack, TRACKS, withUiDe
 import {
   AlgorithmSection,
   DesignSection,
+  EnvironmentExportSection,
   ExperimentSection,
   RunSection,
   TaskSection,
@@ -66,8 +67,8 @@ function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, 
 function StepContent(props) {
   const { step } = props;
   if (step === "experiment") return <ExperimentSection {...props} />;
-  if (step === "task") return <TaskSection {...props} />;
-  if (step === "design") return <DesignSection {...props} />;
+  if (step === "task") return <><TaskSection {...props} /><EnvironmentExportSection {...props} /></>;
+  if (step === "design") return <><DesignSection {...props} /><EnvironmentExportSection {...props} /></>;
   if (step === "algorithm") return <AlgorithmSection {...props} />;
   return <RunSection {...props} />;
 }

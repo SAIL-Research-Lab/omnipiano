@@ -389,6 +389,98 @@ button {
   padding: 20px 24px;
 }
 
+.environment-export {
+  position: relative;
+  min-height: 82px;
+  padding: 17px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-soft) 58%, white);
+  box-shadow: 0 4px 16px rgba(29, 44, 64, 0.035);
+}
+
+.environment-export__copy,
+.environment-export__actions {
+  display: flex;
+  align-items: center;
+}
+
+.environment-export__copy {
+  min-width: 0;
+  gap: 12px;
+}
+
+.environment-export__copy > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.environment-export__copy strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.environment-export__copy span:not(.environment-export__mark) {
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.environment-export__mark {
+  width: 35px;
+  height: 35px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 35px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: white;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.environment-export__actions {
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.environment-export__actions button {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, #cfd7df);
+  border-radius: 7px;
+  background: white;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.environment-export__actions button:hover {
+  border-color: var(--accent);
+}
+
+.environment-export__actions .environment-export__primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.environment-export__status {
+  position: absolute;
+  right: 18px;
+  bottom: -21px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+}
+
 .field--prominent .field__label {
   color: var(--ink);
   font-size: 20px;
@@ -1655,6 +1747,20 @@ textarea.control {
   .compact-table__row .mini-range { grid-column: 1 / -1; }
 
   .algorithm-grid { grid-template-columns: 1fr; }
+
+  .environment-export {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .environment-export__actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .environment-export__actions button {
+    flex: 1 1 auto;
+  }
 
   .reward-editor__header,
   .reward-editor__row {
