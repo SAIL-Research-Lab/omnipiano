@@ -201,7 +201,6 @@ def parse_request(document: Mapping[str, Any]) -> ExperimentRequest:
             name=experiment["name"],
             description=experiment.get("description", ""),
             seeds=tuple(experiment["seeds"]),
-            tags=tuple(experiment.get("tags", [])),
         ),
         task=TaskRequest(
             source=task["source"],

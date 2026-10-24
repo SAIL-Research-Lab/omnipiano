@@ -79,6 +79,14 @@ def test_unknown_top_level_field_fails_closed() -> None:
         parse_request(document)
 
 
+def test_removed_experiment_tags_fail_closed() -> None:
+    document = json.loads((EXAMPLES / "standard.json").read_text())
+    document["experiment"]["tags"] = ["legacy"]
+
+    with pytest.raises(ExperimentValidationError, match="Additional properties"):
+        parse_request(document)
+
+
 def test_custom_task_checks_hand_count_and_range_order() -> None:
     document = json.loads((EXAMPLES / "marl.json").read_text())
     document["task"] = {

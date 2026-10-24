@@ -25,7 +25,6 @@ def resolve_experiment(request: ExperimentRequest) -> ResolvedExperiment:
     document = request.to_dict()
 
     document["experiment"].setdefault("description", "")
-    document["experiment"].setdefault("tags", [])
 
     task = document["task"]
     if task["source"] == "registered":

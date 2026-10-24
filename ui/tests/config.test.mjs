@@ -10,7 +10,6 @@ import {
   assignMarlHandOwner,
   makeCustomMarl,
   parseIntegerList,
-  parseStringList,
   selectAlgorithm,
   withUiDefaults,
 } from "../src/config.js";
@@ -49,9 +48,8 @@ test("algorithm selection clears stale overrides", async () => {
   });
 });
 
-test("draft list parsing accepts trailing separators", () => {
+test("seed parsing accepts trailing separators", () => {
   assert.deepEqual(parseIntegerList("0, 1, 2, "), [0, 1, 2]);
-  assert.deepEqual(parseStringList("marl, winter, "), ["marl", "winter"]);
 });
 
 test("tracking provider always produces a compatible mode", async () => {

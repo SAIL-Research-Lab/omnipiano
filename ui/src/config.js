@@ -42,7 +42,6 @@ export function cloneConfig(config) { return structuredClone(config); }
 export function withUiDefaults(config) {
   const next = cloneConfig(config);
   next.experiment.description ??= "";
-  next.experiment.tags ??= [];
   next.design.config ??= {};
   next.algorithm.preset ??= "default";
   next.algorithm.parameters ??= {};
@@ -71,10 +70,6 @@ export function setAtPath(source, path, value) {
 export function parseIntegerList(value) {
   return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean).map(Number)
     .filter((item) => Number.isInteger(item) && item >= 0))];
-}
-
-export function parseStringList(value) {
-  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
 }
 
 function distributeHands(handIds, numAgents) {

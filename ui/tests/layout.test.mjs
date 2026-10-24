@@ -37,6 +37,7 @@ test("seeds stay in run settings and advanced controls stay local", () => {
     config: marl, track: "marl", onTrack: noop, set: noop, panel: (id) => panel(id),
   }));
   assert.doesNotMatch(identity, /Seeds/);
+  assert.doesNotMatch(identity, /Tags|Basic|Advanced/);
   const basic = renderToStaticMarkup(createElement(RunSection, {
     config: marl, set: noop, update: noop, panel: (id) => panel(id),
   }));

@@ -2,8 +2,7 @@
   "schema_version": 3,
   "experiment": {
     "name": "robust-sac-example",
-    "seeds": [0, 1, 2],
-    "tags": ["example", "robust"]
+    "seeds": [0, 1, 2]
   },
   "task": {
     "source": "registered",

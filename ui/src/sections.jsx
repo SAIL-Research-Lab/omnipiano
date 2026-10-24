@@ -15,15 +15,13 @@ import {
   makeCustomMarl,
   makeRegisteredTask,
   parseIntegerList,
-  parseStringList,
   REPERTOIRE,
   selectAlgorithm,
   TRACKS,
 } from "./config";
 import MarlDesign from "./tracks/marl";
 
-export function ExperimentSection({ config, track, onTrack, set, panel }) {
-  const details = panel("identity");
+export function ExperimentSection({ config, track, onTrack, set }) {
   return (
     <>
       <section className="track-picker" aria-labelledby="track-heading">
@@ -43,12 +41,9 @@ export function ExperimentSection({ config, track, onTrack, set, panel }) {
           ))}
         </div>
       </section>
-      <Section title="Experiment details" {...details}>
+      <Section title="Experiment details">
         <TextField label="Experiment name" value={config.experiment.name} onChange={(value) => set("experiment.name", value)} />
         <TextField label="Description" value={config.experiment.description} onChange={(value) => set("experiment.description", value)} wide multiline />
-        {details.advanced && (
-          <ListField label="Tags" values={config.experiment.tags} parse={parseStringList} onChange={(value) => set("experiment.tags", value)} wide />
-        )}
       </Section>
     </>
   );

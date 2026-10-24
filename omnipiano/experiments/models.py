@@ -20,14 +20,12 @@ class ExperimentMetadata:
     name: str
     description: str
     seeds: Tuple[int, ...]
-    tags: Tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "description": self.description,
             "seeds": list(self.seeds),
-            "tags": list(self.tags),
         }
 
 
