@@ -120,6 +120,25 @@ export function EnvironmentExportSection({ config }) {
   );
 }
 
+export function ReferenceBaselineToggle({ expanded, onToggle }) {
+  return (
+    <button
+      type="button"
+      className={`reference-baseline-toggle ${expanded ? "reference-baseline-toggle--expanded" : ""}`}
+      aria-expanded={expanded}
+      aria-controls="step-algorithm step-run unified-json-panel"
+      onClick={onToggle}
+    >
+      <span className="reference-baseline-toggle__number">03–04</span>
+      <span className="reference-baseline-toggle__copy">
+        <strong>{expanded ? "Hide OmniPiano baselines" : "Reproduce OmniPiano baselines"}</strong>
+        <small>Integrated algorithms and reference training runs</small>
+      </span>
+      <span className="reference-baseline-toggle__arrow" aria-hidden="true">{expanded ? "↑" : "↓"}</span>
+    </button>
+  );
+}
+
 function ParameterValue({ name, value, onCommit, comma, ariaLabel = name, className = "" }) {
   const serialized = JSON.stringify(value);
   const [draft, setDraft] = useState(serialized);

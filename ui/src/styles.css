@@ -211,6 +211,10 @@ button {
   align-items: stretch;
 }
 
+.workspace--environment-only {
+  grid-template-columns: 224px minmax(520px, 1fr);
+}
+
 .step-nav {
   position: sticky;
   top: 0;
@@ -479,6 +483,74 @@ button {
   color: var(--accent);
   font-size: 9px;
   font-weight: 700;
+}
+
+.reference-baseline-toggle {
+  width: 100%;
+  min-height: 64px;
+  margin-top: 34px;
+  padding: 12px 15px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfd;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.reference-baseline-toggle:hover,
+.reference-baseline-toggle--expanded {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 35%, white);
+}
+
+.reference-baseline-toggle__number {
+  min-width: 48px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+.reference-baseline-toggle--expanded .reference-baseline-toggle__number {
+  background: var(--accent);
+  color: white;
+}
+
+.reference-baseline-toggle__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reference-baseline-toggle__copy strong {
+  font-size: 13px;
+}
+
+.reference-baseline-toggle__copy small {
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.reference-baseline-toggle__arrow {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .field--prominent .field__label {

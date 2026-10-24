@@ -25,6 +25,11 @@ export function stepsForTrack(track) {
   return track === "marl" ? MARL_STEPS : STEPS;
 }
 
+export function visibleStepsForTrack(track, showReferenceBaselines = false) {
+  const steps = stepsForTrack(track);
+  return showReferenceBaselines ? steps : steps.slice(0, 2);
+}
+
 export const REPERTOIRE = [
   "WinterWind",
   "PicturesGreatKiev",

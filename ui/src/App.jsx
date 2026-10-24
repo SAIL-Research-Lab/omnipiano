@@ -6,12 +6,13 @@ import safetyExample from "../../omnipiano/experiments/examples/safety.json";
 import marlExample from "../../omnipiano/experiments/examples/marl.json";
 
 import { getCatalog, getEnvironments, getRuns, postConfig, stopRun } from "./api";
-import { cloneConfig, makeCustomMarl, setAtPath, stepsForTrack, TRACKS, withUiDefaults } from "./config";
+import { cloneConfig, makeCustomMarl, setAtPath, TRACKS, visibleStepsForTrack, withUiDefaults } from "./config";
 import {
   AlgorithmSection,
   DesignSection,
   EnvironmentExportSection,
   ExperimentSection,
+  ReferenceBaselineToggle,
   RunSection,
   TaskSection,
 } from "./sections";
@@ -28,7 +29,7 @@ function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, 
     ? `${errors.length} JSON issue${errors.length === 1 ? "" : "s"}`
     : backend.message || "Schema valid";
   return (
-    <aside className={`json-panel ${collapsed ? "json-panel--collapsed" : ""}`}>
+    <aside id="unified-json-panel" className={`json-panel ${collapsed ? "json-panel--collapsed" : ""}`}>
       <div className="json-panel__header">
         <strong>Unified JSON · v3</strong>
         <div className="json-panel__actions">
@@ -67,8 +68,20 @@ function JsonPreview({ config, errors, collapsed, onToggle, onCopy, onDownload, 
 function StepContent(props) {
   const { step } = props;
   if (step === "experiment") return <ExperimentSection {...props} />;
-  if (step === "task") return <><TaskSection {...props} /><EnvironmentExportSection {...props} /></>;
-  if (step === "design") return <><DesignSection {...props} /><EnvironmentExportSection {...props} /></>;
+  if (step === "task") return (
+    <>
+      <TaskSection {...props} />
+      <EnvironmentExportSection {...props} />
+      <ReferenceBaselineToggle expanded={props.showBaselines} onToggle={props.onToggleBaselines} />
+    </>
+  );
+  if (step === "design") return (
+    <>
+      <DesignSection {...props} />
+      <EnvironmentExportSection {...props} />
+      <ReferenceBaselineToggle expanded={props.showBaselines} onToggle={props.onToggleBaselines} />
+    </>
+  );
   if (step === "algorithm") return <AlgorithmSection {...props} />;
   return <RunSection {...props} />;
 }
@@ -78,6 +91,7 @@ export default function App() {
   const [activeStep, setActiveStep] = useState("experiment");
   const [advancedPanels, setAdvancedPanels] = useState({});
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [showBaselines, setShowBaselines] = useState(false);
   const [copyLabel, setCopyLabel] = useState("Copy JSON");
   const [message, setMessage] = useState(null);
   const [catalog, setCatalog] = useState(null);
@@ -89,7 +103,7 @@ export default function App() {
   ));
 
   const config = configs[track];
-  const steps = stepsForTrack(track);
+  const steps = visibleStepsForTrack(track, showBaselines);
   const validation = useMemo(() => validateExperiment(config), [config]);
   const { errors } = validation;
   const trackInfo = TRACKS.find((item) => item.id === track);
@@ -161,6 +175,7 @@ export default function App() {
       }));
     }
     setTrack(nextTrack);
+    setShowBaselines(false);
     setActiveStep("experiment");
     setBackend({ type: "idle", message: "", busy: false, runs: [] });
     setMessage(null);
@@ -173,6 +188,7 @@ export default function App() {
 
   function resetTrack() {
     setConfigs((previous) => ({ ...previous, [track]: cloneConfig(EXAMPLES[track]) }));
+    setShowBaselines(false);
     setBackend({ type: "idle", message: "", busy: false, runs: [] });
     setMessage(null);
   }
@@ -190,6 +206,7 @@ export default function App() {
       if (result.errors.length) throw new Error(result.errors[0]);
       setConfigs((previous) => ({ ...previous, [importedTrack]: imported }));
       setTrack(importedTrack);
+      setShowBaselines(false);
       setMessage({ type: "success", text: `Loaded ${file.name}` });
     } catch (reason) {
       setMessage({ type: "error", text: reason.message });
@@ -253,6 +270,11 @@ export default function App() {
     }
   }
 
+  function toggleBaselines() {
+    if (!showBaselines) setPreviewCollapsed(false);
+    setShowBaselines(!showBaselines);
+  }
+
   const sharedProps = {
     config,
     track,
@@ -269,6 +291,8 @@ export default function App() {
     onDownload: downloadJson,
     onLaunch: launch,
     onStop: stop,
+    showBaselines,
+    onToggleBaselines: toggleBaselines,
   };
 
   return (
@@ -285,7 +309,7 @@ export default function App() {
         </div>
       </header>
       {message && <div className={`import-message import-message--${message.type}`} role="status"><span>{message.type === "success" ? "✓" : "!"}</span>{message.text}<button type="button" onClick={() => setMessage(null)}>×</button></div>}
-      <div className="workspace" id="top">
+      <div className={`workspace ${showBaselines ? "" : "workspace--environment-only"}`.trim()} id="top">
         <nav className="step-nav" aria-label="Experiment configuration steps">
           <div className="step-nav__track"><span className={`track-card__mark track-card__mark--${track}`}>{trackInfo.short}</span><strong>{trackInfo.title}</strong></div>
           <ol>{steps.map((step) => <li key={step.id}><a href={`#step-${step.id}`} className={activeStep === step.id ? "active" : ""}><span>{step.number}</span><strong>{step.title}</strong></a></li>)}</ol>
@@ -298,18 +322,20 @@ export default function App() {
             </section>
           ))}
         </main>
-        <JsonPreview
-          config={config}
-          errors={errors}
-          collapsed={previewCollapsed}
-          onToggle={() => setPreviewCollapsed((value) => !value)}
-          onCopy={copyJson}
-          onDownload={downloadJson}
-          onLaunch={launch}
-          onStop={stop}
-          backend={backend}
-          copyLabel={copyLabel}
-        />
+        {showBaselines && (
+          <JsonPreview
+            config={config}
+            errors={errors}
+            collapsed={previewCollapsed}
+            onToggle={() => setPreviewCollapsed((value) => !value)}
+            onCopy={copyJson}
+            onDownload={downloadJson}
+            onLaunch={launch}
+            onStop={stop}
+            backend={backend}
+            copyLabel={copyLabel}
+          />
+        )}
       </div>
     </div>
   );

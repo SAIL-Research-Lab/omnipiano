@@ -13,8 +13,8 @@ const server = await createServer({
   server: { middlewareMode: true, hmr: false, ws: false, fs: { allow: [".."] } },
 });
 const { default: App } = await server.ssrLoadModule("/src/App.jsx");
-const { AlgorithmSection, DesignSection, EnvironmentExportSection, ExperimentSection, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
-const { makeCustomMarl, stepsForTrack, withUiDefaults } = await server.ssrLoadModule("/src/config.js");
+const { AlgorithmSection, DesignSection, EnvironmentExportSection, ExperimentSection, ReferenceBaselineToggle, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
+const { makeCustomMarl, stepsForTrack, visibleStepsForTrack, withUiDefaults } = await server.ssrLoadModule("/src/config.js");
 const standard = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/standard.json", import.meta.url))));
 const robust = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/robust.json", import.meta.url))));
 const safety = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/safety.json", import.meta.url))));
@@ -26,24 +26,29 @@ const noop = () => {};
 
 test.after(async () => server.close());
 
-test("all tracks use focused four-step workflows", () => {
+test("the default workflow ends after environment export", () => {
   const html = renderToStaticMarkup(createElement(App));
   assert.match(html, /Choose a track/);
-  assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 4);
-  for (const title of ["Experiment", "Task design", "Algorithm", "Train &amp; evaluate"]) {
+  assert.equal((html.match(/class="workflow-section"/g) ?? []).length, 2);
+  for (const title of ["Experiment", "Task design"]) {
     assert.match(html, new RegExp(title));
   }
+  assert.doesNotMatch(html, /<h1>Algorithm<\/h1>|<h1>Train &amp; evaluate<\/h1>/);
   assert.doesNotMatch(html, /Piano task|Track design/);
   for (const track of ["standard", "robust", "safety"]) {
     assert.deepEqual(stepsForTrack(track).map(({ title }) => title), [
       "Experiment", "Piano task", "Algorithm", "Train & evaluate",
     ]);
+    assert.deepEqual(visibleStepsForTrack(track).map(({ title }) => title), [
+      "Experiment", "Piano task",
+    ]);
+    assert.equal(visibleStepsForTrack(track, true).length, 4);
   }
   assert.doesNotMatch(html, /Review &amp; launch|Validate &amp; preview|Prepare files/);
-  assert.match(html, /Download JSON/);
-  assert.match(html, /Launch runs/);
+  assert.doesNotMatch(html, /Download JSON|Launch runs|Unified JSON · v3/);
   assert.match(html, /Export Environment/);
-  assert.match(html, /Unified JSON · v3/);
+  assert.match(html, /Reproduce OmniPiano baselines/);
+  assert.match(html, /workspace workspace--environment-only/);
 });
 
 test("section 02 exposes the portable environment bundle actions", () => {
@@ -55,6 +60,24 @@ test("section 02 exposes the portable environment bundle actions", () => {
     assert.match(html, />Export Environment</);
     assert.match(html, /Task specification, importable Python adapter, and smoke test/);
   }
+});
+
+test("the reference-baseline button communicates collapsed and expanded states", () => {
+  const collapsed = renderToStaticMarkup(createElement(ReferenceBaselineToggle, {
+    expanded: false,
+    onToggle: noop,
+  }));
+  assert.match(collapsed, /aria-expanded="false"/);
+  assert.match(collapsed, /Reproduce OmniPiano baselines/);
+  assert.match(collapsed, /03–04/);
+
+  const expanded = renderToStaticMarkup(createElement(ReferenceBaselineToggle, {
+    expanded: true,
+    onToggle: noop,
+  }));
+  assert.match(expanded, /aria-expanded="true"/);
+  assert.match(expanded, /Hide OmniPiano baselines/);
+  assert.match(expanded, /reference-baseline-toggle--expanded/);
 });
 
 test("training controls share one compact panel with a comprehensive advanced JSON editor", () => {
