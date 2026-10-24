@@ -764,6 +764,16 @@ button {
   text-transform: capitalize;
 }
 
+.recipe-summary--fixed {
+  color: #929baa;
+  pointer-events: none;
+  user-select: none;
+}
+
+.recipe-summary--fixed strong {
+  color: #929baa;
+}
+
 .recipe-summary small {
   margin-left: auto;
   color: #7a8798;
@@ -889,6 +899,29 @@ textarea.control {
   color: #b42318;
   font-family: Inter, ui-sans-serif, sans-serif;
   font-size: 10px;
+}
+
+.runtime-parameter-json {
+  max-height: 640px;
+}
+
+.runtime-parameter-json__group {
+  min-width: max-content;
+}
+
+.runtime-parameter-json__group-brace {
+  display: block;
+  padding-left: 18px;
+  white-space: pre;
+  font-weight: 650;
+}
+
+.runtime-parameter-json__entry {
+  padding-left: 36px;
+}
+
+.runtime-parameter-json__readonly {
+  padding-left: 36px;
 }
 
 .control:hover {

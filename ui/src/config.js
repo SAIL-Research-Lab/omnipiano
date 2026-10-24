@@ -93,6 +93,18 @@ export function setAtPath(source, path, value) {
   return next;
 }
 
+export function deleteAtPath(source, path) {
+  const next = cloneConfig(source);
+  const parts = Array.isArray(path) ? path : path.split(".");
+  let cursor = next;
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    cursor = cursor?.[parts[index]];
+    if (!cursor) return next;
+  }
+  delete cursor[parts.at(-1)];
+  return next;
+}
+
 export function parseIntegerList(value) {
   return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean).map(Number)
     .filter((item) => Number.isInteger(item) && item >= 0))];

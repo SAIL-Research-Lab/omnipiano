@@ -38,7 +38,7 @@ test("the composer remains one scrollable five-section page", () => {
   assert.match(html, /Unified JSON · v3/);
 });
 
-test("seeds stay in run settings and advanced controls stay local", () => {
+test("training controls share one compact panel with a comprehensive advanced JSON editor", () => {
   const identity = renderToStaticMarkup(createElement(ExperimentSection, {
     config: marl, track: "marl", onTrack: noop, set: noop, panel: (id) => panel(id),
   }));
@@ -48,14 +48,46 @@ test("seeds stay in run settings and advanced controls stay local", () => {
   assert.doesNotMatch(identity, /Experiment details|Description|Tags|Basic|Advanced/);
   assert.doesNotMatch(identity, /Nominal control|Perturbed tasks|Constrained learning|Multi-agent coordination/);
   const basic = renderToStaticMarkup(createElement(RunSection, {
-    config: marl, set: noop, update: noop, panel: (id) => panel(id),
+    config: marl, track: "marl", set: noop, update: noop, panel: (id) => panel(id),
   }));
   assert.match(basic, /Seeds/);
+  assert.match(basic, /Training configuration/);
+  assert.match(basic, /Total environment steps/);
+  assert.match(basic, /Evaluation episodes/);
+  assert.match(basic, />Device</);
   assert.doesNotMatch(basic, /Output root/);
+  assert.doesNotMatch(basic, /Advanced training configuration/);
   const advanced = renderToStaticMarkup(createElement(RunSection, {
-    config: marl, set: noop, update: noop, panel: (id) => panel(id, ["run.resources"]),
+    config: marl, track: "marl", set: noop, update: noop, panel: (id) => panel(id, ["run"]),
   }));
-  assert.match(advanced, /Output root/);
+  assert.match(advanced, /Advanced training configuration/);
+  assert.match(advanced, /aria-label="evaluation.seed_offset"/);
+  assert.match(advanced, /aria-label="video.camera"/);
+  assert.match(advanced, /aria-label="compute.num_workers"/);
+  assert.match(advanced, /aria-label="tracking.project"/);
+  assert.match(advanced, /aria-label="output.root"/);
+  assert.match(advanced, /parameter-json__readonly runtime-parameter-json__readonly/);
+  assert.doesNotMatch(advanced, /Compute, tracking &amp; output|Run settings/);
+});
+
+test("runtime JSON only enables fields consumed by each track adapter", () => {
+  const standardHtml = renderToStaticMarkup(createElement(RunSection, {
+    config: standard, track: "standard", set: noop, update: noop, panel: (id) => panel(id, ["run"]),
+  }));
+  assert.match(standardHtml, /aria-label="compute.num_envs"/);
+  assert.match(standardHtml, /aria-label="tracking.provider"/);
+  assert.match(standardHtml, /aria-label="output.root"/);
+  assert.doesNotMatch(standardHtml, /aria-label="video.enabled"/);
+  assert.doesNotMatch(standardHtml, /aria-label="compute.num_workers"/);
+
+  const safetyHtml = renderToStaticMarkup(createElement(RunSection, {
+    config: safety, track: "safety", set: noop, update: noop, panel: (id) => panel(id, ["run"]),
+  }));
+  assert.match(safetyHtml, /Gamma <strong>0.8/);
+  assert.match(safetyHtml, /aria-label="tracking.provider"/);
+  assert.match(safetyHtml, /aria-label="output.root"/);
+  assert.doesNotMatch(safetyHtml, /aria-label="compute.num_envs"/);
+  assert.doesNotMatch(safetyHtml, /aria-label="evaluation.seed_offset"/);
 });
 
 test("standard, robust, and safety tasks are ID-only environment selectors", () => {

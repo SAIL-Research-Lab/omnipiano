@@ -6,12 +6,11 @@ import {
   NumberField,
   Section,
   SelectField,
-  TextField,
-  ToggleField,
 } from "./fields";
 import {
   applyHandLayout,
   applyTrackingProvider,
+  deleteAtPath,
   makeCustomMarl,
   parameterDisplayTemplate,
   makeRegisteredTask,
@@ -142,7 +141,7 @@ export function DesignSection({ config, set, update, panel }) {
   return <Section title="Agent assignment"><div className="inline-callout field--wide">This registered task uses its territorial agent layout.</div></Section>;
 }
 
-function ParameterValue({ name, value, onCommit, comma }) {
+function ParameterValue({ name, value, onCommit, comma, ariaLabel = name, className = "" }) {
   const serialized = JSON.stringify(value);
   const [draft, setDraft] = useState(serialized);
   const [error, setError] = useState("");
@@ -160,11 +159,11 @@ function ParameterValue({ name, value, onCommit, comma }) {
     }
   };
   return (
-    <div className="parameter-json__editable-row">
+    <div className={`parameter-json__editable-row ${className}`.trim()}>
       <span className="parameter-json__key">{JSON.stringify(name)}: </span>
       <input
         className="parameter-json__input"
-        aria-label={name}
+        aria-label={ariaLabel}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
@@ -234,60 +233,152 @@ export function AlgorithmSection({ config, algorithms, update, panel }) {
   );
 }
 
-export function RunSection({ config, track, trackCapability, set, update, panel }) {
-  const { evaluation, video, compute, tracking, output } = config.run;
-  const training = panel("run.training");
-  const resources = panel("run.resources");
-  const supportsPeriodicVideo = trackCapability?.features?.video === "periodic_and_final";
-  const trackingOptions = [
-    "none",
-    ...(trackCapability?.features?.tracking ?? [])
-      .filter((provider) => ["wandb", "tensorboard", "jsonl"].includes(provider)),
+function valueAtPath(source, path, fallback = null) {
+  const value = path.split(".").reduce((cursor, part) => cursor?.[part], source);
+  return value === undefined ? fallback : value;
+}
+
+function runtimeParameterGroups(config, track) {
+  const editable = {
+    standard: new Set(["compute.num_envs", "tracking.provider", "output.root"]),
+    robust: new Set(["compute.num_envs", "output.root"]),
+    safety: new Set(["tracking.provider", "output.root"]),
+    marl: new Set([
+      "evaluation.seed_offset",
+      "video.enabled", "video.frequency", "video.camera", "video.width", "video.height",
+      "compute.num_workers", "compute.cpus", "compute.gpus",
+      "tracking.provider", "tracking.mode", "tracking.project", "tracking.group", "tracking.name",
+      "output.root",
+    ]),
+  }[track] ?? new Set();
+  const entry = (name, path, options = {}) => ({
+    name,
+    path,
+    value: valueAtPath(config.run, path, options.fallback),
+    editable: editable.has(path),
+    ...options,
+  });
+  const trackingProviders = {
+    standard: ["none", "tensorboard"],
+    robust: ["none"],
+    safety: ["none", "tensorboard"],
+    marl: ["none", "wandb", "jsonl"],
+  }[track] ?? ["none"];
+  return [
+    {
+      name: "evaluation",
+      entries: [
+        entry("enabled", "evaluation.enabled"),
+        entry("seed_offset", "evaluation.seed_offset"),
+      ],
+    },
+    {
+      name: "video",
+      entries: [
+        entry("enabled", "video.enabled"),
+        entry("frequency", "video.frequency"),
+        entry("camera", "video.camera"),
+        entry("width", "video.width"),
+        entry("height", "video.height"),
+      ],
+    },
+    {
+      name: "compute",
+      entries: [
+        entry("num_workers", "compute.num_workers"),
+        entry("num_envs", "compute.num_envs"),
+        entry("cpus", "compute.cpus", { fallback: null, optional: true }),
+        entry("gpus", "compute.gpus", { fallback: null, optional: true }),
+      ],
+    },
+    {
+      name: "tracking",
+      entries: [
+        entry("provider", "tracking.provider", { choices: trackingProviders }),
+        entry("mode", "tracking.mode", { choices: ["disabled", "offline", "online"] }),
+        entry("project", "tracking.project"),
+        entry("group", "tracking.group"),
+        entry("name", "tracking.name"),
+      ],
+    },
+    {
+      name: "output",
+      entries: [entry("root", "output.root")],
+    },
   ];
-  const uniqueTrackingOptions = [...new Set(trackingOptions)];
+}
+
+function RuntimeParameterEditor({ config, track, update }) {
+  const groups = runtimeParameterGroups(config, track);
+  const commit = (entry, value) => {
+    if (entry.choices && !entry.choices.includes(value)) {
+      throw new Error(`Use one of: ${entry.choices.join(", ")}`);
+    }
+    update((current) => {
+      if (entry.path === "tracking.provider") return applyTrackingProvider(current, value);
+      if (entry.optional && value === null) return deleteAtPath(current, `run.${entry.path}`);
+      const next = structuredClone(current);
+      const parts = entry.path.split(".");
+      let cursor = next.run;
+      for (let index = 0; index < parts.length - 1; index += 1) cursor = cursor[parts[index]];
+      cursor[parts.at(-1)] = value;
+      return next;
+    });
+  };
   return (
-    <>
-      <Section title="Run settings" {...training}>
-        <ListField label="Seeds" values={config.experiment.seeds} parse={parseIntegerList} onChange={(value) => set("experiment.seeds", value)} hint="Comma-separated integers." />
-        <NumberField label="Total environment steps" value={config.run.total_steps} min={track === "safety" ? 20000 : 1} step={track === "safety" ? 20000 : 1} onChange={(value) => set("run.total_steps", value)} />
-        {track === "safety" ? (
-          <div className="recipe-summary"><span>Gamma <strong>0.8 (backend fixed)</strong></span></div>
-        ) : (
-          <NumberField label="Gamma" value={config.run.gamma} min={0.001} max={1} step={0.01} onChange={(value) => set("run.gamma", value)} />
-        )}
-        {track !== "safety" && <NumberField label="Evaluation frequency" value={evaluation.frequency} min={1} onChange={(value) => set("run.evaluation.frequency", value)} />}
-        <NumberField label="Evaluation episodes" value={evaluation.episodes} min={1} onChange={(value) => set("run.evaluation.episodes", value)} />
-        {supportsPeriodicVideo && <ToggleField label="Evaluation video" checked={video.enabled} onChange={(value) => set("run.video.enabled", value)} />}
-        {training.advanced && (
-          <>
-            <NumberField label="Evaluation seed offset" value={evaluation.seed_offset} min={0} onChange={(value) => set("run.evaluation.seed_offset", value)} />
-            {supportsPeriodicVideo && video.enabled && <NumberField label="Video frequency" value={video.frequency} min={1} onChange={(value) => set("run.video.frequency", value)} />}
-            {supportsPeriodicVideo && video.enabled && <TextField label="Camera" value={video.camera} onChange={(value) => set("run.video.camera", value)} />}
-          </>
-        )}
-      </Section>
-      <Section title="Compute, tracking & output" {...resources}>
-        {!resources.advanced && (
-          <div className="recipe-summary field--wide">
-            <span>Workers <strong>{compute.num_workers}</strong></span>
-            <span>Device <strong>{compute.device}</strong></span>
-            <span>Tracking <strong>{tracking.provider === "none" ? "off" : tracking.provider}</strong></span>
-            <span>Output <strong>{output.root}</strong></span>
+    <div className="parameter-editor field--wide">
+      <span className="field__label">Advanced configuration</span>
+      <div className="parameter-json runtime-parameter-json" aria-label="Advanced training configuration">
+        <code className="parameter-json__brace">{"{"}</code>
+        {groups.map((group, groupIndex) => (
+          <div className="runtime-parameter-json__group" key={group.name}>
+            <code className="runtime-parameter-json__group-brace">{`${JSON.stringify(group.name)}: {`}</code>
+            {group.entries.map((entry, entryIndex) => {
+              const comma = entryIndex < group.entries.length - 1;
+              if (entry.editable) {
+                return (
+                  <ParameterValue
+                    key={entry.path}
+                    name={entry.name}
+                    ariaLabel={entry.path}
+                    value={entry.value}
+                    comma={comma}
+                    className="runtime-parameter-json__entry"
+                    onCommit={(value) => commit(entry, value)}
+                  />
+                );
+              }
+              return (
+                <code className="parameter-json__readonly runtime-parameter-json__readonly" aria-disabled="true" key={entry.path}>
+                  {readOnlyEntry(entry.name, entry.value, comma)}
+                </code>
+              );
+            })}
+            <code className="runtime-parameter-json__group-brace">{`}${groupIndex < groups.length - 1 ? "," : ""}`}</code>
           </div>
-        )}
-        {resources.advanced && (
-          <>
-            <SelectField label="Device" value={compute.device} options={["auto", "cpu", "cuda"]} onChange={(value) => set("run.compute.device", value)} />
-            {track === "marl" && <NumberField label="Workers" value={compute.num_workers} min={0} onChange={(value) => set("run.compute.num_workers", value)} />}
-            {["standard", "robust"].includes(track) && <NumberField label="Vector environments" value={compute.num_envs} min={1} onChange={(value) => set("run.compute.num_envs", value)} />}
-            <SelectField label="Tracking provider" value={tracking.provider} options={uniqueTrackingOptions} onChange={(value) => update((current) => applyTrackingProvider(current, value))} />
-            {tracking.provider !== "none" && <SelectField label="Tracking mode" value={tracking.mode} options={["offline", "online"]} onChange={(value) => set("run.tracking.mode", value)} />}
-            <TextField label="Project" value={tracking.project} onChange={(value) => set("run.tracking.project", value || null)} />
-            <TextField label="Run group" value={tracking.group} onChange={(value) => set("run.tracking.group", value || null)} />
-            <TextField label="Output root" value={output.root} onChange={(value) => set("run.output.root", value)} hint="The local API confines writes to its configured allowed root." />
-          </>
-        )}
-      </Section>
-    </>
+        ))}
+        <code className="parameter-json__brace">{"}"}</code>
+      </div>
+    </div>
+  );
+}
+
+export function RunSection({ config, track = config.design.type, set, update, panel }) {
+  const { evaluation, compute } = config.run;
+  const training = panel("run");
+  return (
+    <Section title="Training configuration" {...training}>
+      <ListField label="Seeds" values={config.experiment.seeds} parse={parseIntegerList} onChange={(value) => set("experiment.seeds", value)} />
+      <NumberField label="Total environment steps" value={config.run.total_steps} min={track === "safety" ? 20000 : 1} step={track === "safety" ? 20000 : 1} onChange={(value) => set("run.total_steps", value)} />
+      {track === "safety" ? (
+        <div className="recipe-summary recipe-summary--fixed"><span>Gamma <strong>0.8</strong></span></div>
+      ) : (
+        <NumberField label="Gamma" value={config.run.gamma} min={0.001} max={1} step={0.01} onChange={(value) => set("run.gamma", value)} />
+      )}
+      {track !== "safety" && <NumberField label="Evaluation frequency" value={evaluation.frequency} min={1} onChange={(value) => set("run.evaluation.frequency", value)} />}
+      <NumberField label="Evaluation episodes" value={evaluation.episodes} min={1} onChange={(value) => set("run.evaluation.episodes", value)} />
+      <SelectField label="Device" value={compute.device} options={["auto", "cpu", "cuda"]} onChange={(value) => set("run.compute.device", value)} />
+      {training.advanced && <RuntimeParameterEditor config={config} track={track} update={update} />}
+    </Section>
   );
 }
