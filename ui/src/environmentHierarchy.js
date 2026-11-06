@@ -131,16 +131,16 @@ function robustDistribution(detail) {
 function severityFor(target, detail) {
   const code = detail.match(/(?:^|-)(P\d+)(?:-|$)/)?.[1];
   const levels = {
-    action: { P05: "Small", P10: "Medium", P15: "Large" },
-    observation: { P10: "Small", P20: "Medium", P30: "Large" },
-    reward: { P10: "Small", P30: "Medium", P50: "Large" },
-    gravity: { P200: "Small", P300: "Medium", P400: "Large" },
-    contact_friction: { P20: "Small", P30: "Medium", P40: "Large" },
+    action: { P05: "Low", P10: "Medium", P15: "High" },
+    observation: { P10: "Low", P20: "Medium", P30: "High" },
+    reward: { P10: "Low", P30: "Medium", P50: "High" },
+    gravity: { P200: "Low", P300: "Medium", P400: "High" },
+    contact_friction: { P20: "Low", P30: "Medium", P40: "High" },
   };
   if (target === "hand_position") {
-    if (/Y10-Z0?5/.test(detail)) return "Small";
+    if (/Y10-Z0?5/.test(detail)) return "Low";
     if (/Y25-Z10/.test(detail)) return "Medium";
-    if (/Y50-Z20/.test(detail)) return "Large";
+    if (/Y50-Z20/.test(detail)) return "High";
   }
   return levels[target]?.[code] ?? null;
 }
@@ -250,7 +250,7 @@ function compareOptions(level, left, right) {
     if (rightIndex < 0) return -1;
     return leftIndex - rightIndex;
   }
-  const tierOrder = ["Clean baseline", "Small", "Medium", "Large"];
+  const tierOrder = ["Clean baseline", "Low", "Medium", "High"];
   const leftTier = tierOrder.findIndex((tier) => left.label.startsWith(tier));
   const rightTier = tierOrder.findIndex((tier) => right.label.startsWith(tier));
   if (leftTier >= 0 || rightTier >= 0) {

@@ -183,8 +183,9 @@ test("robust tasks use perturbation target, distribution, and level hierarchy", 
   assert.match(html, />Perturbation target</);
   assert.match(html, />Distribution</);
   assert.match(html, />Level \/ variant</);
-  assert.match(html, />Small</);
+  assert.match(html, />Low</);
   assert.match(html, />Medium</);
+  assert.doesNotMatch(html, />Small|>Large/);
   assert.match(html, />Environment ID</);
   assert.match(html, new RegExp(`<code class="task-environment-id__value"[^>]*>${robust.task.environment_id}</code>`));
 });
