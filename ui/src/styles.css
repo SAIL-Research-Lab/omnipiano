@@ -523,6 +523,33 @@ button {
   min-width: 0;
 }
 
+.task-environment-id {
+  margin-top: 16px;
+  padding-top: 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.task-environment-id__label {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.task-environment-id__value {
+  min-width: 0;
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
 .section-card__title-row {
   display: flex;
   align-items: flex-start;
@@ -1755,6 +1782,12 @@ textarea.control {
 
   .environment-export__actions button {
     flex: 1 1 auto;
+  }
+
+  .task-environment-id {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .reward-editor__header,

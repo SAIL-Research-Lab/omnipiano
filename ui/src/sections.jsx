@@ -95,6 +95,12 @@ export function TaskSection({ config, environments, track, update }) {
           </label>
         ))}
       </div>
+      <div className="task-environment-id">
+        <span className="task-environment-id__label">Environment ID</span>
+        <code className="task-environment-id__value" title={config.task.environment_id}>
+          {config.task.environment_id}
+        </code>
+      </div>
     </section>
   );
 }

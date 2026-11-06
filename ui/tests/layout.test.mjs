@@ -165,7 +165,8 @@ test("standard tasks use piece, hand count, and conditional layout hierarchy", (
   assert.match(html, />Layout</);
   assert.match(html, />Prototype</);
   assert.match(html, />Static partition</);
-  assert.doesNotMatch(html, /OmniPiano-|Environment ID/);
+  assert.match(html, />Environment ID</);
+  assert.match(html, new RegExp(`<code class="task-environment-id__value"[^>]*>${environments[2].id}</code>`));
 });
 
 test("robust tasks use perturbation target, distribution, and level hierarchy", () => {
@@ -184,7 +185,8 @@ test("robust tasks use perturbation target, distribution, and level hierarchy", 
   assert.match(html, />Level \/ variant</);
   assert.match(html, />Small</);
   assert.match(html, />Medium</);
-  assert.doesNotMatch(html, />OmniPiano-|Environment ID/);
+  assert.match(html, />Environment ID</);
+  assert.match(html, new RegExp(`<code class="task-environment-id__value"[^>]*>${robust.task.environment_id}</code>`));
 });
 
 test("safety tasks use constraint, cost setting, and scenario hierarchy", () => {
@@ -197,7 +199,8 @@ test("safety tasks use constraint, cost setting, and scenario hierarchy", () => 
     config: safety, track: "safety", environments, update: noop,
   }));
   assert.match(html, />Safety constraint</);
-  assert.doesNotMatch(html, /OmniPiano-|Environment ID/);
+  assert.match(html, />Environment ID</);
+  assert.match(html, new RegExp(`<code class="task-environment-id__value"[^>]*>${safety.task.environment_id}</code>`));
 
   const { levels, records } = buildTaskHierarchy("safety", environments, safety.task.environment_id);
   const nextConstraint = chooseHierarchyRecord(records, levels, safety.task.environment_id, 0, "actuator_power");
