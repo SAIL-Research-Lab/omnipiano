@@ -69,9 +69,9 @@ test("section 02 exposes the portable environment bundle actions", () => {
   for (const config of [standard, robust, safety, customMarl]) {
     const html = renderToStaticMarkup(createElement(EnvironmentExportSection, { config }));
     assert.match(html, /Export environment/);
-    assert.match(html, />Task JSON</);
-    assert.match(html, />Copy Python</);
     assert.match(html, />Export Environment</);
+    assert.doesNotMatch(html, />Task JSON|>Copy Python/);
+    assert.equal((html.match(/<button/g) ?? []).length, 1);
     assert.doesNotMatch(html, /Task specification, importable Python adapter, and smoke test/);
   }
 });

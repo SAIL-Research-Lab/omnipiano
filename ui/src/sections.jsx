@@ -16,11 +16,7 @@ import {
   selectAlgorithm,
   TRACKS,
 } from "./config";
-import {
-  buildEnvironmentBundle,
-  downloadEnvironmentArchive,
-  downloadEnvironmentTask,
-} from "./exportEnvironment";
+import { downloadEnvironmentArchive } from "./exportEnvironment";
 import {
   buildTaskHierarchy,
   chooseHierarchyRecord,
@@ -121,10 +117,6 @@ export function EnvironmentExportSection({ config }) {
     }
     window.setTimeout(() => setStatus(""), 2200);
   };
-  const copyCode = () => act(async () => {
-    const { importSnippet } = buildEnvironmentBundle(config);
-    await navigator.clipboard.writeText(importSnippet);
-  }, "Python code copied");
   return (
     <section className="environment-export" aria-labelledby="environment-export-title">
       <div className="environment-export__copy">
@@ -132,8 +124,6 @@ export function EnvironmentExportSection({ config }) {
         <strong id="environment-export-title">Export environment</strong>
       </div>
       <div className="environment-export__actions">
-        <button type="button" onClick={() => act(() => downloadEnvironmentTask(config), "Task JSON downloaded")}>Task JSON</button>
-        <button type="button" onClick={copyCode}>Copy Python</button>
         <button className="environment-export__primary" type="button" onClick={() => act(() => downloadEnvironmentArchive(config), "Environment bundle downloaded")}>Export Environment</button>
       </div>
       {status && <span className="environment-export__status" role="status">{status}</span>}
