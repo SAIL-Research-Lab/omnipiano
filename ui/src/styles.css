@@ -512,6 +512,17 @@ button {
   cursor: pointer;
 }
 
+.task-hierarchy {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.task-hierarchy__field {
+  min-width: 0;
+}
+
 .section-card__title-row {
   display: flex;
   align-items: flex-start;
@@ -1693,6 +1704,7 @@ textarea.control {
 
   .field-grid,
   .track-grid,
+  .task-hierarchy,
   .design-option-grid,
   .cost-grid,
   .magnitude-grid {

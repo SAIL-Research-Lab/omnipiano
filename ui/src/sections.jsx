@@ -21,6 +21,11 @@ import {
   downloadEnvironmentArchive,
   downloadEnvironmentTask,
 } from "./exportEnvironment";
+import {
+  buildTaskHierarchy,
+  chooseHierarchyRecord,
+  optionsForHierarchyLevel,
+} from "./environmentHierarchy";
 import MarlDesign from "./tracks/marl";
 
 export function ExperimentSection({ config, track, onTrack, set }) {
@@ -54,28 +59,41 @@ export function ExperimentSection({ config, track, onTrack, set }) {
     </>
   );
 }
-export function TaskSection({ config, environments, set, update }) {
+export function TaskSection({ config, environments, track, update }) {
   const isMarl = config.design.type === "marl";
   if (isMarl) return null;
-  const environmentOptions = [...new Set([
-    config.task.environment_id,
-    ...environments.map((item) => item.id),
-  ].filter(Boolean))];
-  const chooseEnvironment = (id) => {
-    const metadata = environments.find((item) => item.id === id) ?? { id };
-    update((current) => makeRegisteredTask(current, metadata));
+  const { levels, records } = buildTaskHierarchy(track, environments, config.task.environment_id);
+  const selected = records.find((record) => record.item.id === config.task.environment_id) ?? records[0];
+  const visibleLevels = levels.map((level, index) => ({
+    ...level,
+    index,
+    options: optionsForHierarchyLevel(records, levels, selected, index),
+  })).filter(({ index, options }) => index === 0 || options.length > 1);
+  const chooseValue = (levelIndex, value) => {
+    const record = chooseHierarchyRecord(records, levels, config.task.environment_id, levelIndex, value);
+    if (record) update((current) => makeRegisteredTask(current, record.item));
   };
   return (
     <section className="section-card section-card--minimal">
-      <div className="field-grid">
-        <select
-          className="control field--wide environment-select"
-          aria-label="Environment ID"
-          value={config.task.environment_id}
-          onChange={(event) => chooseEnvironment(event.target.value)}
-        >
-          {environmentOptions.map((id) => <option value={id} key={id}>{id}</option>)}
-        </select>
+      <div className="task-hierarchy">
+        {visibleLevels.map((level) => (
+          <label className="field task-hierarchy__field" key={level.key}>
+            <span className="field__label">{level.label}</span>
+            <select
+              className="control environment-select"
+              aria-label={level.label}
+              value={selected?.values[level.key] ?? ""}
+              onChange={(event) => {
+                const option = level.options.find((candidate) => String(candidate.value) === event.target.value);
+                chooseValue(level.index, option?.value ?? event.target.value);
+              }}
+            >
+              {level.options.map((option) => (
+                <option value={option.value} key={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        ))}
       </div>
     </section>
   );

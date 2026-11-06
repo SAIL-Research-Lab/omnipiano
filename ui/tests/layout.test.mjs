@@ -15,6 +15,7 @@ const server = await createServer({
 const { default: App } = await server.ssrLoadModule("/src/App.jsx");
 const { AlgorithmSection, DesignSection, EnvironmentExportSection, ExperimentSection, ReferenceBaselineToggle, RunSection, TaskSection } = await server.ssrLoadModule("/src/sections.jsx");
 const { makeCustomMarl, stepsForTrack, visibleStepsForTrack, withUiDefaults } = await server.ssrLoadModule("/src/config.js");
+const { buildTaskHierarchy, chooseHierarchyRecord } = await server.ssrLoadModule("/src/environmentHierarchy.js");
 const standard = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/standard.json", import.meta.url))));
 const robust = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/robust.json", import.meta.url))));
 const safety = withUiDefaults(JSON.parse(await readFile(new URL("../../omnipiano/experiments/examples/safety.json", import.meta.url))));
@@ -148,24 +149,62 @@ test("runtime JSON only enables fields consumed by each track adapter", () => {
   assert.doesNotMatch(safetyHtml, /aria-label="evaluation.seed_offset"/);
 });
 
-test("standard, robust, and safety tasks are ID-only environment selectors", () => {
-  for (const config of [standard, robust, safety]) {
-    const current = config.task.environment_id;
-    const alternate = `${current}-alternate`;
-    const html = renderToStaticMarkup(createElement(TaskSection, {
-      config,
-      environments: [
-        { id: current, label: "Decorated environment label" },
-        { id: alternate, label: "Another decorated label" },
-      ],
-      set: noop,
-      update: noop,
-    }));
-    assert.match(html, /<select/);
-    assert.match(html, new RegExp(current));
-    assert.match(html, new RegExp(alternate));
-    assert.doesNotMatch(html, />Task<|>Choose|Decorated|>Environment ID<|>Basic<|>Advanced</);
-  }
+test("standard tasks use piece, hand count, and conditional layout hierarchy", () => {
+  const environments = [
+    "OmniPiano-WinterWind-OneHand-GeneralRL-v0",
+    "OmniPiano-WinterWind-ThreeHandPrototype-GeneralRL-v0",
+    "OmniPiano-WinterWind-ThreeHand-StaticPartition-GeneralRL-v0",
+    "OmniPiano-ForElise-TwoHand-GeneralRL-v0",
+  ].map((id) => ({ id, label: id }));
+  const config = { ...standard, task: { source: "registered", environment_id: environments[2].id } };
+  const html = renderToStaticMarkup(createElement(TaskSection, {
+    config, track: "standard", environments, update: noop,
+  }));
+  assert.match(html, />Piece</);
+  assert.match(html, />Number of hands</);
+  assert.match(html, />Layout</);
+  assert.match(html, />Prototype</);
+  assert.match(html, />Static partition</);
+  assert.doesNotMatch(html, /OmniPiano-|Environment ID/);
+});
+
+test("robust tasks use perturbation target, distribution, and level hierarchy", () => {
+  const environments = [
+    "OmniPiano-ClairDeLune-Clean-v0",
+    "OmniPiano-ClairDeLune-A-Gauss-P05-v0",
+    "OmniPiano-ClairDeLune-A-Gauss-P10-v0",
+    "OmniPiano-ClairDeLune-A-Uniform-P05-v0",
+    "OmniPiano-ClairDeLune-G-Step-Gauss-P200-v0",
+  ].map((id) => ({ id, label: id }));
+  const html = renderToStaticMarkup(createElement(TaskSection, {
+    config: robust, track: "robust", environments, update: noop,
+  }));
+  assert.match(html, />Perturbation target</);
+  assert.match(html, />Distribution</);
+  assert.match(html, />Level \/ variant</);
+  assert.match(html, />Small</);
+  assert.match(html, />Medium</);
+  assert.doesNotMatch(html, />OmniPiano-|Environment ID/);
+});
+
+test("safety tasks use constraint, cost setting, and scenario hierarchy", () => {
+  const environments = [
+    { id: safety.task.environment_id, song: "ForElise", hands: 2, cost: "hand_collision", setting: "event", group: "extensions", task_index: 9 },
+    { id: "OmniPiano-Safety-PicturesGreatKiev-4H-actuator_power-excess-1111111111-v1", song: "PicturesGreatKiev", hands: 4, cost: "actuator_power", setting: "excess", group: "main", task_index: 5 },
+    { id: "OmniPiano-Safety-PicturesGreatKiev-4H-actuator_power-excess-2222222222-v1", song: "PicturesGreatKiev", hands: 4, cost: "actuator_power", setting: "excess", group: "budget", task_index: 3 },
+  ];
+  const html = renderToStaticMarkup(createElement(TaskSection, {
+    config: safety, track: "safety", environments, update: noop,
+  }));
+  assert.match(html, />Safety constraint</);
+  assert.doesNotMatch(html, /OmniPiano-|Environment ID/);
+
+  const { levels, records } = buildTaskHierarchy("safety", environments, safety.task.environment_id);
+  const nextConstraint = chooseHierarchyRecord(records, levels, safety.task.environment_id, 0, "actuator_power");
+  assert.equal(nextConstraint.values.constraint, "actuator_power");
+  const nextSetting = chooseHierarchyRecord(records, levels, nextConstraint.item.id, 1, "excess");
+  assert.equal(nextSetting.values.setting, "excess");
+  assert.match(nextSetting.labels.scenario, /Pictures Great Kiev/);
 });
 
 test("MARL removes registered tasks and folds its custom task controls into Task design", () => {
